@@ -1,4 +1,4 @@
-module logbin.com/zongzi
+module github.com/logbn/zongzi
 
 go 1.19
 

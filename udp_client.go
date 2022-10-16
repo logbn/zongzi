@@ -76,7 +76,6 @@ func (c *udpClient) Listen(ctx context.Context, handler UDPHandlerFunc) (err err
 	if err != nil {
 		return
 	}
-	// conn.SetReadBuffer(8192)
 	c.connections[c.listenAddr] = conn
 	var done = make(chan struct{})
 	go func() {

@@ -13,11 +13,10 @@ import (
 
 	"github.com/lni/dragonboat/v4/config"
 	"github.com/lni/dragonboat/v4/logger"
-	"logbin.com/zongzi"
+	"github.com/logbn/zongzi"
 )
 
 var (
-	autoinit   = flag.Int("i", 0, "Minimum peer count for autoinit (default 0 disabled)")
 	cluster    = flag.String("c", "test001", "Cluster name (base36 maxlen 12)")
 	dataDir    = flag.String("d", "/var/lib/zongzi/node", "Base data directory")
 	raftDir    = flag.String("r", "127.0.0.1:10801", "Raft address")
@@ -52,52 +51,26 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	go agent.Start()
-	if err = unsafe_init(agent); err != nil {
-		panic(err)
+	agent.Start()
+	for {
+		if agent.GetStatus() == zongzi.AgentStatus_Active {
+			nh := agent.GetNodeHost()
+			reg, _ := nh.GetNodeHostRegistry()
+			hostMeta, _ := reg.GetMeta(nh.ID())
+			clusterMeta, _ := agent.GetMeta()
+			b, _ := json.Marshal(clusterMeta)
+			log.Printf("nodehost: %s", nh.ID())
+			log.Printf("host meta: %s", hostMeta)
+			log.Printf("cluster meta: %s", string(b))
+			break
+		}
+		time.Sleep(time.Second)
 	}
 	stop := make(chan os.Signal)
 	signal.Notify(stop, os.Interrupt)
 	signal.Notify(stop, syscall.SIGTERM)
 	<-stop
 	agent.Stop()
-}
-
-// May cause split brain in real systems when used improperly.
-// This type of implicit bootstrap method is for demo purposes only.
-// Cluster should always be bootstrapped explicitly in production systems.
-// See other examples.
-func unsafe_init(agent zongzi.Agent) (err error) {
-	var initialized bool
-	for {
-		switch agent.GetStatus() {
-		case zongzi.AgentStatus_Ready:
-			if !initialized && *autoinit > 0 && agent.PeerCount() >= *autoinit {
-				log.Println("--- Autoinit ---")
-				if err := agent.Init(); err != nil {
-					log.Printf("%v", err)
-					time.Sleep(time.Second)
-					continue
-				}
-				initialized = true
-			}
-		case zongzi.AgentStatus_Active:
-			log.Println("--- Active ---")
-			go func() {
-				nh := agent.GetNodeHost()
-				reg, _ := nh.GetNodeHostRegistry()
-				hostMeta, _ := reg.GetMeta(nh.ID())
-				clusterMeta, _ := agent.GetMeta()
-				b, _ := json.Marshal(clusterMeta)
-				log.Printf("nodehost: %s", nh.ID())
-				log.Printf("host meta: %s", hostMeta)
-				log.Printf("cluster meta: %s", string(b))
-			}()
-			return
-		}
-		time.Sleep(time.Second)
-	}
-	return
 }
 
 func setLogLevel(level logger.LogLevel) {

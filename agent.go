@@ -181,11 +181,11 @@ func (a *agent) startUDPListener() {
 			if replicaID < 1 {
 				return logger.ERROR, "INIT_JOIN_ERROR", r("Node not in initial members")
 			}
-			a.log.Debugf("startReplica: INIT_JOIN")
 			err = a.startReplica(initialMembers, false, metaShardID, replicaID)
 			if err != nil {
 				return logger.ERROR, "INIT_JOIN_ERROR", r(f("Failed to start meta shard during init: %v", err.Error()))
 			}
+			a.setStatus(AgentStatus_Active)
 			return logger.INFO, "INIT_JOIN_SUCCESS", r(f("%d", replicaID))
 
 		// Join a deployment - Sent by new nodes joining cluster
@@ -311,15 +311,23 @@ func (a *agent) parsePeers(peers map[string]string) (replicaID uint64, seedList 
 }
 
 func (a *agent) GetStatus() AgentStatus {
-	a.mutex.RLock()
-	defer a.mutex.RUnlock()
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
 	if a.status == AgentStatus_Pending {
-		_, _, err := a.parsePeers(a.peers)
-		if err == nil {
+		_, list, err := a.parsePeers(a.peers)
+		if err == nil && len(list) > 0 {
 			a.status = AgentStatus_Ready
+			a.log.Debugf("Status: %v", a.status)
 		}
 	}
 	return a.status
+}
+
+func (a *agent) setStatus(s AgentStatus) {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	a.log.Debugf("Status: %v", s)
+	a.status = s
 }
 
 func (a *agent) GetMeta() (res map[string]interface{}, err error) {
@@ -340,13 +348,6 @@ func (a *agent) PeerCount() int {
 	a.mutex.RLock()
 	defer a.mutex.RUnlock()
 	return len(a.peers)
-}
-
-func (a *agent) setStatus(s AgentStatus) {
-	a.mutex.Lock()
-	defer a.mutex.Unlock()
-	a.log.Debugf("Status: %v", s)
-	a.status = s
 }
 
 func (a *agent) setRaftNode(r *raftNode) {
@@ -418,7 +419,6 @@ func (a *agent) init(peers map[string]string) (err error) {
 	if err != nil {
 		for _, gossipAddr := range seedList {
 			if gossipAddr == a.hostConfig.Gossip.AdvertiseAddress {
-				a.log.Debugf("startReplica: init, %s", string(debug.Stack()))
 				err = a.startReplica(members, false, metaShardID, nodeID)
 				if err != nil {
 					err = fmt.Errorf("Failed to start meta shard a: %v", err.Error())
@@ -445,7 +445,14 @@ func (a *agent) init(peers map[string]string) (err error) {
 			}
 		}
 	}
-	err = a.initMeta(members)
+	for {
+		a.log.Debugf("init meta shard")
+		if err = a.initMeta(members); err == nil {
+			break
+		}
+		a.log.Debugf("%v", err)
+		time.Sleep(time.Second)
+	}
 
 	return
 }
@@ -517,7 +524,7 @@ func (a *agent) initMeta(members map[uint64]string) (err error) {
 }
 
 func (a *agent) startReplica(members map[uint64]string, join bool, shardID uint64, replicaID uint64) (err error) {
-	a.log.Debugf("startReplica %v %v %v", join, shardID, replicaID)
+	a.log.Debugf("startReplica: %s", string(debug.Stack()))
 	cfg := config.Config{
 		CheckQuorum:         true,
 		ShardID:             shardID,
@@ -607,7 +614,7 @@ func (a *agent) join() error {
 		if err == nil && len(res) == 0 {
 			return
 		}
-		if a.GetStatus() != AgentStatus_Pending {
+		if a.GetStatus() != AgentStatus_Pending && a.GetStatus() != AgentStatus_Ready {
 			return
 		}
 		if err == nil && res == "JOIN_START" && len(args) == 1 {
@@ -629,10 +636,9 @@ func (a *agent) join() error {
 				return
 			}
 			a.setStatus(AgentStatus_Joining)
-			a.log.Debugf("startReplica: JOIN_SUCCESS")
 			err = a.startReplica(nil, true, metaShardID, uint64(replicaID))
 			if err != nil {
-				a.log.Errorf("[%s] Unable to start meta shard 1 : %s", a.hostID(), err.Error())
+				a.log.Errorf("[%s] Unable to start meta shard in join: %s", a.hostID(), err.Error())
 				return
 			}
 			a.setStatus(AgentStatus_Active)
@@ -645,8 +651,8 @@ func (a *agent) join() error {
 	a.log.Debugf("Broadcasting: %#v", a.multicast)
 	for {
 		for _, addr := range a.multicast {
-			// a.log.Debugf("Broadcast: %v", addr)
-			if a.GetStatus() != AgentStatus_Pending {
+			// a.log.Debugf("Broadcast: %v, %s", addr, a.GetStatus())
+			if a.GetStatus() != AgentStatus_Pending && a.GetStatus() != AgentStatus_Ready {
 				return nil
 			}
 			broadcast(addr)
@@ -656,8 +662,6 @@ func (a *agent) join() error {
 }
 
 func (a *agent) rejoin() (err error) {
-	// Rejoin deployment
-	a.log.Debugf("Rejoin")
 	seeds := a.findGossipSeeds(1)
 	for {
 		if a.GetStatus() != AgentStatus_Rejoining {
@@ -682,7 +686,6 @@ func (a *agent) rejoin() (err error) {
 			return
 		}
 		a.clock.Sleep(200 * time.Millisecond)
-		a.log.Debugf("startReplica: rejoin")
 		err = a.startReplica(nil, true, metaShardID, uint64(replicaID))
 		if err != nil {
 			a.log.Errorf("[%s] Unable to start meta shard: %s", a.hostID(), err.Error())
