@@ -315,7 +315,7 @@ func (a *agent) GetStatus() AgentStatus {
 	defer a.mutex.Unlock()
 	if a.status == AgentStatus_Pending {
 		_, list, err := a.parsePeers(a.peers)
-		if err == nil && len(list) > 0 {
+		if err == nil && len(list) >= 3 {
 			a.status = AgentStatus_Ready
 			a.log.Debugf("Status: %v", a.status)
 		}
@@ -559,30 +559,21 @@ func (a *agent) startReplica(members map[uint64]string, join bool, shardID uint6
 }
 
 func (a *agent) findGossipSeeds(min int) (res []string) {
-	var wg sync.WaitGroup
-	var mutex sync.Mutex
 	var seeds = map[string]bool{}
 	a.log.Infof("Finding gossip seeds: %s", strings.Join(a.multicast, ", "))
 	for {
 		for _, addr := range a.multicast {
-			wg.Add(1)
-			go func(addr string) {
-				res, args, err := a.client.Send(time.Second, addr, "REJOIN", a.hostConfig.Gossip.AdvertiseAddress)
-				if err != nil {
-					return
-				}
-				if res == "REJOIN_SUCCESS" && len(args) == 1 {
-					gossipAddr := args[0]
-					mutex.Lock()
-					seeds[gossipAddr] = true
-					mutex.Unlock()
-				} else if len(res) > 0 {
-					a.log.Errorf("[%s] Invalid rejoin response: %s, %v", a.hostID(), res, args)
-				}
-				wg.Done()
-			}(addr)
+			cmd, args, err := a.client.Send(time.Second, addr, "REJOIN", a.hostConfig.Gossip.AdvertiseAddress)
+			if err != nil {
+				continue
+			}
+			if cmd == "REJOIN_SUCCESS" && len(args) == 1 {
+				gossipAddr := args[0]
+				seeds[gossipAddr] = true
+			} else if len(cmd) > 0 {
+				a.log.Errorf("[%s] Invalid rejoin response: %s, %v", a.hostID(), cmd, args)
+			}
 		}
-		wg.Wait()
 		if len(seeds) >= min {
 			for k := range seeds {
 				res = append(res, k)
@@ -671,7 +662,7 @@ func (a *agent) rejoin() (err error) {
 			break
 		}
 		a.log.Errorf(err.Error())
-		a.clock.Sleep(100 * time.Millisecond)
+		a.clock.Sleep(time.Second)
 	}
 	var replicaID uint64
 	for replicaID < 1 {
@@ -679,19 +670,17 @@ func (a *agent) rejoin() (err error) {
 			return
 		}
 		replicaID = a.getReplicaID()
-		a.clock.Sleep(200 * time.Millisecond)
+		a.clock.Sleep(time.Second)
 	}
 	for {
 		if a.GetStatus() != AgentStatus_Rejoining {
 			return
 		}
-		a.clock.Sleep(200 * time.Millisecond)
-		err = a.startReplica(nil, true, metaShardID, uint64(replicaID))
-		if err != nil {
-			a.log.Errorf("[%s] Unable to start meta shard: %s", a.hostID(), err.Error())
-			return
+		if err = a.startReplica(nil, false, metaShardID, uint64(replicaID)); err == nil {
+			break
 		}
-		a.log.Errorf(err.Error())
+		a.log.Errorf("[%s] Unable to start meta shard: %s", a.hostID(), err.Error())
+		a.clock.Sleep(time.Second)
 	}
 	a.setStatus(AgentStatus_Active)
 

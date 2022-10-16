@@ -200,10 +200,10 @@ func (fsm *raftNode) SaveSnapshot(w io.Writer, sfc dbsm.ISnapshotFileCollection,
 	for el := fsm.replicas.Front(); el != nil; el = el.Next() {
 		replicas = append(replicas, el.Value)
 	}
-	b, err := json.Marshal(map[string]interface{}{
-		"hosts":    hosts,
-		"shards":   shards,
-		"replicas": replicas,
+	b, err := json.Marshal(snapshot{
+		Hosts:    hosts,
+		Shards:   shards,
+		Replicas: replicas,
 	})
 	if err == nil {
 		_, err = io.Copy(w, bytes.NewReader(b))
@@ -213,17 +213,17 @@ func (fsm *raftNode) SaveSnapshot(w io.Writer, sfc dbsm.ISnapshotFileCollection,
 }
 
 func (fsm *raftNode) RecoverFromSnapshot(r io.Reader, sfc []dbsm.SnapshotFile, stopc <-chan struct{}) (err error) {
-	var data map[string]interface{}
-	if err = json.NewDecoder(r).Decode(data); err != nil {
+	var data snapshot
+	if err = json.NewDecoder(r).Decode(&data); err != nil {
 		return
 	}
-	for _, host := range data["hosts"].([]*host) {
+	for _, host := range data.Hosts {
 		fsm.hosts.Set(host.ID, host)
 	}
-	for _, shard := range data["shards"].([]*shard) {
+	for _, shard := range data.Shards {
 		fsm.shards.Set(shard.ID, shard)
 	}
-	for _, replica := range data["replicas"].([]*replica) {
+	for _, replica := range data.Replicas {
 		fsm.replicas.Set(replica.ID, replica)
 	}
 	return
@@ -231,6 +231,12 @@ func (fsm *raftNode) RecoverFromSnapshot(r io.Reader, sfc []dbsm.SnapshotFile, s
 
 func (fsm *raftNode) Close() (err error) {
 	return
+}
+
+type snapshot struct {
+	Hosts    []*host
+	Shards   []*shard
+	Replicas []*replica
 }
 
 type host struct {
