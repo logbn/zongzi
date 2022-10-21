@@ -6,7 +6,6 @@ A UDP discovery protocol and cluster control system for Dragonboat.
 - [x] Global nodehost registry
 - [x] Global shard registry
 - [ ] Cluster controller
-- [ ] Replica scheduler
 - [ ] Event system
 
 Every nodehost receives a materialized view of the global cluster state.
