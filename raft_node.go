@@ -300,12 +300,12 @@ type cmdReplica struct {
 	Replica replica
 }
 
-func newCmdReplicaSet(metaShardID uint64, nhid string) cmdReplica {
+func newCmdReplicaSet(primeShardID uint64, nhid string) cmdReplica {
 	return cmdReplica{cmd{
 		Type:   cmd_type_replica,
 		Action: cmd_action_set,
 	}, replica{
-		ShardID: metaShardID,
+		ShardID: primeShardID,
 		HostID:  nhid,
 		Status:  ReplicaStatus_New,
 	}}

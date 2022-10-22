@@ -182,7 +182,7 @@ func (a *agent) startUDPListener() {
 			if replicaID < 1 {
 				return logger.ERROR, "INIT_JOIN_ERROR", r("Node not in initial members")
 			}
-			err = a.startReplica(initialMembers, false, metaShardID, replicaID)
+			err = a.startReplica(initialMembers, false, primeShardID, replicaID)
 			if err != nil {
 				return logger.ERROR, "INIT_JOIN_ERROR", r(f("Failed to start meta shard during init: %v", err.Error()))
 			}
@@ -219,13 +219,10 @@ func (a *agent) startUDPListener() {
 			gossipAddr := args[0]
 			a.log.Debugf("REJOIN req from %s\n", gossipAddr)
 			a.probes[gossipAddr] = true
-			if gossipAddr == a.hostConfig.Gossip.AdvertiseAddress {
-				return noresp()
+			if a.GetStatus() == AgentStatus_Active || a.GetStatus() == AgentStatus_Rejoining {
+				return logger.INFO, "REJOIN_SUCCESS", r(a.hostConfig.Gossip.AdvertiseAddress)
 			}
-			if a.GetStatus() != AgentStatus_Active {
-				return noresp()
-			}
-			return logger.INFO, "REJOIN_SUCCESS", r(a.hostConfig.Gossip.AdvertiseAddress)
+			return noresp()
 
 		// List peers - Sent manually prior to init
 		case "LIST":
@@ -263,35 +260,32 @@ func (a *agent) startUDPListener() {
 }
 
 func (a *agent) addReplica(nhid string) (replicaID uint64, err error) {
-	host, err := a.host.SyncRead(raftCtx(), metaShardID, newQueryHostGet(nhid))
+	host, err := a.host.SyncRead(raftCtx(), primeShardID, newQueryHostGet(nhid))
 	if err != nil {
 		return
 	}
 	if host == nil {
-		err = a.initHostMeta(nhid)
+		err = a.primeAddHost(nhid)
 		if err != nil {
 			return
 		}
 	}
-	res, err := a.host.SyncRead(raftCtx(), metaShardID, newQueryReplicaGet(nhid, metaShardID))
+	res, err := a.host.SyncRead(raftCtx(), primeShardID, newQueryReplicaGet(nhid, primeShardID))
 	if err != nil {
 		return
 	}
 	if res == nil {
-		if err = a.initReplicaMeta(nhid, 0); err != nil {
+		if replicaID, err = a.primeAddReplica(nhid, 0); err != nil {
 			return
 		}
-		res, err = a.host.SyncRead(raftCtx(), metaShardID, newQueryReplicaGet(nhid, metaShardID))
-		if err != nil {
-			return
-		}
+	} else {
+		replicaID = res.(*replica).ID
 	}
-	replica := res.(*replica)
-	m, err := a.host.SyncGetShardMembership(raftCtx(), metaShardID)
+	m, err := a.host.SyncGetShardMembership(raftCtx(), primeShardID)
 	if err != nil {
 		return
 	}
-	err = a.host.SyncRequestAddReplica(raftCtx(), metaShardID, replica.ID, nhid, m.ConfigChangeID)
+	err = a.host.SyncRequestAddReplica(raftCtx(), primeShardID, replicaID, nhid, m.ConfigChangeID)
 	if err != nil {
 		return
 	}
@@ -320,7 +314,7 @@ func (a *agent) GetStatus() AgentStatus {
 	defer a.mutex.Unlock()
 	if a.status == AgentStatus_Pending {
 		_, list, err := a.parsePeers(a.peers)
-		if err == nil && len(list) >= 3 {
+		if err == nil && len(list) >= minReplicas {
 			a.status = AgentStatus_Ready
 			a.log.Debugf("Status: %v", a.status)
 		}
@@ -428,11 +422,11 @@ func (a *agent) init(peers map[string]string) (err error) {
 		err = fmt.Errorf("Error marshaling member json: %v", err)
 		return
 	}
-	_, err = a.host.SyncGetShardMembership(raftCtx(), metaShardID)
+	_, err = a.host.SyncGetShardMembership(raftCtx(), primeShardID)
 	if err != nil {
 		for _, gossipAddr := range seedList {
 			if gossipAddr == a.hostConfig.Gossip.AdvertiseAddress {
-				err = a.startReplica(members, false, metaShardID, nodeID)
+				err = a.startReplica(members, false, primeShardID, nodeID)
 				if err != nil {
 					err = fmt.Errorf("Failed to start meta shard a: %v", err.Error())
 					return
@@ -460,7 +454,7 @@ func (a *agent) init(peers map[string]string) (err error) {
 	}
 	for {
 		a.log.Debugf("init meta shard")
-		if err = a.initMeta(members); err == nil {
+		if err = a.createPrimeShard(members); err == nil {
 			break
 		}
 		a.log.Debugf("%v", err)
@@ -470,14 +464,15 @@ func (a *agent) init(peers map[string]string) (err error) {
 	return
 }
 
-func (a *agent) initMeta(members map[uint64]string) (err error) {
-	sess := a.host.GetNoOPSession(metaShardID)
+// createPrimeShard proposes addition of prime shard metadata to prime shard state
+func (a *agent) createPrimeShard(members map[uint64]string) (err error) {
+	sess := a.host.GetNoOPSession(primeShardID)
 	var b []byte
 	if b, err = json.Marshal(cmdShard{cmd{
 		Type:   cmd_type_shard,
 		Action: cmd_action_set,
 	}, shard{
-		ID:     metaShardID,
+		ID:     primeShardID,
 		Name:   magicPrefix,
 		Status: "new",
 	}}); err != nil {
@@ -488,10 +483,10 @@ func (a *agent) initMeta(members map[uint64]string) (err error) {
 		return
 	}
 	for replicaID, nhid := range members {
-		if err = a.initHostMeta(nhid); err != nil {
+		if err = a.primeAddHost(nhid); err != nil {
 			return
 		}
-		if err = a.initReplicaMeta(nhid, replicaID); err != nil {
+		if _, err = a.primeAddReplica(nhid, replicaID); err != nil {
 			return
 		}
 	}
@@ -499,8 +494,9 @@ func (a *agent) initMeta(members map[uint64]string) (err error) {
 	return
 }
 
-func (a *agent) initHostMeta(nhid string) (err error) {
-	sess := a.host.GetNoOPSession(metaShardID)
+// primeAddHost proposes addition of host metadata to the prime shard state
+func (a *agent) primeAddHost(nhid string) (err error) {
+	sess := a.host.GetNoOPSession(primeShardID)
 	reg, ok := a.host.GetNodeHostRegistry()
 	if !ok {
 		err = fmt.Errorf("Unable to retrieve NodeHostRegistry")
@@ -531,21 +527,25 @@ func (a *agent) initHostMeta(nhid string) (err error) {
 	return
 }
 
-func (a *agent) initReplicaMeta(nhid string, replicaID uint64) (err error) {
-	sess := a.host.GetNoOPSession(metaShardID)
+// primeAddReplica proposes addition of replica metadata to the prime shard state
+func (a *agent) primeAddReplica(nhid string, replicaID uint64) (id uint64, err error) {
+	sess := a.host.GetNoOPSession(primeShardID)
 	b, err := json.Marshal(cmdReplica{cmd{
 		Type:   cmd_type_replica,
 		Action: cmd_action_set,
 	}, replica{
 		ID:      replicaID,
-		ShardID: metaShardID,
+		ShardID: primeShardID,
 		HostID:  nhid,
 		Status:  "new",
 	}})
 	if err != nil {
 		return
 	}
-	_, err = a.host.SyncPropose(raftCtx(), sess, b)
+	res, err := a.host.SyncPropose(raftCtx(), sess, b)
+	if err == nil {
+		id = res.Value
+	}
 	return
 }
 
@@ -575,7 +575,7 @@ func (a *agent) startReplica(members map[uint64]string, join bool, shardID uint6
 		}
 	}
 	if cfg.ReplicaID < 1 {
-		return fmt.Errorf("Invalid nodeID: %v", err.Error())
+		return fmt.Errorf("Invalid replicaID: %v", err.Error())
 	}
 	err = a.host.StartReplica(members, join, raftNodeFactory(a), cfg)
 	if err != nil {
@@ -653,7 +653,7 @@ func (a *agent) join() error {
 				return
 			}
 			a.setStatus(AgentStatus_Joining)
-			err = a.startReplica(nil, true, metaShardID, uint64(replicaID))
+			err = a.startReplica(nil, true, primeShardID, uint64(replicaID))
 			if err != nil {
 				a.log.Errorf("[%s] Unable to start meta shard in join: %s", a.hostID(), err.Error())
 				return
@@ -679,34 +679,13 @@ func (a *agent) join() error {
 }
 
 func (a *agent) rejoin() (err error) {
-	seeds := a.findGossipSeeds(1)
-	for {
-		if a.GetStatus() != AgentStatus_Rejoining {
-			return
-		}
-		if err = a.startHost(seeds); err == nil {
-			break
-		}
-		a.log.Errorf(err.Error())
-		a.clock.Sleep(time.Second)
+	seeds := a.findGossipSeeds(minReplicas)
+	if err = a.startHost(seeds); err != nil {
+		return
 	}
-	var replicaID uint64
-	for replicaID < 1 {
-		if a.GetStatus() != AgentStatus_Rejoining {
-			return
-		}
-		replicaID = a.getReplicaID()
-		a.clock.Sleep(time.Second)
-	}
-	for {
-		if a.GetStatus() != AgentStatus_Rejoining {
-			return
-		}
-		if err = a.startReplica(nil, false, metaShardID, uint64(replicaID)); err == nil {
-			break
-		}
-		a.log.Errorf("[%s] Unable to start meta shard: %s", a.hostID(), err.Error())
-		a.clock.Sleep(time.Second)
+	replicaID := a.getReplicaID()
+	if err = a.startReplica(nil, false, primeShardID, uint64(replicaID)); err == nil {
+		return
 	}
 	a.setStatus(AgentStatus_Active)
 
@@ -715,8 +694,9 @@ func (a *agent) rejoin() (err error) {
 
 func (a *agent) getReplicaID() (replicaID uint64) {
 	info := a.host.GetNodeHostInfo(dragonboat.NodeHostInfoOption{})
+	a.log.Debugf("%v", info)
 	for _, c := range info.LogInfo {
-		if c.ShardID == metaShardID {
+		if c.ShardID == primeShardID {
 			replicaID = c.ReplicaID
 			break
 		}

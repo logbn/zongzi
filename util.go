@@ -11,12 +11,13 @@ import (
 )
 
 const (
+	minReplicas  = 3
+	primeShardID = 1
 	magicPrefix  = "zongzi"
 	probeTimeout = 3 * time.Second
 	probePause   = 5 * time.Second
 	joinTimeout  = 5 * time.Second
 	raftTimeout  = time.Second
-	metaShardID  = 1
 )
 
 type AgentStatus string
@@ -37,7 +38,7 @@ var (
 
 var DefaultRaftNodeConfig = config.Config{
 	CheckQuorum:         true,
-	ShardID:             metaShardID,
+	ShardID:             primeShardID,
 	CompactionOverhead:  1000,
 	ElectionRTT:         10,
 	HeartbeatRTT:        2,
