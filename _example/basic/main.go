@@ -57,11 +57,10 @@ func main() {
 			nh := agent.GetNodeHost()
 			reg, _ := nh.GetNodeHostRegistry()
 			hostMeta, _ := reg.GetMeta(nh.ID())
-			clusterMeta, _ := agent.GetMeta()
-			b, _ := json.Marshal(clusterMeta)
+			snapshotJson, _ := agent.GetSnapshotJson()
 			log.Printf("nodehost: %s", nh.ID())
 			log.Printf("host meta: %s", hostMeta)
-			log.Printf("cluster meta: %s", string(b))
+			log.Printf("snapshot: %s", string(snapshotJson))
 			break
 		}
 		time.Sleep(time.Second)
@@ -80,5 +79,5 @@ func setLogLevel(level logger.LogLevel) {
 	logger.GetLogger("raft").SetLevel(level)
 	logger.GetLogger("grpc").SetLevel(level)
 	logger.GetLogger("rsm").SetLevel(level)
-	zongzi.GetLogger("agent").SetLevel(level)
+	logger.GetLogger("zongzi").SetLevel(level)
 }

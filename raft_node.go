@@ -30,7 +30,7 @@ func raftNodeFactory(agent *agent) dbsm.CreateStateMachineFunc {
 		node := &raftNode{
 			shardID:   shardID,
 			replicaID: replicaID,
-			log:       log["fsm"],
+			log:       agent.log,
 			hosts:     orderedmap.NewOrderedMap[string, *host](),
 			shards:    orderedmap.NewOrderedMap[uint64, *shard](),
 			replicas:  orderedmap.NewOrderedMap[uint64, *replica](),
@@ -172,13 +172,33 @@ func (fsm *raftNode) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 }
 
 func (fsm *raftNode) Lookup(e interface{}) (val interface{}, err error) {
-	/*
-		query, ok := e.(query)
-		if !ok {
-			return nil, fmt.Errorf("Invalid query %#v", e)
+	if query, ok := e.(queryHost); ok {
+		switch query.Action {
+		case query_action_get:
+			if host, ok := fsm.hosts.Get(query.Host.ID); ok {
+				val = *host
+			} else {
+				fsm.log.Warningf("Host not found %#v", e)
+			}
 		}
-		val, _ = fsm.data[query.Key]
-	*/
+	} else if query, ok := e.(queryReplica); ok {
+		switch query.Action {
+		case query_action_get:
+			host, ok := fsm.hosts.Get(query.Replica.HostID)
+			if !ok {
+				fsm.log.Warningf("Host not found %#v", e)
+				break
+			}
+			for replicaID, shardID := range host.Replicas {
+				if shardID == query.Replica.ShardID {
+					val, _ = fsm.replicas.Get(replicaID)
+					break
+				}
+			}
+		}
+	} else {
+		err = fmt.Errorf("Invalid query %#v", e)
+	}
 
 	return
 }
@@ -303,4 +323,33 @@ func newCmdReplicaDel(replicaID uint64) cmdReplica {
 type query struct {
 	Type   string
 	Action string
+}
+
+type queryHost struct {
+	query
+	Host host
+}
+
+type queryReplica struct {
+	query
+	Replica replica
+}
+
+func newQueryHostGet(nhid string) queryHost {
+	return queryHost{query{
+		Type:   cmd_type_host,
+		Action: query_action_get,
+	}, host{
+		ID: nhid,
+	}}
+}
+
+func newQueryReplicaGet(nhid string, shardID uint64) queryReplica {
+	return queryReplica{query{
+		Type:   cmd_type_replica,
+		Action: query_action_get,
+	}, replica{
+		HostID:  nhid,
+		ShardID: shardID,
+	}}
 }

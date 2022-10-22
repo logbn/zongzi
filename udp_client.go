@@ -21,6 +21,7 @@ type UDPClient interface {
 type UDPHandlerFunc func(cmd string, args ...string) (level logger.LogLevel, res string, data []string)
 
 type udpClient struct {
+	log         logger.ILogger
 	connections map[string]net.PacketConn
 	clusterName string
 	magicPrefix string
@@ -29,9 +30,10 @@ type udpClient struct {
 
 func newUDPClient(magicPrefix, listenAddr, clusterName string) *udpClient {
 	return &udpClient{
+		log:         logger.GetLogger(magicPrefix),
 		connections: map[string]net.PacketConn{},
 		magicPrefix: magicPrefix,
-		clusterName: clusterName,
+		clusterName: strings.ToLower(clusterName),
 		listenAddr:  fmt.Sprintf("239.108.0.1:%s", strings.Split(listenAddr, ":")[1]),
 	}
 }
@@ -41,8 +43,7 @@ func (c *udpClient) Send(d time.Duration, addr string, cmd string, args ...strin
 	conn, _ := net.ListenPacket("udp", ":0")
 	conn.SetDeadline(time.Now().Add(d))
 	argStr := strings.Join(args, " ")
-	packet := fmt.Sprintf("%s %s %s %s", c.magicPrefix, cmd, c.clusterName, argStr)
-	// log["agent"].Debugf("send(%s) %s", addr, packet)
+	packet := fmt.Sprintf("%s %s %s %s", c.magicPrefix, c.clusterName, cmd, argStr)
 	conn.WriteTo([]byte(packet), raddr)
 	buf := make([]byte, 1024)
 	i, _, err := conn.ReadFrom(buf)
@@ -57,7 +58,7 @@ func (c *udpClient) Send(d time.Duration, addr string, cmd string, args ...strin
 	if len(parts) < 3 {
 		return "", nil, fmt.Errorf("Invalid response (%s - %s %s) / (%s)", addr, cmd, argStr, msg)
 	}
-	magic, res, clusterName, data := parts[0], parts[1], parts[2], parts[3:]
+	magic, clusterName, res, data := parts[0], strings.ToLower(parts[1]), parts[2], parts[3:]
 	if magic != c.magicPrefix || clusterName != c.clusterName {
 		return "", nil, fmt.Errorf("Invalid response (%s - %s %s) / (%s)", addr, cmd, argStr, msg)
 	}
@@ -96,13 +97,12 @@ func (c *udpClient) Listen(ctx context.Context, handler UDPHandlerFunc) (err err
 			close(done)
 			return err
 		}
-		// log["agent"].Debugf("receive")
 		msg := string(buf[:i])
 		parts := strings.Split(strings.Trim(msg, "\n"), " ")
 		if len(parts) < 3 {
 			continue
 		}
-		magic, cmd, clusterName, args := parts[0], parts[1], parts[2], parts[3:]
+		magic, clusterName, cmd, args := parts[0], strings.ToLower(parts[1]), parts[2], parts[3:]
 		if magic != c.magicPrefix || clusterName != c.clusterName {
 			continue
 		}
@@ -111,19 +111,19 @@ func (c *udpClient) Listen(ctx context.Context, handler UDPHandlerFunc) (err err
 		if len(res) > 0 || len(data) > 0 {
 			switch level {
 			case logger.DEBUG:
-				log["agent"].Debugf("%s %s", res, data)
+				c.log.Debugf("%s %s", res, data)
 			case logger.INFO:
-				log["agent"].Infof("%s %s", res, data)
+				c.log.Infof("%s %s", res, data)
 			case logger.WARNING:
-				log["agent"].Warningf("%s %s", res, data)
+				c.log.Warningf("%s %s", res, data)
 			case logger.ERROR:
-				log["agent"].Errorf("%s %s", res, data)
+				c.log.Errorf("%s %s", res, data)
 			case logger.CRITICAL:
-				log["agent"].Panicf("%s %s", res, data)
+				c.log.Panicf("%s %s", res, data)
 			}
 		}
 		if len(res) > 0 {
-			_, err := conn.WriteTo([]byte(fmt.Sprintf("%s %s %s %s", c.magicPrefix, res, c.clusterName, data)), dst)
+			_, err := conn.WriteTo([]byte(fmt.Sprintf("%s %s %s %s", c.magicPrefix, c.clusterName, res, data)), dst)
 			if err != nil {
 				close(done)
 				return fmt.Errorf("Error replying to %s (%s): %s", cmd, res, err.Error())

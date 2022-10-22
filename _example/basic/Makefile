@@ -21,11 +21,14 @@ test-node-2:
 test-node-3:
 	@go run main.go -c "test001" -d $(DATA_DIR)/node3 -r 127.0.0.1:10831 -g 127.0.0.1:10832 -u $(TEST_BROADCAST) -z us-west-1c
 
+test-node-4:
+	@go run main.go -c "test001" -d $(DATA_DIR)/node4 -r 127.0.0.1:10841 -g 127.0.0.1:10842 -u $(TEST_BROADCAST) -z us-west-1d
+
 init-1:
-	@bash -c 'echo "zongzi INIT TEST001" > /dev/udp/239.108.0.1/10811'
+	@bash -c 'echo "zongzi test001 INIT" > /dev/udp/239.108.0.1/10811'
 
 init-2:
-	@bash -c 'echo "zongzi INIT TEST001" > /dev/udp/239.108.0.1/10821'
+	@bash -c 'echo "zongzi test001 INIT" > /dev/udp/239.108.0.1/10821'
 
 init-3:
-	@bash -c 'echo "zongzi INIT TEST001" > /dev/udp/239.108.0.1/10831'
+	@bash -c 'echo "zongzi test001 INIT" > /dev/udp/239.108.0.1/10831'

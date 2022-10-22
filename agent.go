@@ -31,7 +31,8 @@ type Agent interface {
 	Init() error
 	GetNodeHost() *dragonboat.NodeHost
 	GetStatus() AgentStatus
-	GetMeta() (map[string]interface{}, error)
+	GetSnapshot() (snapshot, error)
+	GetSnapshotJson() ([]byte, error)
 	PeerCount() int
 	Stop()
 }
@@ -61,7 +62,7 @@ func NewAgent(cfg AgentConfig) (*agent, error) {
 		cfg.RaftNodeConfig = DefaultRaftNodeConfig
 	}
 	return &agent{
-		log:         log["agent"],
+		log:         logger.GetLogger(magicPrefix),
 		hostConfig:  cfg.NodeHostConfig,
 		metaConfig:  cfg.RaftNodeConfig,
 		clusterName: clusterName,
@@ -262,31 +263,35 @@ func (a *agent) startUDPListener() {
 }
 
 func (a *agent) addReplica(nhid string) (replicaID uint64, err error) {
-	b, err := json.Marshal(newCmdReplicaSet(metaShardID, nhid))
+	host, err := a.host.SyncRead(raftCtx(), metaShardID, newQueryHostGet(nhid))
 	if err != nil {
 		return
 	}
-	sess := a.host.GetNoOPSession(metaShardID)
-	res, err := a.host.SyncPropose(raftCtx(), sess, b)
-	if err != nil {
-		return
-	}
-	defer func() {
+	if host == nil {
+		err = a.initHostMeta(nhid)
 		if err != nil {
-			b, _ := json.Marshal(newCmdReplicaDel(replicaID))
-			_, err = a.host.SyncPropose(raftCtx(), sess, b)
+			return
 		}
-	}()
-	replicaID = res.Value
-	if replicaID == 0 {
-		err = fmt.Errorf("Node ID cannot be 0")
+	}
+	res, err := a.host.SyncRead(raftCtx(), metaShardID, newQueryReplicaGet(nhid, metaShardID))
+	if err != nil {
 		return
 	}
+	if res == nil {
+		if err = a.initReplicaMeta(nhid, 0); err != nil {
+			return
+		}
+		res, err = a.host.SyncRead(raftCtx(), metaShardID, newQueryReplicaGet(nhid, metaShardID))
+		if err != nil {
+			return
+		}
+	}
+	replica := res.(*replica)
 	m, err := a.host.SyncGetShardMembership(raftCtx(), metaShardID)
 	if err != nil {
 		return
 	}
-	err = a.host.SyncRequestAddReplica(raftCtx(), metaShardID, replicaID, nhid, m.ConfigChangeID)
+	err = a.host.SyncRequestAddReplica(raftCtx(), metaShardID, replica.ID, nhid, m.ConfigChangeID)
 	if err != nil {
 		return
 	}
@@ -330,17 +335,25 @@ func (a *agent) setStatus(s AgentStatus) {
 	a.status = s
 }
 
-func (a *agent) GetMeta() (res map[string]interface{}, err error) {
+func (a *agent) GetSnapshotJson() (b []byte, err error) {
 	if a.raftNode == nil {
 		err = fmt.Errorf("Raft node not found")
 		return
 	}
-	var b bytes.Buffer
-	if err = a.raftNode.SaveSnapshot(&b, nil, nil); err != nil {
+	var bb bytes.Buffer
+	if err = a.raftNode.SaveSnapshot(&bb, nil, nil); err != nil {
 		return
 	}
-	res = map[string]interface{}{}
-	err = json.Unmarshal(b.Bytes(), &res)
+	b = bb.Bytes()
+	return
+}
+
+func (a *agent) GetSnapshot() (res snapshot, err error) {
+	b, err := a.GetSnapshotJson()
+	if err != nil {
+		return
+	}
+	err = json.Unmarshal(b, &res)
 	return
 }
 
@@ -456,13 +469,9 @@ func (a *agent) init(peers map[string]string) (err error) {
 
 	return
 }
+
 func (a *agent) initMeta(members map[uint64]string) (err error) {
 	sess := a.host.GetNoOPSession(metaShardID)
-	reg, ok := a.host.GetNodeHostRegistry()
-	if !ok {
-		err = fmt.Errorf("Unable to retrieve NodeHostRegistry")
-		return
-	}
 	var b []byte
 	if b, err = json.Marshal(cmdShard{cmd{
 		Type:   cmd_type_shard,
@@ -479,47 +488,64 @@ func (a *agent) initMeta(members map[uint64]string) (err error) {
 		return
 	}
 	for replicaID, nhid := range members {
-		metaJson, ok := reg.GetMeta(nhid)
-		if !ok {
-			err = fmt.Errorf("Unable to retrieve node host meta")
+		if err = a.initHostMeta(nhid); err != nil {
 			return
 		}
-		var meta = map[string]interface{}{}
-		err = json.Unmarshal(metaJson, &meta)
-		if err != nil {
-			return
-		}
-		if b, err = json.Marshal(cmdHost{cmd{
-			Type:   cmd_type_host,
-			Action: cmd_action_set,
-		}, host{
-			ID:     nhid,
-			Meta:   meta,
-			Status: "new",
-		}}); err != nil {
-			return
-		}
-		_, err = a.host.SyncPropose(raftCtx(), sess, b)
-		if err != nil {
-			return
-		}
-		if b, err = json.Marshal(cmdReplica{cmd{
-			Type:   cmd_type_replica,
-			Action: cmd_action_set,
-		}, replica{
-			ID:      replicaID,
-			ShardID: metaShardID,
-			HostID:  nhid,
-			Status:  "new",
-		}}); err != nil {
-			return
-		}
-		_, err = a.host.SyncPropose(raftCtx(), sess, b)
-		if err != nil {
+		if err = a.initReplicaMeta(nhid, replicaID); err != nil {
 			return
 		}
 	}
 
+	return
+}
+
+func (a *agent) initHostMeta(nhid string) (err error) {
+	sess := a.host.GetNoOPSession(metaShardID)
+	reg, ok := a.host.GetNodeHostRegistry()
+	if !ok {
+		err = fmt.Errorf("Unable to retrieve NodeHostRegistry")
+		return
+	}
+	metaJson, ok := reg.GetMeta(nhid)
+	if !ok {
+		err = fmt.Errorf("Unable to retrieve node host meta")
+		return
+	}
+	var meta = map[string]interface{}{}
+	err = json.Unmarshal(metaJson, &meta)
+	if err != nil {
+		return
+	}
+	b, err := json.Marshal(cmdHost{cmd{
+		Type:   cmd_type_host,
+		Action: cmd_action_set,
+	}, host{
+		ID:     nhid,
+		Meta:   meta,
+		Status: "new",
+	}})
+	if err != nil {
+		return
+	}
+	_, err = a.host.SyncPropose(raftCtx(), sess, b)
+	return
+}
+
+func (a *agent) initReplicaMeta(nhid string, replicaID uint64) (err error) {
+	sess := a.host.GetNoOPSession(metaShardID)
+	b, err := json.Marshal(cmdReplica{cmd{
+		Type:   cmd_type_replica,
+		Action: cmd_action_set,
+	}, replica{
+		ID:      replicaID,
+		ShardID: metaShardID,
+		HostID:  nhid,
+		Status:  "new",
+	}})
+	if err != nil {
+		return
+	}
+	_, err = a.host.SyncPropose(raftCtx(), sess, b)
 	return
 }
 

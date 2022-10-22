@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/benbjohnson/clock"
+	"github.com/lni/dragonboat/v4/logger"
 )
 
 type AgentMock interface {
@@ -19,7 +20,7 @@ func NewAgentMock(cfg AgentConfig) (*agentMock, error) {
 	clusterName := base36Encode(cfg.NodeHostConfig.DeploymentID)
 	return &agentMock{
 		agent: agent{
-			log:         log["agent"],
+			log:         logger.GetLogger(magicPrefix),
 			hostConfig:  cfg.NodeHostConfig,
 			clusterName: clusterName,
 			client:      newUDPClient(magicPrefix, cfg.NodeHostConfig.RaftAddress, clusterName),

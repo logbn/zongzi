@@ -4,9 +4,12 @@ import (
 	"context"
 	"net"
 	"time"
+
+	"github.com/lni/dragonboat/v4/logger"
 )
 
 type udpClientMock struct {
+	log         logger.ILogger
 	connections map[string]net.PacketConn
 	clusterName string
 	magicPrefix string

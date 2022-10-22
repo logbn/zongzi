@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/lni/dragonboat/v4/config"
-	"github.com/lni/dragonboat/v4/logger"
 	"github.com/martinlindhe/base36"
 )
 
@@ -45,15 +44,6 @@ var DefaultRaftNodeConfig = config.Config{
 	OrderedConfigChange: true,
 	Quiesce:             false,
 	SnapshotEntries:     10,
-}
-
-var log = map[string]logger.ILogger{
-	"agent": logger.CreateCapnsLog(magicPrefix + ": agent"),
-	"fsm":   logger.CreateCapnsLog(magicPrefix + ": fsm"),
-}
-
-func GetLogger(name string) logger.ILogger {
-	return log[name]
 }
 
 func MustBase36Decode(name string) uint64 {
