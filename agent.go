@@ -432,34 +432,6 @@ func (a *agent) startReplica(members map[uint64]string, join bool, shardID uint6
 	return
 }
 
-func (a *agent) findGossipSeeds(min int) (res []string) {
-	var seeds = map[string]bool{}
-	a.log.Infof("Finding gossip seeds: %s", strings.Join(a.multicast, ", "))
-	for {
-		for _, addr := range a.multicast {
-			cmd, args, err := a.client.Send(time.Second, addr, PROBE_REJOIN, a.hostConfig.Gossip.AdvertiseAddress)
-			if err != nil {
-				continue
-			}
-			if cmd == REJOIN_PEER && len(args) == 1 {
-				gossipAddr := args[0]
-				seeds[gossipAddr] = true
-			} else if len(cmd) > 0 {
-				a.log.Errorf("[%s] Invalid rejoin response: %s, %v", a.hostID(), cmd, args)
-			}
-		}
-		if len(seeds) >= min {
-			for k := range seeds {
-				res = append(res, k)
-			}
-			break
-		}
-		a.clock.Sleep(time.Second)
-	}
-
-	return
-}
-
 func (a *agent) hostID() string {
 	if a.host != nil {
 		return a.host.ID()
@@ -475,26 +447,26 @@ func (a *agent) join() error {
 		a.log.Debugf("Stopped Joining")
 	}()
 	var broadcast = func(addr string) {
-		res, args, err := a.client.Send(time.Second, addr, "PROBE_JOIN", a.hostID(), a.hostConfig.Gossip.AdvertiseAddress, a.hostConfig.RaftAddress)
+		res, args, err := a.client.Send(time.Second, addr, PROBE_JOIN, a.hostID(), a.hostConfig.Gossip.AdvertiseAddress, a.hostConfig.RaftAddress)
 		if err == nil && len(res) == 0 {
 			return
 		}
 		if a.GetStatus() != AgentStatus_Pending && a.GetStatus() != AgentStatus_Ready {
 			return
 		}
-		if err == nil && res == "JOIN_START" && len(args) == 1 {
+		if err == nil && res == JOIN_HOST && len(args) == 1 {
 			seed := args[0]
 			err = a.startHost(strings.Split(seed, ","))
 			if err != nil {
 				a.log.Errorf("[%s] Unable to restart node host: %s", a.hostID(), err.Error())
 				return
 			}
-			res, args, err = a.client.Send(time.Second, addr, "PROBE_JOIN", a.hostID(), a.hostConfig.Gossip.AdvertiseAddress, a.hostConfig.RaftAddress)
+			res, args, err = a.client.Send(time.Second, addr, PROBE_JOIN, a.hostID(), a.hostConfig.Gossip.AdvertiseAddress, a.hostConfig.RaftAddress)
 			if err == nil && len(res) == 0 {
 				return
 			}
 		}
-		if err == nil && res == "JOIN_SUCCESS" && len(args) == 1 {
+		if err == nil && res == JOIN_SHARD && len(args) == 1 {
 			replicaID, err := strconv.Atoi(args[0])
 			if err != nil {
 				a.log.Errorf("[%s] Invalid node id: %s", a.hostID(), args[0])
@@ -510,6 +482,7 @@ func (a *agent) join() error {
 			a.log.Infof("[%s] Joined deployment %d", a.hostID(), a.clusterName)
 		} else {
 			a.log.Errorf("[%s] Invalid join response: %s %v", a.hostID(), res, err)
+			a.clock.Sleep(time.Second)
 			return
 		}
 	}
@@ -527,12 +500,37 @@ func (a *agent) join() error {
 }
 
 func (a *agent) rejoin() (err error) {
-	seeds := a.findGossipSeeds(minReplicas)
-	if err = a.startHost(seeds); err != nil {
+	var seedList []string
+	a.log.Infof("Finding gossip seeds: %s", strings.Join(a.multicast, ", "))
+	for {
+		var seedMap = map[string]bool{}
+		for _, addr := range a.multicast {
+			cmd, args, err := a.client.Send(time.Second, addr, PROBE_REJOIN, a.hostConfig.Gossip.AdvertiseAddress)
+			if err != nil {
+				continue
+			}
+			if cmd == REJOIN_PEER && len(args) == 1 {
+				gossipAddr := args[0]
+				seedMap[gossipAddr] = true
+			} else if len(cmd) > 0 {
+				a.log.Errorf("[%s] Invalid rejoin response: %s, %v", a.hostID(), cmd, args)
+			}
+		}
+		if len(seedMap) >= minReplicas {
+			for k := range seedMap {
+				seedList = append(seedList, k)
+			}
+			break
+		}
+		a.clock.Sleep(time.Second)
+	}
+	a.log.Infof("Starting host: %v", seedList)
+	if err = a.startHost(seedList); err != nil {
 		return
 	}
 	replicaID := a.getReplicaID()
-	if err = a.startReplica(nil, false, primeShardID, uint64(replicaID)); err == nil {
+	a.log.Infof("Starting replica: %v", replicaID)
+	if err = a.startReplica(nil, false, primeShardID, uint64(replicaID)); err != nil {
 		return
 	}
 	a.setStatus(AgentStatus_Active)
