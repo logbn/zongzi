@@ -51,7 +51,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	agent.Start()
+	if err = agent.Start(); err != nil {
+		panic(err)
+	}
 	for {
 		if agent.GetStatus() == zongzi.AgentStatus_Active {
 			nh := agent.GetNodeHost()

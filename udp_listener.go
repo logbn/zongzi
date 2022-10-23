@@ -115,9 +115,10 @@ func (a *udpListener) handle(cmd string, args ...string) (res []string, err erro
 		if replicaID < 1 {
 			return []string{INIT_SHARD_ERROR}, fmt.Errorf("Node not in initial members")
 		}
-		err = a.agent.startReplica(initialMembers, false, primeShardID, replicaID)
+		a.agent.primeConfig.ReplicaID = replicaID
+		err = a.agent.startReplica(initialMembers, false, a.agent.primeConfig)
 		if err != nil {
-			return []string{INIT_SHARD_ERROR}, fmt.Errorf("Failed to start meta shard during init: %w", err)
+			return []string{INIT_SHARD_ERROR}, fmt.Errorf("Failed to start prime shard during init: %w", err)
 		}
 		a.agent.setStatus(AgentStatus_Active)
 		res = []string{INIT_SHARD_SUCCESS, fmt.Sprintf("%d", replicaID)}

@@ -16,7 +16,7 @@ const (
 	cmd_type_shard   = "shard"
 	cmd_type_replica = "replica"
 
-	cmd_action_set = "set"
+	cmd_action_put = "put"
 	cmd_action_del = "del"
 
 	query_action_get = "get"
@@ -71,11 +71,13 @@ func (fsm *raftNode) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 			cmd.Host.Meta = map[string]interface{}{}
 		}
 		switch cmd.Action {
-		case cmd_action_set:
+		// Put Host
+		case cmd_action_put:
 			if !fsm.hosts.Set(cmd.Host.ID, &cmd.Host) {
 				res = dbsm.Result{Value: cmd_result_failure}
-				fsm.log.Warningf("Failed to set host %#v", cmd)
+				fsm.log.Warningf("Failed to put host %#v", cmd)
 			}
+		// Delete Host
 		case cmd_action_del:
 			if !fsm.hosts.Delete(cmd.Host.ID) {
 				res = dbsm.Result{Value: cmd_result_failure}
@@ -95,13 +97,13 @@ func (fsm *raftNode) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 			cmd.Shard.Replicas = map[uint64]string{}
 		}
 		switch cmd.Action {
-		case cmd_action_set:
+		case cmd_action_put:
 			if cmd.Shard.ID == 0 {
 				cmd.Shard.ID = ent.Index
 			}
 			if !fsm.shards.Set(cmd.Shard.ID, &cmd.Shard) {
 				res = dbsm.Result{Value: cmd_result_failure}
-				fsm.log.Warningf("Failed to set shard %#v", cmd)
+				fsm.log.Warningf("Failed to put shard %#v", cmd)
 			}
 			if res.Data, err = json.Marshal(cmd.Shard); err != nil {
 				fsm.log.Warningf("Error marshaling shard to json %#v", cmd.Shard)
@@ -122,7 +124,7 @@ func (fsm *raftNode) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 			break
 		}
 		switch cmd.Action {
-		case cmd_action_set:
+		case cmd_action_put:
 			if cmd.Replica.ID == 0 {
 				cmd.Replica.ID = ent.Index
 			}
@@ -138,7 +140,7 @@ func (fsm *raftNode) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 			}
 			if !fsm.replicas.Set(cmd.Replica.ID, &cmd.Replica) {
 				res = dbsm.Result{Value: cmd_result_failure}
-				fsm.log.Warningf("Failed to set replica %#v", cmd)
+				fsm.log.Warningf("Failed to put replica %#v", cmd)
 				break
 			}
 			res.Value = cmd.Replica.ID
@@ -300,15 +302,41 @@ type cmdReplica struct {
 	Replica replica
 }
 
-func newCmdReplicaSet(primeShardID uint64, nhid string) cmdReplica {
-	return cmdReplica{cmd{
+func newCmdReplicaPut(nhid string, shardID, replicaID uint64) (b []byte) {
+	b, _ = json.Marshal(cmdReplica{cmd{
 		Type:   cmd_type_replica,
-		Action: cmd_action_set,
+		Action: cmd_action_put,
 	}, replica{
-		ShardID: primeShardID,
+		ID:      replicaID,
+		ShardID: shardID,
 		HostID:  nhid,
-		Status:  ReplicaStatus_New,
-	}}
+		Status:  "new",
+	}})
+	return
+}
+
+func newCmdHostPut(nhid string, meta map[string]interface{}) (b []byte) {
+	b, _ = json.Marshal(cmdHost{cmd{
+		Type:   cmd_type_host,
+		Action: cmd_action_put,
+	}, host{
+		ID:     nhid,
+		Meta:   meta,
+		Status: "new",
+	}})
+	return
+}
+
+func newCmdShardPut(shardID uint64, name string) (b []byte) {
+	b, _ = json.Marshal(cmdShard{cmd{
+		Type:   cmd_type_shard,
+		Action: cmd_action_put,
+	}, shard{
+		ID:     shardID,
+		Name:   name,
+		Status: "new",
+	}})
+	return
 }
 
 func newCmdReplicaDel(replicaID uint64) cmdReplica {

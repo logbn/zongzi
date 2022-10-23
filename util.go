@@ -12,7 +12,6 @@ import (
 
 const (
 	minReplicas  = 3
-	primeShardID = 1
 	magicPrefix  = "zongzi"
 	probeTimeout = 3 * time.Second
 	probePause   = 5 * time.Second
@@ -58,7 +57,6 @@ const (
 
 var DefaultRaftNodeConfig = config.Config{
 	CheckQuorum:         true,
-	ShardID:             primeShardID,
 	CompactionOverhead:  1000,
 	ElectionRTT:         10,
 	HeartbeatRTT:        2,
