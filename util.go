@@ -2,12 +2,20 @@ package zongzi
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"time"
 
 	"github.com/lni/dragonboat/v4/config"
+	"github.com/lni/dragonboat/v4/logger"
 	"github.com/martinlindhe/base36"
+)
+
+type (
+	AgentStatus string
+
+	Config         = config.Config
+	GossipConfig   = config.GossipConfig
+	NodeHostConfig = config.NodeHostConfig
 )
 
 const (
@@ -17,12 +25,6 @@ const (
 	probePause   = 5 * time.Second
 	joinTimeout  = 5 * time.Second
 	raftTimeout  = time.Second
-)
-
-type AgentStatus string
-
-var (
-	errNodeNotFound = fmt.Errorf("Node not found")
 
 	AgentStatus_Unknown      = AgentStatus("Unknown")
 	AgentStatus_Pending      = AgentStatus("Pending")
@@ -33,9 +35,7 @@ var (
 	AgentStatus_Active       = AgentStatus("Active")
 
 	ReplicaStatus_New = "new"
-)
 
-const (
 	PROBE_JOIN         = "PROBE_JOIN"
 	INIT               = "INIT"
 	INIT_ERROR         = "INIT_ERROR"
@@ -88,4 +88,18 @@ func strMapCopy(m map[string]string) map[string]string {
 		c[k] = v
 	}
 	return c
+}
+
+func SetLogLevel(level logger.LogLevel) {
+	logger.GetLogger("dragonboat").SetLevel(level)
+	logger.GetLogger("transport").SetLevel(level)
+	logger.GetLogger("logdb").SetLevel(level)
+	logger.GetLogger("raft").SetLevel(level)
+	logger.GetLogger("grpc").SetLevel(level)
+	logger.GetLogger("rsm").SetLevel(level)
+	logger.GetLogger("zongzi").SetLevel(level)
+}
+
+func SetLogLevelDebug() {
+	SetLogLevel(logger.DEBUG)
 }

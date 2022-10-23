@@ -13,16 +13,16 @@ TEST_BROADCAST := 239.108.0.1:10811,239.108.0.1:10821,239.108.0.1:10831
 # TEST_BROADCAST := 127.0.0.1:10811,127.0.0.1:10821,127.0.0.1:10831
 
 test-node-1:
-	@go run main.go -c "test001" -d $(DATA_DIR)/node1 -r 127.0.0.1:10811 -g 127.0.0.1:10812 -u $(TEST_BROADCAST) -z us-west-1a
+	@go run main.go -n "test001" -d $(DATA_DIR)/node1 -r 127.0.0.1:10811 -g 127.0.0.1:10812 -u $(TEST_BROADCAST) -z us-west-1a
 
 test-node-2:
-	@go run main.go -c "test001" -d $(DATA_DIR)/node2 -r 127.0.0.1:10821 -g 127.0.0.1:10822 -u $(TEST_BROADCAST) -z us-west-1b
+	@go run main.go -n "test001" -d $(DATA_DIR)/node2 -r 127.0.0.1:10821 -g 127.0.0.1:10822 -u $(TEST_BROADCAST) -z us-west-1b
 
 test-node-3:
-	@go run main.go -c "test001" -d $(DATA_DIR)/node3 -r 127.0.0.1:10831 -g 127.0.0.1:10832 -u $(TEST_BROADCAST) -z us-west-1c
+	@go run main.go -n "test001" -d $(DATA_DIR)/node3 -r 127.0.0.1:10831 -g 127.0.0.1:10832 -u $(TEST_BROADCAST) -z us-west-1c
 
 test-node-4:
-	@go run main.go -c "test001" -d $(DATA_DIR)/node4 -r 127.0.0.1:10841 -g 127.0.0.1:10842 -u $(TEST_BROADCAST) -z us-west-1d
+	@go run main.go -n "test001" -d $(DATA_DIR)/node4 -r 127.0.0.1:10841 -g 127.0.0.1:10842 -u $(TEST_BROADCAST) -z us-west-1d
 
 init-1:
 	@bash -c 'echo "zongzi test001 INIT" > /dev/udp/239.108.0.1/10811'

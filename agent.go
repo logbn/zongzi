@@ -147,7 +147,7 @@ func (a *agent) parsePeers(peers map[string]string) (replicaID uint64, seedList 
 		}
 	}
 	if replicaID == 0 {
-		err = errNodeNotFound
+		err = fmt.Errorf("Node not found")
 	}
 	return
 }
@@ -433,8 +433,7 @@ func (a *agent) join() error {
 	a.log.Debugf("Broadcasting: %#v", a.multicast)
 	for {
 		for _, addr := range a.multicast {
-			// a.log.Debugf("Broadcast: %v, %s", addr, a.GetStatus())
-			if a.GetStatus() != AgentStatus_Pending && a.GetStatus() != AgentStatus_Ready {
+			if a.GetStatus() == AgentStatus_Active {
 				return nil
 			}
 			broadcast(addr)
