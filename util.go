@@ -36,6 +36,26 @@ var (
 	ReplicaStatus_New = "new"
 )
 
+const (
+	PROBE_JOIN         = "PROBE_JOIN"
+	INIT               = "INIT"
+	INIT_ERROR         = "INIT_ERROR"
+	INIT_CONFLICT      = "INIT_CONFLICT"
+	INIT_SUCCESS       = "INIT_SUCCESS"
+	INIT_HOST          = "INIT_HOST"
+	INIT_HOST_ERROR    = "INIT_HOST_ERROR"
+	INIT_HOST_SUCCESS  = "INIT_HOST_SUCCESS"
+	INIT_SHARD         = "INIT_SHARD"
+	INIT_SHARD_ERROR   = "INIT_SHARD_ERROR"
+	INIT_SHARD_SUCCESS = "INIT_SHARD_SUCCESS"
+	JOIN_HOST          = "JOIN_HOST"
+	JOIN_ERROR         = "JOIN_ERROR"
+	JOIN_SHARD         = "JOIN_SHARD"
+
+	PROBE_REJOIN = "PROBE_REJOIN"
+	REJOIN_PEER  = "REJOIN_PEER"
+)
+
 var DefaultRaftNodeConfig = config.Config{
 	CheckQuorum:         true,
 	ShardID:             primeShardID,
@@ -62,4 +82,12 @@ func base36Encode(id uint64) string {
 func raftCtx() context.Context {
 	ctx, _ := context.WithTimeout(context.Background(), raftTimeout)
 	return ctx
+}
+
+func strMapCopy(m map[string]string) map[string]string {
+	c := map[string]string{}
+	for k, v := range m {
+		c[k] = v
+	}
+	return c
 }

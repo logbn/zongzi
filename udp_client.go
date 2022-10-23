@@ -18,7 +18,7 @@ type UDPClient interface {
 	Close()
 }
 
-type UDPHandlerFunc func(cmd string, args ...string) (level logger.LogLevel, res string, data []string)
+type UDPHandlerFunc func(cmd string, args ...string) (res []string, err error)
 
 type udpClient struct {
 	log         logger.ILogger
@@ -82,15 +82,15 @@ func (c *udpClient) Listen(ctx context.Context, handler UDPHandlerFunc) (err err
 	go func() {
 		select {
 		case <-ctx.Done():
-			if c, ok := c.connections[c.listenAddr]; ok {
-				c.Close()
+			if conn, ok := c.connections[c.listenAddr]; ok {
+				conn.Close()
 			}
-			delete(c.connections, c.listenAddr)
 		case <-done:
-			delete(c.connections, c.listenAddr)
 		}
+		delete(c.connections, c.listenAddr)
 	}()
 	buf := make([]byte, 4096)
+	c.log.Infof("UDP Listening on %s", c.listenAddr)
 	for {
 		i, dst, err := conn.ReadFromUDP(buf)
 		if err != nil {
@@ -106,28 +106,21 @@ func (c *udpClient) Listen(ctx context.Context, handler UDPHandlerFunc) (err err
 		if magic != c.magicPrefix || clusterName != c.clusterName {
 			continue
 		}
-		level, res, args := handler(cmd, args...)
-		data := strings.Join(args, " ")
-		if len(res) > 0 || len(data) > 0 {
-			switch level {
-			case logger.DEBUG:
-				c.log.Debugf("%s %s", res, data)
-			case logger.INFO:
-				c.log.Infof("%s %s", res, data)
-			case logger.WARNING:
-				c.log.Warningf("%s %s", res, data)
-			case logger.ERROR:
-				c.log.Errorf("%s %s", res, data)
-			case logger.CRITICAL:
-				c.log.Panicf("%s %s", res, data)
-			}
+		c.log.Debugf("Received %s %s", cmd, strings.Join(args, " "))
+		res, err := handler(cmd, args...)
+		if err != nil {
+			c.log.Errorf("Error %s %s", strings.Join(res, " "), err.Error())
+		} else if res != nil {
+			c.log.Infof("Replying %s", strings.Join(res, " "))
 		}
-		if len(res) > 0 {
-			_, err := conn.WriteTo([]byte(fmt.Sprintf("%s %s %s %s", c.magicPrefix, c.clusterName, res, data)), dst)
-			if err != nil {
-				close(done)
-				return fmt.Errorf("Error replying to %s (%s): %s", cmd, res, err.Error())
-			}
+		if res == nil {
+			continue
+		}
+		resData := strings.Join(res, " ")
+		_, err = conn.WriteTo([]byte(fmt.Sprintf("%s %s %s", c.magicPrefix, c.clusterName, resData)), dst)
+		if err != nil {
+			close(done)
+			return fmt.Errorf("Error replying to %s (%s): %s", cmd, strings.Join(res, " "), err.Error())
 		}
 	}
 }

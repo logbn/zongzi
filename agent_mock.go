@@ -27,8 +27,6 @@ func NewAgentMock(cfg AgentConfig) (*agentMock, error) {
 			hostFS:      os.DirFS(cfg.NodeHostConfig.NodeHostDir),
 			multicast:   cfg.Multicast,
 			clock:       clock.NewMock(),
-			peers:       map[string]string{},
-			probes:      map[string]bool{},
 		},
 	}, nil
 }
