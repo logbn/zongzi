@@ -23,6 +23,7 @@ func (c *controller) start() {
 		return
 	}
 	var ctx context.Context
+	var last string
 	ctx, c.cancel = context.WithCancel(context.Background())
 	go func() {
 		t := time.NewTicker(time.Second)
@@ -91,7 +92,10 @@ func (c *controller) start() {
 					}
 				}
 				b, _ := c.agent.GetSnapshotJson()
-				log.Printf("%v\n", string(b))
+				if last != string(b) {
+					log.Printf("%v\n", string(b))
+					last = string(b)
+				}
 			case <-ctx.Done():
 				c.mutex.Lock()
 				defer c.mutex.Unlock()
