@@ -26,13 +26,15 @@ type AgentConfig struct {
 
 type Agent interface {
 	Start() error
+	Stop()
 	Init() error
 	GetNodeHost() *dragonboat.NodeHost
 	GetStatus() AgentStatus
-	GetSnapshot() (snapshot, error)
+	GetSnapshot() (Snapshot, error)
 	GetSnapshotJson() ([]byte, error)
 	PeerCount() int
-	Stop()
+	CreateShard(shardTypeName string) (shard *Shard, err error)
+	CreateReplica(shardID uint64, nodeHostID string, isNonVoting bool) (id uint64, err error)
 }
 
 type agent struct {
@@ -43,6 +45,8 @@ type agent struct {
 	client      UDPClient
 	multicast   []string
 	listener    *udpListener
+	controller  *controller
+	shardTypes  map[string]shardType
 
 	host     *dragonboat.NodeHost
 	hostFS   fs.FS
@@ -50,6 +54,11 @@ type agent struct {
 	clock    clock.Clock
 	status   AgentStatus
 	mutex    sync.RWMutex
+}
+
+type shardType struct {
+	Factory CreateStateMachineFunc
+	Config  Config
 }
 
 func NewAgent(cfg AgentConfig) (*agent, error) {
@@ -69,8 +78,11 @@ func NewAgent(cfg AgentConfig) (*agent, error) {
 		hostFS:      os.DirFS(cfg.NodeHostConfig.NodeHostDir),
 		multicast:   cfg.Multicast,
 		clock:       clock.New(),
+		shardTypes:  map[string]shardType{},
 	}
 	a.listener = newUDPListener(a)
+	a.controller = newController(a)
+	a.hostConfig.RaftEventListener = newCompositeRaftEventListener(a.controller, a.hostConfig.RaftEventListener)
 	return a, nil
 }
 
@@ -122,7 +134,7 @@ func (a *agent) addReplica(nhid string) (replicaID uint64, err error) {
 			return
 		}
 	} else {
-		replicaID = res.(*replica).ID
+		replicaID = res.(*Replica).ID
 	}
 	m, err := a.host.SyncGetShardMembership(raftCtx(), a.primeConfig.ShardID)
 	if err != nil {
@@ -189,12 +201,11 @@ func (a *agent) GetSnapshotJson() (b []byte, err error) {
 }
 
 // GetSnapshot returns a go object representing a snapshot of the prime shard
-func (a *agent) GetSnapshot() (res snapshot, err error) {
-	b, err := a.GetSnapshotJson()
-	if err != nil {
-		return
+func (a *agent) GetSnapshot() (res Snapshot, err error) {
+	s, err := a.host.SyncRead(raftCtx(), a.primeConfig.ShardID, newQuerySnapshotGet())
+	if s != nil {
+		res = s.(Snapshot)
 	}
-	err = json.Unmarshal(b, &res)
 	return
 }
 
@@ -358,14 +369,48 @@ func (a *agent) primeAddHost(nhid string) (err error) {
 // primeAddReplica proposes addition of replica metadata to the prime shard state
 func (a *agent) primeAddReplica(nhid string, replicaID uint64) (id uint64, err error) {
 	sess := a.host.GetNoOPSession(a.primeConfig.ShardID)
-	res, err := a.host.SyncPropose(raftCtx(), sess, newCmdReplicaPut(nhid, a.primeConfig.ShardID, replicaID))
+	res, err := a.host.SyncPropose(raftCtx(), sess, newCmdReplicaPut(nhid, a.primeConfig.ShardID, replicaID, false))
 	if err == nil {
 		id = res.Value
 	}
 	return
 }
 
-func (a *agent) startReplica(members map[uint64]string, join bool, cfg config.Config) (err error) {
+// CreateShard creates a shard
+func (a *agent) CreateShard(shardTypeName string) (shard *Shard, err error) {
+	a.log.Infof("Create shard %s", shardTypeName)
+	sess := a.host.GetNoOPSession(a.primeConfig.ShardID)
+	res, err := a.host.SyncPropose(raftCtx(), sess, newCmdShardPut(0, shardTypeName))
+	if err != nil {
+		return
+	}
+	return &Shard{
+		ID:       res.Value,
+		Type:     shardTypeName,
+		Replicas: map[uint64]string{},
+		Status:   "new",
+	}, nil
+}
+
+// CreateReplica creates a replica
+func (a *agent) CreateReplica(shardID uint64, nodeHostID string, isNonVoting bool) (id uint64, err error) {
+	sess := a.host.GetNoOPSession(a.primeConfig.ShardID)
+	res, err := a.host.SyncPropose(raftCtx(), sess, newCmdReplicaPut(nodeHostID, shardID, 0, isNonVoting))
+	if err == nil {
+		id = res.Value
+	}
+	return
+}
+
+// RegisterShardType registers a raft node factory for a shard. Call before Start.
+func (a *agent) RegisterShardType(shardTypeName string, fn CreateStateMachineFunc, cfg *Config) {
+	if cfg == nil {
+		cfg = &DefaultRaftNodeConfig
+	}
+	a.shardTypes[shardTypeName] = shardType{fn, *cfg}
+}
+
+func (a *agent) startReplica(members map[uint64]string, join bool, cfg Config) (err error) {
 	if cfg.ReplicaID == 0 && a.host != nil {
 		cfg.ReplicaID = a.getReplicaID()
 	}
@@ -374,7 +419,15 @@ func (a *agent) startReplica(members map[uint64]string, join bool, cfg config.Co
 	}
 	err = a.host.StartReplica(members, join, raftNodeFactory(a), cfg)
 	if err != nil {
-		return fmt.Errorf("Failed to start prime shard: %w", err)
+		return fmt.Errorf("Failed to start replica: %w", err)
+	}
+	return
+}
+
+func (a *agent) stopReplica(cfg config.Config) (err error) {
+	err = a.host.StopReplica(cfg.ShardID, cfg.ReplicaID)
+	if err != nil {
+		return fmt.Errorf("Failed to stop replica: %w", err)
 	}
 	return
 }
@@ -390,9 +443,6 @@ func (a *agent) join() error {
 	if len(a.multicast) == 0 {
 		return fmt.Errorf("No broadcast address configured in discovery agent")
 	}
-	defer func() {
-		a.log.Debugf("Stopped Joining")
-	}()
 	var broadcast = func(addr string) {
 		res, args, err := a.client.Send(time.Second, addr, PROBE_JOIN, a.hostID(), a.hostConfig.Gossip.AdvertiseAddress, a.hostConfig.RaftAddress)
 		if err == nil && len(res) == 0 {
@@ -430,7 +480,7 @@ func (a *agent) join() error {
 			return
 		}
 	}
-	a.log.Debugf("Broadcasting: %#v", a.multicast)
+	a.log.Debugf("Joining: %#v", a.multicast)
 	for {
 		for _, addr := range a.multicast {
 			if a.GetStatus() == AgentStatus_Active {
@@ -475,6 +525,10 @@ func (a *agent) rejoin() (err error) {
 	if err = a.startReplica(nil, false, a.primeConfig); err != nil {
 		return
 	}
+	a.log.Infof("Starting controller")
+	if err = a.controller.Start(); err != nil {
+		return
+	}
 	a.setStatus(AgentStatus_Active)
 
 	return nil
@@ -508,4 +562,6 @@ func (a *agent) startHost(seeds []string) (err error) {
 
 func (a *agent) Stop() {
 	a.listener.Stop()
+	a.stopReplica(a.primeConfig)
+	a.log.Infof("Agent stopped.")
 }

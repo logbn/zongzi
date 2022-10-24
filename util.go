@@ -5,17 +5,35 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/lni/dragonboat/v4"
 	"github.com/lni/dragonboat/v4/config"
 	"github.com/lni/dragonboat/v4/logger"
+	"github.com/lni/dragonboat/v4/raftio"
+	"github.com/lni/dragonboat/v4/statemachine"
 	"github.com/martinlindhe/base36"
 )
 
 type (
 	AgentStatus string
 
+	ReadonlyLogReader = dragonboat.ReadonlyLogReader
+
 	Config         = config.Config
 	GossipConfig   = config.GossipConfig
 	NodeHostConfig = config.NodeHostConfig
+
+	LeaderInfo     = raftio.LeaderInfo
+	NodeInfo       = raftio.NodeInfo
+	ConnectionInfo = raftio.ConnectionInfo
+	SnapshotInfo   = raftio.SnapshotInfo
+	EntryInfo      = raftio.EntryInfo
+
+	CreateStateMachineFunc  = statemachine.CreateStateMachineFunc
+	IStateMachine           = statemachine.IStateMachine
+	Result                  = statemachine.Result
+	Entry                   = statemachine.Entry
+	ISnapshotFileCollection = statemachine.ISnapshotFileCollection
+	SnapshotFile            = statemachine.SnapshotFile
 )
 
 const (
@@ -92,14 +110,35 @@ func strMapCopy(m map[string]string) map[string]string {
 
 func SetLogLevel(level logger.LogLevel) {
 	logger.GetLogger("dragonboat").SetLevel(level)
-	logger.GetLogger("transport").SetLevel(level)
+	logger.GetLogger("gossip").SetLevel(level)
+	logger.GetLogger("grpc").SetLevel(level)
 	logger.GetLogger("logdb").SetLevel(level)
 	logger.GetLogger("raft").SetLevel(level)
-	logger.GetLogger("grpc").SetLevel(level)
 	logger.GetLogger("rsm").SetLevel(level)
+	logger.GetLogger("transport").SetLevel(level)
 	logger.GetLogger("zongzi").SetLevel(level)
 }
 
 func SetLogLevelDebug() {
 	SetLogLevel(logger.DEBUG)
+	logger.GetLogger("gossip").SetLevel(logger.ERROR)
+	logger.GetLogger("dragonboat").SetLevel(logger.WARNING)
+	logger.GetLogger("raft").SetLevel(logger.WARNING)
+	logger.GetLogger("transport").SetLevel(logger.WARNING)
+}
+
+type compositeRaftEventListener struct {
+	listeners []raftio.IRaftEventListener
+}
+
+func newCompositeRaftEventListener(listeners ...raftio.IRaftEventListener) raftio.IRaftEventListener {
+	return &compositeRaftEventListener{listeners}
+}
+
+func (c *compositeRaftEventListener) LeaderUpdated(info LeaderInfo) {
+	for _, listener := range c.listeners {
+		if listener != nil {
+			listener.LeaderUpdated(info)
+		}
+	}
 }
