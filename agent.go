@@ -483,7 +483,7 @@ func (a *agent) join() error {
 	a.log.Debugf("Joining: %#v", a.multicast)
 	for {
 		for _, addr := range a.multicast {
-			if a.GetStatus() == AgentStatus_Active {
+			if a.GetStatus() != AgentStatus_Pending && a.GetStatus() != AgentStatus_Ready {
 				return nil
 			}
 			broadcast(addr)
