@@ -52,7 +52,10 @@ const (
 	AgentStatus_Initializing = AgentStatus("Initializing")
 	AgentStatus_Active       = AgentStatus("Active")
 
-	ReplicaStatus_New = "new"
+	ReplicaStatus_New    = "new"
+	ReplicaStatus_Ready  = "ready"
+	ReplicaStatus_Active = "active"
+	ReplicaStatus_Gone   = "gone"
 
 	PROBE_JOIN         = "PROBE_JOIN"
 	INIT               = "INIT"

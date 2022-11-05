@@ -10,11 +10,12 @@ import (
 )
 
 type controller struct {
-	agent  *agent
-	cancel context.CancelFunc
-	mutex  sync.RWMutex
-	leader bool
-	index  uint64
+	agent     *agent
+	cancel    context.CancelFunc
+	mutex     sync.RWMutex
+	leader    bool
+	index     uint64
+	logReader ReadonlyLogReader
 }
 
 func newController(a *agent) *controller {
@@ -28,6 +29,10 @@ func (c *controller) Start() (err error) {
 	defer c.mutex.Unlock()
 	var ctx context.Context
 	ctx, c.cancel = context.WithCancel(context.Background())
+	c.logReader, err = c.agent.host.GetLogReader(c.agent.primeConfig.ShardID)
+	if err != nil {
+		return
+	}
 	go func() {
 		t := time.NewTicker(time.Second)
 		for {
@@ -48,12 +53,8 @@ func (c *controller) Start() (err error) {
 func (c *controller) tick() (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	logReader, err := c.agent.host.GetLogReader(c.agent.primeConfig.ShardID)
-	if err != nil {
-		return
-	}
 	// Short-circuit reconciliation if no new changes to cluster state
-	_, index := logReader.GetRange()
+	_, index := c.logReader.GetRange()
 	if index <= c.index {
 		return
 	}
@@ -93,7 +94,7 @@ func (c *controller) tick() (err error) {
 	for _, info := range hostInfo.ShardInfoList {
 		if r, ok := replicas[info.ReplicaID]; ok {
 			found[r.ID] = true
-			if r.Status == "gone" {
+			if r.Status == ReplicaStatus_Gone {
 				// Remove replica
 			}
 			if info.IsNonVoting && !r.IsNonVoting {
@@ -112,7 +113,7 @@ func (c *controller) tick() (err error) {
 		}
 		r := replicas[id]
 		shard := shards[r.ShardID]
-		if r.Status == "new" {
+		if r.Status == ReplicaStatus_New {
 			item, ok := c.agent.shardTypes[shard.Type]
 			if !ok {
 				err = fmt.Errorf("Shard name not found in registry %s (%#v)", shard.Type, r)
@@ -125,7 +126,7 @@ func (c *controller) tick() (err error) {
 				err = fmt.Errorf("Failed to start replica: %w", err)
 				break
 			}
-			// Start replica
+			// CMD_ReplicaStatus{id, ReplicaStatus_Ready}
 		}
 	}
 	if err == nil {
