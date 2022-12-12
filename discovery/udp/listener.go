@@ -10,23 +10,25 @@ import (
 	"time"
 
 	"github.com/lni/dragonboat/v4/logger"
+
+	"github.com/logbn/zongzi/udp"
 )
 
 type udpListener struct {
 	log    logger.ILogger
 	agent  *agent
-	client UDPClient
+	client udp.Client
 	peers  map[string]string // gossipAddr: discoveryAddr
 	probes map[string]bool   // gossipAddr: true
 	cancel context.CancelFunc
 	mutex  sync.RWMutex
 }
 
-func newUDPListener(agent *agent) *udpListener {
+func newUDPListener(agent *agent, multicastAddr string) *udpListener {
 	return &udpListener{
 		agent:  agent,
-		log:    agent.log,
-		client: agent.client,
+		log:    logger.GetLogger(magicPrefix + ": disco: udp"),
+		client: udp.NewClient(magicPrefix, multicastAddr, agent.GetClusterName()),
 		peers:  map[string]string{},
 		probes: map[string]bool{},
 	}
@@ -43,7 +45,7 @@ func (a *udpListener) Start() {
 	ctx, a.cancel = context.WithCancel(context.Background())
 	go func() {
 		for {
-			err := a.client.Listen(ctx, UDPHandlerFunc(a.handle))
+			err := a.client.Listen(ctx, udp.HandlerFunc(a.handle))
 			a.log.Errorf("Error reading UDP: %s", err.Error())
 			select {
 			case <-ctx.Done():
@@ -83,7 +85,7 @@ func (a *udpListener) handle(cmd string, args ...string) (res []string, err erro
 		seeds := strings.Split(seedList, ",")
 		var replicaID uint64
 		for i, gossipAddr := range seeds {
-			if gossipAddr == a.agent.hostConfig.Gossip.AdvertiseAddress {
+			if gossipAddr == a.agent.GetHostConfig().Gossip.AdvertiseAddress {
 				replicaID = uint64(i + 1)
 			}
 		}
@@ -124,36 +126,21 @@ func (a *udpListener) handle(cmd string, args ...string) (res []string, err erro
 		res = []string{INIT_SHARD_SUCCESS, fmt.Sprintf("%d", replicaID)}
 
 	// New node wants to join the cluster
-	case PROBE_JOIN:
+	case PROBE:
 		if res, err = a.validate(cmd, args, 3); err != nil {
 			return
 		}
 		nhid, gossipAddr, discoveryAddr := args[0], args[1], args[2]
-		if a.agent.GetStatus() != AgentStatus_Active {
-			a.mutex.Lock()
+		switch a.agent.GetStatus() {
+		case AgentStatus_Active:
+			return []string{PROBE_RESPONSE, a.agent.hostConfig.Gossip.AdvertiseAddress}, nil
+		case AgentStatus_Rejoining:
 			a.peers[gossipAddr] = discoveryAddr
-			a.mutex.Unlock()
-			return
-		}
-		if len(nhid) == 0 {
-			return []string{JOIN_HOST, a.agent.hostConfig.Gossip.AdvertiseAddress}, nil
-		}
-		replicaID, err := a.agent.addReplica(nhid)
-		if err != nil {
-			return []string{JOIN_ERROR}, err
-		}
-		res = []string{JOIN_SHARD, fmt.Sprintf("%d", replicaID)}
-
-	// Existing node wants to rejoin the cluster (ie. following a restart)
-	case PROBE_REJOIN:
-		if res, err = a.validate(cmd, args, 1); err != nil {
-			return
-		}
-		gossipAddr := args[0]
-		a.probes[gossipAddr] = true
-		// TODO - Only cluster members should initiate rejoin (not observers)
-		if a.agent.GetStatus() == AgentStatus_Active || a.agent.GetStatus() == AgentStatus_Rejoining {
-			return []string{REJOIN_PEER, a.agent.hostConfig.Gossip.AdvertiseAddress}, nil
+			if len(a.peers) >= minReplicas {
+				return []string{PROBE_RESPONSE, a.agent.hostConfig.Gossip.AdvertiseAddress}, nil
+			}
+		default:
+			a.peers[gossipAddr] = discoveryAddr
 		}
 
 	default:

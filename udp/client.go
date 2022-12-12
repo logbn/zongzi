@@ -1,4 +1,4 @@
-package zongzi
+package udp
 
 import (
 	"context"
@@ -12,15 +12,15 @@ import (
 	"github.com/lni/dragonboat/v4/logger"
 )
 
-type UDPClient interface {
+type Client interface {
 	Send(d time.Duration, addr string, cmd string, args ...string) (res string, data []string, err error)
-	Listen(ctx context.Context, handler UDPHandlerFunc) error
+	Listen(ctx context.Context, handler HandlerFunc) error
 	Close()
 }
 
-type UDPHandlerFunc func(cmd string, args ...string) (res []string, err error)
+type HandlerFunc func(cmd string, args ...string) (res []string, err error)
 
-type udpClient struct {
+type client struct {
 	log         logger.ILogger
 	connections map[string]net.PacketConn
 	clusterName string
@@ -28,17 +28,17 @@ type udpClient struct {
 	listenAddr  string
 }
 
-func newUDPClient(magicPrefix, listenAddr, clusterName string) *udpClient {
-	return &udpClient{
+func NewClient(magicPrefix, listenAddr, clusterName string) *client {
+	return &client{
 		log:         logger.GetLogger(magicPrefix),
 		connections: map[string]net.PacketConn{},
 		magicPrefix: magicPrefix,
 		clusterName: strings.ToLower(clusterName),
-		listenAddr:  fmt.Sprintf("239.108.0.1:%s", strings.Split(listenAddr, ":")[1]),
+		listenAddr:  listenAddr,
 	}
 }
 
-func (c *udpClient) Send(d time.Duration, addr string, cmd string, args ...string) (res string, data []string, err error) {
+func (c *client) Send(d time.Duration, addr string, cmd string, args ...string) (res string, data []string, err error) {
 	raddr, _ := net.ResolveUDPAddr("udp", addr)
 	conn, _ := net.ListenPacket("udp", ":0")
 	conn.SetDeadline(time.Now().Add(d))
@@ -65,7 +65,7 @@ func (c *udpClient) Send(d time.Duration, addr string, cmd string, args ...strin
 	return
 }
 
-func (c *udpClient) Listen(ctx context.Context, handler UDPHandlerFunc) (err error) {
+func (c *client) Listen(ctx context.Context, handler func(cmd string, args ...string) (res []string, err error)) (err error) {
 	if _, ok := c.connections[c.listenAddr]; ok {
 		return
 	}
@@ -73,9 +73,17 @@ func (c *udpClient) Listen(ctx context.Context, handler UDPHandlerFunc) (err err
 	if err != nil {
 		return
 	}
-	conn, err := net.ListenMulticastUDP("udp4", nil, addr)
-	if err != nil {
-		return
+	var conn *net.UDPConn
+	if net.ParseIP(addr.IP).IsMulticast() {
+		conn, err = net.ListenMulticastUDP("udp4", nil, addr)
+		if err != nil {
+			return
+		}
+	} else {
+		conn, err = net.ListenUDP("udp4", nil, addr)
+		if err != nil {
+			return
+		}
 	}
 	c.connections[c.listenAddr] = conn
 	var done = make(chan struct{})
@@ -125,7 +133,7 @@ func (c *udpClient) Listen(ctx context.Context, handler UDPHandlerFunc) (err err
 	}
 }
 
-func (c *udpClient) Close() {
+func (c *client) Close() {
 	for k := range c.connections {
 		c.connections[k].Close()
 	}

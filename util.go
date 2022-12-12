@@ -13,14 +13,19 @@ import (
 	"github.com/martinlindhe/base36"
 )
 
+const (
+	minReplicas = 3
+	raftTimeout = time.Second
+)
+
 type (
-	AgentStatus string
-
 	ReadonlyLogReader = dragonboat.ReadonlyLogReader
+	ShardView         = dragonboat.ShardView
+	ShardInfo         = dragonboat.ShardInfo
 
-	Config         = config.Config
-	GossipConfig   = config.GossipConfig
-	NodeHostConfig = config.NodeHostConfig
+	ReplicaConfig = config.Config
+	GossipConfig  = config.GossipConfig
+	HostConfig    = config.NodeHostConfig
 
 	LeaderInfo     = raftio.LeaderInfo
 	NodeInfo       = raftio.NodeInfo
@@ -37,46 +42,52 @@ type (
 )
 
 const (
-	minReplicas  = 3
-	magicPrefix  = "zongzi"
-	probeTimeout = 3 * time.Second
-	probePause   = 5 * time.Second
-	joinTimeout  = 5 * time.Second
-	raftTimeout  = time.Second
-
-	AgentStatus_Unknown      = AgentStatus("Unknown")
-	AgentStatus_Pending      = AgentStatus("Pending")
-	AgentStatus_Joining      = AgentStatus("Joining")
-	AgentStatus_Rejoining    = AgentStatus("Rejoining")
-	AgentStatus_Ready        = AgentStatus("Ready")
-	AgentStatus_Initializing = AgentStatus("Initializing")
-	AgentStatus_Active       = AgentStatus("Active")
-
-	ReplicaStatus_New    = "new"
-	ReplicaStatus_Ready  = "ready"
-	ReplicaStatus_Active = "active"
-	ReplicaStatus_Gone   = "gone"
-
-	PROBE_JOIN         = "PROBE_JOIN"
-	INIT               = "INIT"
-	INIT_ERROR         = "INIT_ERROR"
-	INIT_CONFLICT      = "INIT_CONFLICT"
-	INIT_SUCCESS       = "INIT_SUCCESS"
-	INIT_HOST          = "INIT_HOST"
-	INIT_HOST_ERROR    = "INIT_HOST_ERROR"
-	INIT_HOST_SUCCESS  = "INIT_HOST_SUCCESS"
-	INIT_SHARD         = "INIT_SHARD"
-	INIT_SHARD_ERROR   = "INIT_SHARD_ERROR"
-	INIT_SHARD_SUCCESS = "INIT_SHARD_SUCCESS"
-	JOIN_HOST          = "JOIN_HOST"
-	JOIN_ERROR         = "JOIN_ERROR"
-	JOIN_SHARD         = "JOIN_SHARD"
-
-	PROBE_REJOIN = "PROBE_REJOIN"
-	REJOIN_PEER  = "REJOIN_PEER"
+	SHARD_JOIN         = "SHARD_JOIN"
+	SHARD_JOIN_SUCCESS = "SHARD_JOIN_SUCCESS"
+	SHARD_JOIN_REFUSED = "SHARD_JOIN_REFUSED"
+	SHARD_JOIN_ERROR   = "SHARD_JOIN_ERROR"
 )
 
-var DefaultRaftNodeConfig = config.Config{
+// GossipOracle identifies gossip peers
+type GossipOracle interface {
+	// GetSeedList returns a list of gossip peers
+	GetSeedList() []string
+}
+
+type (
+	AgentStatus   string
+	HostStatus    string
+	ShardStatus   string
+	ReplicaStatus string
+)
+
+const (
+	AgentStatus_Pending      = AgentStatus("pending")
+	AgentStatus_Joining      = AgentStatus("joining")
+	AgentStatus_Rejoining    = AgentStatus("rejoining")
+	AgentStatus_Ready        = AgentStatus("ready")
+	AgentStatus_Initializing = AgentStatus("initializing")
+	AgentStatus_Active       = AgentStatus("active")
+
+	HostStatus_New        = HostStatus("new")
+	HostStatus_Active     = HostStatus("active")
+	HostStatus_Missing    = HostStatus("missing")
+	HostStatus_Recovering = HostStatus("recovering")
+	HostStatus_Gone       = HostStatus("gone")
+
+	ShardStatus_New         = ShardStatus("new")
+	ShardStatus_Starting    = ShardStatus("starting")
+	ShardStatus_Active      = ShardStatus("active")
+	ShardStatus_Unavailable = ShardStatus("unavailable")
+	ShardStatus_Closed      = ShardStatus("closed")
+
+	ReplicaStatus_New      = ReplicaStatus("new")
+	ReplicaStatus_Active   = ReplicaStatus("active")
+	ReplicaStatus_Inactive = ReplicaStatus("inactive")
+	ReplicaStatus_Done     = ReplicaStatus("done")
+)
+
+var DefaultReplicaConfig = ReplicaConfig{
 	CheckQuorum:         true,
 	CompactionOverhead:  1000,
 	ElectionRTT:         10,
@@ -87,11 +98,15 @@ var DefaultRaftNodeConfig = config.Config{
 }
 
 func MustBase36Decode(name string) uint64 {
-	id, err := strconv.ParseUint(name, 36, 64)
+	id, err := base36Decode(name)
 	if err != nil {
 		panic(err)
 	}
 	return id
+}
+
+func base36Decode(id uint64) (string, error) {
+	return strconv.ParseUint(name, 36, 64)
 }
 
 func base36Encode(id uint64) string {
@@ -122,7 +137,7 @@ func SetLogLevel(level logger.LogLevel) {
 	logger.GetLogger("zongzi").SetLevel(level)
 }
 
-func SetLogLevelDebug() {
+func SetLogLevelSaneDebug() {
 	SetLogLevel(logger.DEBUG)
 	logger.GetLogger("gossip").SetLevel(logger.ERROR)
 	logger.GetLogger("dragonboat").SetLevel(logger.WARNING)
@@ -144,4 +159,12 @@ func (c *compositeRaftEventListener) LeaderUpdated(info LeaderInfo) {
 			listener.LeaderUpdated(info)
 		}
 	}
+}
+
+func keys[K comparable, V any](m map[K]V) []K {
+	r := make([]K, 0, len(m))
+	for k := range m {
+		r = append(r, k)
+	}
+	return r
 }

@@ -22,29 +22,29 @@ func (c *controller) start() {
 	if c.leader {
 		return
 	}
-	var ctx context.Context
-	var last string
+	var (
+		ctx      context.Context
+		index    uint64
+		shard    *zongzi.Shard
+		snapshot zongzi.Snapshot
+	)
 	ctx, c.cancel = context.WithCancel(context.Background())
 	go func() {
 		t := time.NewTicker(time.Second)
+		defer t.Stop()
 		var err error
 		for {
 			select {
 			case <-t.C:
-				var (
-					snapshot zongzi.Snapshot
-					shard    *zongzi.Shard
-
-					replicas = map[uint64]*zongzi.Replica{}
-				)
-				snapshot, err = c.agent.GetSnapshot()
-				if err != nil {
+				var replicas = map[uint64]*zongzi.Replica{}
+				snapshot, err = c.agent.GetSnapshot(index)
+				if err != nil || snapshot == nil {
 					break
 				}
 				if shard == nil {
-					// Find shard (does not support multiple shards of the same type)
+					// Find shard (this controller supports only one shard of its type per cluster)
 					for _, s := range snapshot.Shards {
-						if s.Type == shardType {
+						if s.Type == shardType && s.Status != zongzi.ShardStatus_Closed {
 							shard = s
 							break
 						}
@@ -65,6 +65,10 @@ func (c *controller) start() {
 				// Add replicas to new hosts and remove replicas for missing hosts
 				var zones = map[string]bool{}
 				for _, h := range snapshot.Hosts {
+					var meta map[string]any
+					if err = json.Unmarshal(h.Meta, &meta); err != nil {
+						break
+					}
 					var hasReplica bool
 					for replicaID, shardID := range h.Replicas {
 						if shardID == shard.ID {
@@ -91,11 +95,7 @@ func (c *controller) start() {
 						}
 					}
 				}
-				b, _ := c.agent.GetSnapshotJson()
-				if last != string(b) {
-					log.Printf("%v\n", string(b))
-					last = string(b)
-				}
+				index = snapshot.Index
 			case <-ctx.Done():
 				c.mutex.Lock()
 				defer c.mutex.Unlock()

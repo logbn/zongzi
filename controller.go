@@ -35,6 +35,7 @@ func (c *controller) Start() (err error) {
 	}
 	go func() {
 		t := time.NewTicker(time.Second)
+		defer t.Stop()
 		for {
 			select {
 			case <-t.C:
@@ -94,7 +95,7 @@ func (c *controller) tick() (err error) {
 	for _, info := range hostInfo.ShardInfoList {
 		if r, ok := replicas[info.ReplicaID]; ok {
 			found[r.ID] = true
-			if r.Status == ReplicaStatus_Gone {
+			if r.Status == ReplicaStatus_Done {
 				// Remove replica
 			}
 			if info.IsNonVoting && !r.IsNonVoting {
@@ -126,7 +127,7 @@ func (c *controller) tick() (err error) {
 				err = fmt.Errorf("Failed to start replica: %w", err)
 				break
 			}
-			// CMD_ReplicaStatus{id, ReplicaStatus_Ready}
+			// newCmdSetReplicaStatus(id, ReplicaStatus_Active)
 		}
 	}
 	if err == nil {

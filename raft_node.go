@@ -42,6 +42,7 @@ func raftNodeFactory(agent *agent) dbsm.CreateStateMachineFunc {
 }
 
 type raftNode struct {
+	index     uint64
 	shardID   uint64
 	replicaID uint64
 	log       logger.ILogger
@@ -69,7 +70,7 @@ func (fsm *raftNode) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 			cmd.Host.Replicas = map[uint64]uint64{}
 		}
 		if cmd.Host.Meta == nil {
-			cmd.Host.Meta = map[string]interface{}{}
+			cmd.Host.Meta = map[string]any{}
 		}
 		switch cmd.Action {
 		// Put Host
@@ -178,16 +179,18 @@ func (fsm *raftNode) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 	default:
 		fsm.log.Errorf("Unrecognized type %s", cmd.Action)
 	}
+	fsm.index = ent.Index
 
 	return
 }
 
-func (fsm *raftNode) Lookup(e interface{}) (val interface{}, err error) {
+func (fsm *raftNode) Lookup(e any) (val any, err error) {
 	if query, ok := e.(querySnapshot); ok {
 		switch query.Action {
 		// Get Snapshot
 		case query_action_get:
 			val = Snapshot{
+				Index:    fsm.index,
 				Hosts:    fsm.allHosts(),
 				Shards:   fsm.allShards(),
 				Replicas: fsm.allReplicas(),
@@ -235,10 +238,6 @@ func (fsm *raftNode) Lookup(e interface{}) (val interface{}, err error) {
 	return
 }
 
-func (fsm *raftNode) PrepareSnapshot() (ctx interface{}, err error) {
-	return
-}
-
 func (fsm *raftNode) allHosts() (hosts []*Host) {
 	for el := fsm.hosts.Front(); el != nil; el = el.Next() {
 		hosts = append(hosts, el.Value)
@@ -262,6 +261,7 @@ func (fsm *raftNode) allReplicas() (replicas []*Replica) {
 
 func (fsm *raftNode) SaveSnapshot(w io.Writer, sfc dbsm.ISnapshotFileCollection, stopc <-chan struct{}) (err error) {
 	b, err := json.Marshal(Snapshot{
+		Index:    fsm.index,
 		Hosts:    fsm.allHosts(),
 		Shards:   fsm.allShards(),
 		Replicas: fsm.allReplicas(),
@@ -287,6 +287,7 @@ func (fsm *raftNode) RecoverFromSnapshot(r io.Reader, sfc []dbsm.SnapshotFile, s
 	for _, replica := range data.Replicas {
 		fsm.replicas.Set(replica.ID, replica)
 	}
+	fsm.index = data.Index
 	return
 }
 
@@ -303,24 +304,24 @@ type Snapshot struct {
 type Host struct {
 	ID       string
 	Replicas map[uint64]uint64 // replicaID: shardID
-	Meta     map[string]interface{}
-	Status   string
+	Meta     []byte
+	Status   HostStatus
 }
 
 type Shard struct {
 	ID       uint64
 	Replicas map[uint64]string // replicaID: nodehostID
 	Type     string
-	Status   string
+	Status   ShardStatus
 }
 
 type Replica struct {
 	ID          uint64
 	ShardID     uint64
 	HostID      string
-	Status      string
 	IsNonVoting bool
 	IsWitness   bool
+	Status      ReplicaStatus
 }
 
 type cmd struct {
@@ -343,6 +344,23 @@ type cmdReplica struct {
 	Replica Replica
 }
 
+type cmd_SetReplicaStatus struct {
+	cmd
+	ID     uint64
+	Status ReplicaStatus
+}
+
+func newCmdSetReplicaStatus(id uint64, status ReplicaStatus) (b []byte) {
+	b, _ = json.Marshal(cmdReplica{cmd{
+		Type:   cmd_type_replica,
+		Action: cmd_action_set_status,
+	}, Replica{
+		ID:     id,
+		Status: status,
+	}})
+	return
+}
+
 func newCmdReplicaPut(nhid string, shardID, replicaID uint64, isNonVoting bool) (b []byte) {
 	b, _ = json.Marshal(cmdReplica{cmd{
 		Type:   cmd_type_replica,
@@ -351,20 +369,20 @@ func newCmdReplicaPut(nhid string, shardID, replicaID uint64, isNonVoting bool) 
 		ID:          replicaID,
 		ShardID:     shardID,
 		HostID:      nhid,
-		Status:      "new",
+		Status:      ReplicaStatus_New,
 		IsNonVoting: isNonVoting,
 	}})
 	return
 }
 
-func newCmdHostPut(nhid string, meta map[string]interface{}) (b []byte) {
+func newCmdHostPut(nhid string, meta []byte) (b []byte) {
 	b, _ = json.Marshal(cmdHost{cmd{
 		Type:   cmd_type_host,
 		Action: cmd_action_put,
 	}, Host{
 		ID:     nhid,
 		Meta:   meta,
-		Status: "new",
+		Status: HostStatus_New,
 	}})
 	return
 }
@@ -376,7 +394,7 @@ func newCmdShardPut(shardID uint64, shardType string) (b []byte) {
 	}, Shard{
 		ID:     shardID,
 		Type:   shardType,
-		Status: "new",
+		Status: ShardStatus_New,
 	}})
 	return
 }

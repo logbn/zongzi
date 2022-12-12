@@ -27,12 +27,12 @@ func (fsm *raftNode) Update(ent zongzi.Entry) (res zongzi.Result, err error) {
 	return
 }
 
-func (fsm *raftNode) Lookup(e interface{}) (val interface{}, err error) {
+func (fsm *raftNode) Lookup(e any) (val any, err error) {
 	val = fmt.Sprintf("%s [%d:%d]", shardType, fsm.shardID, fsm.replicaID)
 	return
 }
 
-func (fsm *raftNode) PrepareSnapshot() (ctx interface{}, err error) {
+func (fsm *raftNode) PrepareSnapshot() (ctx any, err error) {
 	return
 }
 
