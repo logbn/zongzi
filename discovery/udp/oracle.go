@@ -1,8 +1,10 @@
-package zongzi
+package udp
 
 import (
 	"strings"
 	"time"
+
+	"github.com/benbjohnson/clock"
 
 	"github.com/logbn/zongzi"
 	"github.com/logbn/zongzi/udp"
@@ -16,58 +18,50 @@ const (
 )
 
 const (
+	PROBE            = "PROBE"
 	PROBE_JOIN       = "PROBE_JOIN"
 	PROBE_JOIN_HOST  = "PROBE_JOIN_HOST"
 	PROBE_JOIN_SHARD = "PROBE_JOIN_SHARD"
 	PROBE_JOIN_ERROR = "PROBE_JOIN_ERROR"
+	PROBE_RESPONSE   = "PROBE_RESPONSE"
 
 	PROBE_REJOIN      = "PROBE_REJOIN"
 	PROBE_REJOIN_PEER = "PROBE_REJOIN_PEER"
-
-	INIT               = "INIT"
-	INIT_ERROR         = "INIT_ERROR"
-	INIT_CONFLICT      = "INIT_CONFLICT"
-	INIT_SUCCESS       = "INIT_SUCCESS"
-	INIT_HOST          = "INIT_HOST"
-	INIT_HOST_ERROR    = "INIT_HOST_ERROR"
-	INIT_HOST_SUCCESS  = "INIT_HOST_SUCCESS"
-	INIT_SHARD         = "INIT_SHARD"
-	INIT_SHARD_ERROR   = "INIT_SHARD_ERROR"
-	INIT_SHARD_SUCCESS = "INIT_SHARD_SUCCESS"
 )
-
-type oracle struct {
-	cfg      Config
-	client   udp.Client
-	listener *udpListener
-	peers    map[string]string // gossipAddr: discoveryAddr
-	probes   map[string]bool   // gossipAddr: true
-	seedChan chan []string
-}
 
 type Config struct {
 	Multicast       []string
 	MulticastListen string
 	Secret          string
+	MinReplicas     int
+}
+
+type oracle struct {
+	cfg      Config
+	client   udp.Client
+	listener *udpListener
+	clock    clock.Clock
 }
 
 func NewOracle(cfg Config) *oracle {
 	return &oracle{
-		cfg:      cfg,
-		peers:    map[string]string{},
-		probes:   map[string]bool{},
-		seedChan: make(chan []string),
+		cfg:   cfg,
+		clock: clock.New(),
 	}
 }
 
 func (o *oracle) GetSeedList(agent zongzi.Agent) (seeds []string, err error) {
 	var (
-		hostID     = agent.hostID()
+		hostID     = agent.HostID()
 		gossipAddr = agent.GetHostConfig().Gossip.AdvertiseAddress
 		raftAddr   = agent.GetHostConfig().RaftAddress
 		client     = udp.NewClient(magicPrefix, o.cfg.MulticastListen, agent.GetClusterName())
 	)
-	o.listener = newUDPListener(a, o.cfg.MulticastListen)
+	minReplicas := o.cfg.MinReplicas
+	if minReplicas < 1 {
+		minReplicas = 3
+	}
+	o.listener = newUDPListener(agent, o.cfg.MulticastListen, minReplicas)
 	o.listener.Start()
 	for {
 		for _, addr := range o.cfg.Multicast {
@@ -82,7 +76,11 @@ func (o *oracle) GetSeedList(agent zongzi.Agent) (seeds []string, err error) {
 		if len(seeds) > 0 {
 			break
 		}
-		a.clock.Sleep(time.Second)
+		o.clock.Sleep(time.Second)
 	}
 	return
+}
+
+func (o *oracle) Peers() map[string]string {
+	return o.listener.Peers()
 }

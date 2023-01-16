@@ -17,8 +17,9 @@ const (
 	cmd_type_replica  = "replica"
 	cmd_type_snapshot = "snapshot"
 
-	cmd_action_put = "put"
-	cmd_action_del = "del"
+	cmd_action_put        = "put"
+	cmd_action_del        = "del"
+	cmd_action_set_status = "set-status"
 
 	query_action_get = "get"
 
@@ -26,32 +27,38 @@ const (
 	cmd_result_success uint64 = 1
 )
 
-func raftNodeFactory(agent *agent) dbsm.CreateStateMachineFunc {
+func fsmFactory(agent *agent) dbsm.CreateStateMachineFunc {
 	return dbsm.CreateStateMachineFunc(func(shardID, replicaID uint64) dbsm.IStateMachine {
-		node := &raftNode{
+		node := &fsm{
 			shardID:   shardID,
 			replicaID: replicaID,
 			log:       agent.log,
-			hosts:     orderedmap.NewOrderedMap[string, *Host](),
-			shards:    orderedmap.NewOrderedMap[uint64, *Shard](),
-			replicas:  orderedmap.NewOrderedMap[uint64, *Replica](),
+			state: &fsmState{
+				hosts:    orderedmap.NewOrderedMap[string, *Host](),
+				shards:   orderedmap.NewOrderedMap[uint64, *Shard](),
+				replicas: orderedmap.NewOrderedMap[uint64, *Replica](),
+			},
 		}
 		agent.setRaftNode(node)
 		return node
 	})
 }
 
-type raftNode struct {
+type fsm struct {
 	index     uint64
-	shardID   uint64
-	replicaID uint64
 	log       logger.ILogger
-	hosts     *orderedmap.OrderedMap[string, *Host]
-	shards    *orderedmap.OrderedMap[uint64, *Shard]
-	replicas  *orderedmap.OrderedMap[uint64, *Replica]
+	replicaID uint64
+	shardID   uint64
+	state     *fsmState
 }
 
-func (fsm *raftNode) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
+type fsmState struct {
+	hosts    *orderedmap.OrderedMap[string, *Host]
+	replicas *orderedmap.OrderedMap[uint64, *Replica]
+	shards   *orderedmap.OrderedMap[uint64, *Shard]
+}
+
+func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 	var cmd cmd
 	if err = json.Unmarshal(ent.Cmd, &cmd); err != nil {
 		err = fmt.Errorf("Invalid entry %#v, %w", ent, err)
@@ -69,19 +76,16 @@ func (fsm *raftNode) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 		if cmd.Host.Replicas == nil {
 			cmd.Host.Replicas = map[uint64]uint64{}
 		}
-		if cmd.Host.Meta == nil {
-			cmd.Host.Meta = map[string]any{}
-		}
 		switch cmd.Action {
 		// Put Host
 		case cmd_action_put:
-			if !fsm.hosts.Set(cmd.Host.ID, &cmd.Host) {
+			if !fsm.state.hosts.Set(cmd.Host.ID, &cmd.Host) {
 				res = dbsm.Result{Value: cmd_result_failure}
 				fsm.log.Warningf("Failed to put host %#v", cmd)
 			}
 		// Delete Host
 		case cmd_action_del:
-			if !fsm.hosts.Delete(cmd.Host.ID) {
+			if !fsm.state.hosts.Delete(cmd.Host.ID) {
 				res = dbsm.Result{Value: cmd_result_failure}
 				fsm.log.Warningf("Failed to delete host %#v", cmd)
 			}
@@ -105,7 +109,7 @@ func (fsm *raftNode) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 			if cmd.Shard.ID == 0 {
 				cmd.Shard.ID = ent.Index
 			}
-			if !fsm.shards.Set(cmd.Shard.ID, &cmd.Shard) {
+			if !fsm.state.shards.Set(cmd.Shard.ID, &cmd.Shard) {
 				res = dbsm.Result{Value: cmd_result_failure}
 				fsm.log.Warningf("Failed to put shard %#v", cmd)
 			}
@@ -115,7 +119,7 @@ func (fsm *raftNode) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 			res.Value = cmd.Shard.ID
 		// Delete Shard
 		case cmd_action_del:
-			if !fsm.shards.Delete(cmd.Shard.ID) {
+			if !fsm.state.shards.Delete(cmd.Shard.ID) {
 				res = dbsm.Result{Value: cmd_result_failure}
 				fsm.log.Warningf("Failed to delete shard %#v", cmd)
 			}
@@ -136,17 +140,17 @@ func (fsm *raftNode) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 			if cmd.Replica.ID == 0 {
 				cmd.Replica.ID = ent.Index
 			}
-			if host, ok := fsm.hosts.Get(cmd.Replica.HostID); ok {
+			if host, ok := fsm.state.hosts.Get(cmd.Replica.HostID); ok {
 				host.Replicas[cmd.Replica.ID] = cmd.Replica.ShardID
 			} else {
 				fsm.log.Warningf("Host not found %#v", cmd)
 			}
-			if shard, ok := fsm.shards.Get(cmd.Replica.ShardID); ok {
+			if shard, ok := fsm.state.shards.Get(cmd.Replica.ShardID); ok {
 				shard.Replicas[cmd.Replica.ID] = cmd.Replica.HostID
 			} else {
 				fsm.log.Warningf("Shard not found %#v", cmd)
 			}
-			if !fsm.replicas.Set(cmd.Replica.ID, &cmd.Replica) {
+			if !fsm.state.replicas.Set(cmd.Replica.ID, &cmd.Replica) {
 				res = dbsm.Result{Value: cmd_result_failure}
 				fsm.log.Warningf("Failed to put replica %#v", cmd)
 				break
@@ -154,21 +158,21 @@ func (fsm *raftNode) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 			res.Value = cmd.Replica.ID
 		// Delete Replica
 		case cmd_action_del:
-			replica, ok := fsm.replicas.Get(cmd.Replica.ID)
+			replica, ok := fsm.state.replicas.Get(cmd.Replica.ID)
 			if !ok {
 				break
 			}
-			if host, ok := fsm.hosts.Get(replica.HostID); ok {
+			if host, ok := fsm.state.hosts.Get(replica.HostID); ok {
 				delete(host.Replicas, replica.ID)
 			} else {
 				fsm.log.Warningf("Host not found %#v", cmd)
 			}
-			if shard, ok := fsm.shards.Get(replica.ShardID); ok {
+			if shard, ok := fsm.state.shards.Get(replica.ShardID); ok {
 				delete(shard.Replicas, replica.ID)
 			} else {
 				fsm.log.Warningf("Shard not found %#v", cmd)
 			}
-			if !fsm.shards.Delete(replica.ID) {
+			if !fsm.state.replicas.Delete(replica.ID) {
 				res = dbsm.Result{Value: cmd_result_failure}
 				fsm.log.Warningf("Failed to delete replica %#v", cmd)
 			}
@@ -184,7 +188,7 @@ func (fsm *raftNode) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 	return
 }
 
-func (fsm *raftNode) Lookup(e any) (val any, err error) {
+func (fsm *fsm) Lookup(e any) (val any, err error) {
 	if query, ok := e.(querySnapshot); ok {
 		switch query.Action {
 		// Get Snapshot
@@ -203,7 +207,7 @@ func (fsm *raftNode) Lookup(e any) (val any, err error) {
 		switch query.Action {
 		// Get Host
 		case query_action_get:
-			if host, ok := fsm.hosts.Get(query.Host.ID); ok {
+			if host, ok := fsm.state.hosts.Get(query.Host.ID); ok {
 				val = *host
 			} else {
 				fsm.log.Warningf("Host not found %#v", e)
@@ -216,14 +220,14 @@ func (fsm *raftNode) Lookup(e any) (val any, err error) {
 		switch query.Action {
 		// Get Replica
 		case query_action_get:
-			host, ok := fsm.hosts.Get(query.Replica.HostID)
+			host, ok := fsm.state.hosts.Get(query.Replica.HostID)
 			if !ok {
 				fsm.log.Warningf("Host not found %#v", e)
 				break
 			}
-			for replicaID, shardID := range host.Replicas {
+			for shardID, replicaID := range host.Replicas {
 				if shardID == query.Replica.ShardID {
-					val, _ = fsm.replicas.Get(replicaID)
+					val, _ = fsm.state.replicas.Get(replicaID)
 					break
 				}
 			}
@@ -238,28 +242,28 @@ func (fsm *raftNode) Lookup(e any) (val any, err error) {
 	return
 }
 
-func (fsm *raftNode) allHosts() (hosts []*Host) {
-	for el := fsm.hosts.Front(); el != nil; el = el.Next() {
+func (fsm *fsm) allHosts() (hosts []*Host) {
+	for el := fsm.state.hosts.Front(); el != nil; el = el.Next() {
 		hosts = append(hosts, el.Value)
 	}
 	return hosts
 }
 
-func (fsm *raftNode) allShards() (shards []*Shard) {
-	for el := fsm.shards.Front(); el != nil; el = el.Next() {
+func (fsm *fsm) allShards() (shards []*Shard) {
+	for el := fsm.state.shards.Front(); el != nil; el = el.Next() {
 		shards = append(shards, el.Value)
 	}
 	return shards
 }
 
-func (fsm *raftNode) allReplicas() (replicas []*Replica) {
-	for el := fsm.replicas.Front(); el != nil; el = el.Next() {
+func (fsm *fsm) allReplicas() (replicas []*Replica) {
+	for el := fsm.state.replicas.Front(); el != nil; el = el.Next() {
 		replicas = append(replicas, el.Value)
 	}
 	return replicas
 }
 
-func (fsm *raftNode) SaveSnapshot(w io.Writer, sfc dbsm.ISnapshotFileCollection, stopc <-chan struct{}) (err error) {
+func (fsm *fsm) SaveSnapshot(w io.Writer, sfc dbsm.ISnapshotFileCollection, stopc <-chan struct{}) (err error) {
 	b, err := json.Marshal(Snapshot{
 		Index:    fsm.index,
 		Hosts:    fsm.allHosts(),
@@ -273,75 +277,78 @@ func (fsm *raftNode) SaveSnapshot(w io.Writer, sfc dbsm.ISnapshotFileCollection,
 	return
 }
 
-func (fsm *raftNode) RecoverFromSnapshot(r io.Reader, sfc []dbsm.SnapshotFile, stopc <-chan struct{}) (err error) {
+func (fsm *fsm) RecoverFromSnapshot(r io.Reader, sfc []dbsm.SnapshotFile, stopc <-chan struct{}) (err error) {
 	var data Snapshot
 	if err = json.NewDecoder(r).Decode(&data); err != nil {
 		return
 	}
 	for _, host := range data.Hosts {
-		fsm.hosts.Set(host.ID, host)
+		fsm.state.hosts.Set(host.ID, host)
 	}
 	for _, shard := range data.Shards {
-		fsm.shards.Set(shard.ID, shard)
+		fsm.state.shards.Set(shard.ID, shard)
 	}
 	for _, replica := range data.Replicas {
-		fsm.replicas.Set(replica.ID, replica)
+		fsm.state.replicas.Set(replica.ID, replica)
 	}
 	fsm.index = data.Index
 	return
 }
 
-func (fsm *raftNode) Close() (err error) {
+func (fsm *fsm) Close() (err error) {
 	return
 }
 
 type Snapshot struct {
+	Index    uint64
 	Hosts    []*Host
-	Shards   []*Shard
 	Replicas []*Replica
+	Shards   []*Shard
 }
 
 type Host struct {
-	ID       string
-	Replicas map[uint64]uint64 // replicaID: shardID
-	Meta     []byte
-	Status   HostStatus
+	ID         string            `json:"id"`
+	Meta       []byte            `json:"meta"`
+	Replicas   map[uint64]uint64 `json:"replicas"` // replicaID: shardID
+	ShardTypes []string          `json:"shardTypes"`
+	Status     HostStatus        `json:"status"`
 }
 
 type Shard struct {
-	ID       uint64
-	Replicas map[uint64]string // replicaID: nodehostID
-	Type     string
-	Status   ShardStatus
+	Replicas map[uint64]string `json:"replicas"` // replicaID: nodehostID
+	ID       uint64            `json:"id"`
+	Status   ShardStatus       `json:"status"`
+	Type     string            `json:"type"`
+	Version  string            `json:"version"`
 }
 
 type Replica struct {
-	ID          uint64
-	ShardID     uint64
-	HostID      string
-	IsNonVoting bool
-	IsWitness   bool
-	Status      ReplicaStatus
+	HostID      string        `json:"hostID"`
+	ID          uint64        `json:"id"`
+	IsNonVoting bool          `json:"isNonVoting"`
+	IsWitness   bool          `json:"isWitness"`
+	ShardID     uint64        `json:"shardID"`
+	Status      ReplicaStatus `json:"status"`
 }
 
 type cmd struct {
-	Type   string
 	Action string
+	Type   string `json:"type"`
 }
 
 type cmdHost struct {
 	cmd
-	Host Host
+	Host Host `json:"host"`
 }
 
 type cmdShard struct {
 	cmd
-	Shard Shard
+	Shard Shard `json:"shard"`
 }
 
 type cmdReplica struct {
 	cmd
-	Replica Replica
+	Replica Replica `json:"replica"`
 }
 
 type cmd_SetReplicaStatus struct {
@@ -375,14 +382,15 @@ func newCmdReplicaPut(nhid string, shardID, replicaID uint64, isNonVoting bool) 
 	return
 }
 
-func newCmdHostPut(nhid string, meta []byte) (b []byte) {
+func newCmdHostPut(nhid string, meta []byte, status HostStatus, shardTypes []string) (b []byte) {
 	b, _ = json.Marshal(cmdHost{cmd{
 		Type:   cmd_type_host,
 		Action: cmd_action_put,
 	}, Host{
-		ID:     nhid,
-		Meta:   meta,
-		Status: HostStatus_New,
+		ID:         nhid,
+		Meta:       meta,
+		Status:     status,
+		ShardTypes: shardTypes,
 	}})
 	return
 }
@@ -409,18 +417,18 @@ func newCmdReplicaDel(replicaID uint64) cmdReplica {
 }
 
 type query struct {
-	Type   string
-	Action string
+	Type   string `json:"type"`
+	Action string `json:"actioon"`
 }
 
 type queryHost struct {
 	query
-	Host Host
+	Host Host `json:"host"`
 }
 
 type queryReplica struct {
 	query
-	Replica Replica
+	Replica Replica `json:"replica"`
 }
 
 type querySnapshot struct {

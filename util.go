@@ -16,6 +16,8 @@ import (
 const (
 	minReplicas = 3
 	raftTimeout = time.Second
+	magicPrefix = "zongzi"
+	joinTimeout = 5 * time.Second
 )
 
 type (
@@ -42,6 +44,17 @@ type (
 )
 
 const (
+	INIT               = "INIT"
+	INIT_ERROR         = "INIT_ERROR"
+	INIT_CONFLICT      = "INIT_CONFLICT"
+	INIT_SUCCESS       = "INIT_SUCCESS"
+	INIT_HOST          = "INIT_HOST"
+	INIT_HOST_ERROR    = "INIT_HOST_ERROR"
+	INIT_HOST_SUCCESS  = "INIT_HOST_SUCCESS"
+	INIT_SHARD         = "INIT_SHARD"
+	INIT_SHARD_ERROR   = "INIT_SHARD_ERROR"
+	INIT_SHARD_SUCCESS = "INIT_SHARD_SUCCESS"
+
 	SHARD_JOIN         = "SHARD_JOIN"
 	SHARD_JOIN_SUCCESS = "SHARD_JOIN_SUCCESS"
 	SHARD_JOIN_REFUSED = "SHARD_JOIN_REFUSED"
@@ -51,7 +64,10 @@ const (
 // GossipOracle identifies gossip peers
 type GossipOracle interface {
 	// GetSeedList returns a list of gossip peers
-	GetSeedList() []string
+	GetSeedList(Agent) ([]string, error)
+
+	// Peers returns list of peers before cluster init
+	Peers() map[string]string
 }
 
 type (
@@ -105,7 +121,7 @@ func MustBase36Decode(name string) uint64 {
 	return id
 }
 
-func base36Decode(id uint64) (string, error) {
+func base36Decode(name string) (uint64, error) {
 	return strconv.ParseUint(name, 36, 64)
 }
 
@@ -116,14 +132,6 @@ func base36Encode(id uint64) string {
 func raftCtx() context.Context {
 	ctx, _ := context.WithTimeout(context.Background(), raftTimeout)
 	return ctx
-}
-
-func strMapCopy(m map[string]string) map[string]string {
-	c := map[string]string{}
-	for k, v := range m {
-		c[k] = v
-	}
-	return c
 }
 
 func SetLogLevel(level logger.LogLevel) {
@@ -167,4 +175,9 @@ func keys[K comparable, V any](m map[K]V) []K {
 		r = append(r, k)
 	}
 	return r
+}
+
+func parseUint64(s string) (uint64, error) {
+	i, err := strconv.Atoi(s)
+	return uint64(i), err
 }

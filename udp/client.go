@@ -15,6 +15,7 @@ import (
 type Client interface {
 	Send(d time.Duration, addr string, cmd string, args ...string) (res string, data []string, err error)
 	Listen(ctx context.Context, handler HandlerFunc) error
+	Validate(cmd string, args []string, n int) (res []string, err error)
 	Close()
 }
 
@@ -65,7 +66,7 @@ func (c *client) Send(d time.Duration, addr string, cmd string, args ...string) 
 	return
 }
 
-func (c *client) Listen(ctx context.Context, handler func(cmd string, args ...string) (res []string, err error)) (err error) {
+func (c *client) Listen(ctx context.Context, handler HandlerFunc) (err error) {
 	if _, ok := c.connections[c.listenAddr]; ok {
 		return
 	}
@@ -74,13 +75,13 @@ func (c *client) Listen(ctx context.Context, handler func(cmd string, args ...st
 		return
 	}
 	var conn *net.UDPConn
-	if net.ParseIP(addr.IP).IsMulticast() {
+	if addr.IP.IsMulticast() {
 		conn, err = net.ListenMulticastUDP("udp4", nil, addr)
 		if err != nil {
 			return
 		}
 	} else {
-		conn, err = net.ListenUDP("udp4", nil, addr)
+		conn, err = net.ListenUDP("udp4", addr)
 		if err != nil {
 			return
 		}
@@ -131,6 +132,15 @@ func (c *client) Listen(ctx context.Context, handler func(cmd string, args ...st
 			return fmt.Errorf("Error replying to %s (%s): %s", cmd, strings.Join(res, " "), err.Error())
 		}
 	}
+}
+
+func (c *client) Validate(cmd string, args []string, n int) (res []string, err error) {
+	ok := len(args) == n
+	if !ok {
+		res = []string{fmt.Sprintf("%s_INVALID", cmd)}
+		err = fmt.Errorf("%s requires %d arguments: %v", cmd, n, args)
+	}
+	return
 }
 
 func (c *client) Close() {

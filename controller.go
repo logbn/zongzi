@@ -68,7 +68,7 @@ func (c *controller) tick() (err error) {
 		found    = map[uint64]bool{}
 		nhid     = c.agent.host.ID()
 	)
-	snapshot, err = c.agent.GetSnapshot()
+	snapshot, err = c.agent.GetSnapshot(index)
 	if err != nil {
 		return
 	}
