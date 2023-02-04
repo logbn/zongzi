@@ -2,6 +2,9 @@ package udp
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
@@ -27,15 +30,17 @@ type client struct {
 	clusterName string
 	magicPrefix string
 	listenAddr  string
+	secrets     []string
 }
 
-func NewClient(magicPrefix, listenAddr, clusterName string) *client {
+func NewClient(log logger.ILogger, magicPrefix, listenAddr, clusterName string, secrets []string) *client {
 	return &client{
-		log:         logger.GetLogger(magicPrefix),
+		log:         log,
 		connections: map[string]net.PacketConn{},
 		magicPrefix: magicPrefix,
 		clusterName: strings.ToLower(clusterName),
 		listenAddr:  listenAddr,
+		secrets:     secrets,
 	}
 }
 
@@ -44,7 +49,7 @@ func (c *client) Send(d time.Duration, addr string, cmd string, args ...string) 
 	conn, _ := net.ListenPacket("udp", ":0")
 	conn.SetDeadline(time.Now().Add(d))
 	argStr := strings.Join(args, " ")
-	packet := fmt.Sprintf("%s %s %s %s", c.magicPrefix, c.clusterName, cmd, argStr)
+	packet := fmt.Sprintf("%s %s %s %s %s", c.magicPrefix, c.clusterName, c.sig(cmd, argStr), cmd, argStr)
 	conn.WriteTo([]byte(packet), raddr)
 	buf := make([]byte, 1024)
 	i, _, err := conn.ReadFrom(buf)
@@ -111,11 +116,16 @@ func (c *client) Listen(ctx context.Context, handler HandlerFunc) (err error) {
 		if len(parts) < 3 {
 			continue
 		}
-		magic, clusterName, cmd, args := parts[0], strings.ToLower(parts[1]), parts[2], parts[3:]
+		magic, clusterName, sig, cmd, args := parts[0], strings.ToLower(parts[1]), parts[2], parts[3], parts[4:]
 		if magic != c.magicPrefix || clusterName != c.clusterName {
 			continue
 		}
-		c.log.Debugf("Received %s %s", cmd, strings.Join(args, " "))
+		argStr := strings.Join(args, " ")
+		if !c.sigVerify(sig, cmd, argStr) {
+			c.log.Warningf("Ignoring signature mismatch %s %s %s", sig, cmd, argStr)
+			continue
+		}
+		c.log.Debugf("Received %s %s", cmd, argStr)
 		res, err := handler(cmd, args...)
 		if err != nil {
 			c.log.Errorf("Error %s %s", strings.Join(res, " "), err.Error())
@@ -141,6 +151,33 @@ func (c *client) Validate(cmd string, args []string, n int) (res []string, err e
 		err = fmt.Errorf("%s requires %d arguments: %v", cmd, n, args)
 	}
 	return
+}
+
+func (c *client) sig(cmd, args string) string {
+	if len(c.secrets) < 1 {
+		return "-"
+	}
+	mac := hmac.New(sha256.New, []byte(c.secrets[0]))
+	mac.Write([]byte(fmt.Sprintf("%s %s", cmd, args)))
+	return base64.StdEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func (c *client) sigVerify(sig, cmd, args string) bool {
+	if len(c.secrets) < 1 && sig == "-" {
+		return true
+	}
+	b, err := base64.StdEncoding.DecodeString(sig)
+	if err != nil {
+		return false
+	}
+	for _, s := range c.secrets {
+		mac := hmac.New(sha256.New, []byte(s))
+		mac.Write([]byte(fmt.Sprintf("%s %s", cmd, args)))
+		if hmac.Equal(b, mac.Sum(nil)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *client) Close() {

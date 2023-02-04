@@ -60,7 +60,7 @@ func (c *controller) tick() (err error) {
 		return
 	}
 	var (
-		snapshot Snapshot
+		snapshot *Snapshot
 		host     *Host
 
 		shards   = map[uint64]*Shard{}

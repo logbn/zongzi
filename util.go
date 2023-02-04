@@ -169,14 +169,6 @@ func (c *compositeRaftEventListener) LeaderUpdated(info LeaderInfo) {
 	}
 }
 
-func keys[K comparable, V any](m map[K]V) []K {
-	r := make([]K, 0, len(m))
-	for k := range m {
-		r = append(r, k)
-	}
-	return r
-}
-
 func parseUint64(s string) (uint64, error) {
 	i, err := strconv.Atoi(s)
 	return uint64(i), err

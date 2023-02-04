@@ -79,16 +79,10 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 		switch cmd.Action {
 		// Put Host
 		case cmd_action_put:
-			if !fsm.state.hosts.Set(cmd.Host.ID, &cmd.Host) {
-				res = dbsm.Result{Value: cmd_result_failure}
-				fsm.log.Warningf("Failed to put host %#v", cmd)
-			}
+			fsm.state.hosts.Set(cmd.Host.ID, &cmd.Host)
 		// Delete Host
 		case cmd_action_del:
-			if !fsm.state.hosts.Delete(cmd.Host.ID) {
-				res = dbsm.Result{Value: cmd_result_failure}
-				fsm.log.Warningf("Failed to delete host %#v", cmd)
-			}
+			fsm.state.hosts.Delete(cmd.Host.ID)
 		// Error
 		default:
 			fsm.log.Errorf("Unrecognized host action %s", cmd.Action)
@@ -109,20 +103,14 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 			if cmd.Shard.ID == 0 {
 				cmd.Shard.ID = ent.Index
 			}
-			if !fsm.state.shards.Set(cmd.Shard.ID, &cmd.Shard) {
-				res = dbsm.Result{Value: cmd_result_failure}
-				fsm.log.Warningf("Failed to put shard %#v", cmd)
-			}
+			fsm.state.shards.Set(cmd.Shard.ID, &cmd.Shard)
 			if res.Data, err = json.Marshal(cmd.Shard); err != nil {
 				fsm.log.Warningf("Error marshaling shard to json %#v", cmd.Shard)
 			}
 			res.Value = cmd.Shard.ID
 		// Delete Shard
 		case cmd_action_del:
-			if !fsm.state.shards.Delete(cmd.Shard.ID) {
-				res = dbsm.Result{Value: cmd_result_failure}
-				fsm.log.Warningf("Failed to delete shard %#v", cmd)
-			}
+			fsm.state.shards.Delete(cmd.Shard.ID)
 		// Error
 		default:
 			fsm.log.Errorf("Unrecognized shard action %s", cmd.Action)
@@ -150,11 +138,7 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 			} else {
 				fsm.log.Warningf("Shard not found %#v", cmd)
 			}
-			if !fsm.state.replicas.Set(cmd.Replica.ID, &cmd.Replica) {
-				res = dbsm.Result{Value: cmd_result_failure}
-				fsm.log.Warningf("Failed to put replica %#v", cmd)
-				break
-			}
+			fsm.state.replicas.Set(cmd.Replica.ID, &cmd.Replica)
 			res.Value = cmd.Replica.ID
 		// Delete Replica
 		case cmd_action_del:
@@ -172,10 +156,7 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 			} else {
 				fsm.log.Warningf("Shard not found %#v", cmd)
 			}
-			if !fsm.state.replicas.Delete(replica.ID) {
-				res = dbsm.Result{Value: cmd_result_failure}
-				fsm.log.Warningf("Failed to delete replica %#v", cmd)
-			}
+			fsm.state.replicas.Delete(replica.ID)
 		// Error
 		default:
 			fsm.log.Errorf("Unrecognized replica action %s", cmd.Action)
@@ -193,7 +174,7 @@ func (fsm *fsm) Lookup(e any) (val any, err error) {
 		switch query.Action {
 		// Get Snapshot
 		case query_action_get:
-			val = Snapshot{
+			val = &Snapshot{
 				Index:    fsm.index,
 				Hosts:    fsm.allHosts(),
 				Shards:   fsm.allShards(),
@@ -309,6 +290,7 @@ type Snapshot struct {
 type Host struct {
 	ID         string            `json:"id"`
 	Meta       []byte            `json:"meta"`
+	RaftAddr   string            `json:"raft_address"`
 	Replicas   map[uint64]uint64 `json:"replicas"` // replicaID: shardID
 	ShardTypes []string          `json:"shardTypes"`
 	Status     HostStatus        `json:"status"`
@@ -382,13 +364,14 @@ func newCmdReplicaPut(nhid string, shardID, replicaID uint64, isNonVoting bool) 
 	return
 }
 
-func newCmdHostPut(nhid string, meta []byte, status HostStatus, shardTypes []string) (b []byte) {
+func newCmdHostPut(nhid string, meta []byte, raftAddr string, status HostStatus, shardTypes []string) (b []byte) {
 	b, _ = json.Marshal(cmdHost{cmd{
 		Type:   cmd_type_host,
 		Action: cmd_action_put,
 	}, Host{
 		ID:         nhid,
 		Meta:       meta,
+		RaftAddr:   raftAddr,
 		Status:     status,
 		ShardTypes: shardTypes,
 	}})

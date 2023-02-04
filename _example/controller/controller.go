@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -26,7 +28,7 @@ func (c *controller) start() {
 		ctx      context.Context
 		index    uint64
 		shard    *zongzi.Shard
-		snapshot zongzi.Snapshot
+		snapshot *zongzi.Snapshot
 	)
 	ctx, c.cancel = context.WithCancel(context.Background())
 	go func() {
@@ -67,13 +69,14 @@ func (c *controller) start() {
 				for _, h := range snapshot.Hosts {
 					var meta map[string]any
 					if err = json.Unmarshal(h.Meta, &meta); err != nil {
+						err = fmt.Errorf("Bad meta: %w", err)
 						break
 					}
 					var hasReplica bool
 					for replicaID, shardID := range h.Replicas {
 						if shardID == shard.ID {
 							if !replicas[replicaID].IsNonVoting {
-								zones[h.Meta["zone"].(string)] = true
+								zones[meta["zone"].(string)] = true
 							}
 							hasReplica = true
 							break
@@ -84,8 +87,8 @@ func (c *controller) start() {
 					}
 					// Not strictly correct.
 					// Need to evaulate all hosts to ensure no members already exist in this zone.
-					if _, ok := zones[h.Meta["zone"].(string)]; !ok {
-						zones[h.Meta["zone"].(string)] = true
+					if _, ok := zones[meta["zone"].(string)]; !ok {
+						zones[meta["zone"].(string)] = true
 						if _, err = c.agent.CreateReplica(shard.ID, h.ID, false); err != nil {
 							return
 						}

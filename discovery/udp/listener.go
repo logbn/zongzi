@@ -23,11 +23,11 @@ type udpListener struct {
 	mutex       sync.RWMutex
 }
 
-func newUDPListener(agent zongzi.Agent, multicastAddr string, minReplicas int) *udpListener {
+func newUDPListener(log logger.ILogger, agent zongzi.Agent, multicastAddr string, minReplicas int, secrets []string) *udpListener {
 	return &udpListener{
 		agent:       agent,
-		log:         logger.GetLogger(magicPrefix + ": disco: udp"),
-		client:      udp.NewClient(magicPrefix, multicastAddr, agent.GetClusterName()),
+		log:         log,
+		client:      udp.NewClient(log, magicPrefix, multicastAddr, agent.GetClusterName(), secrets),
 		peers:       map[string]string{},
 		minReplicas: minReplicas,
 	}
