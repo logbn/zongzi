@@ -68,6 +68,7 @@ func (a *udpListener) handle(cmd string, args ...string) (res []string, err erro
 	// New node wants to join the cluster
 	case PROBE:
 		if res, err = a.client.Validate(cmd, args, 3); err != nil {
+			a.log.Debugf("%s, %s, %s", cmd, strings.Join(args, " "), err.Error())
 			return
 		}
 		_, gossipAddr, discoveryAddr := args[0], args[1], args[2]
@@ -79,6 +80,7 @@ func (a *udpListener) handle(cmd string, args ...string) (res []string, err erro
 			if len(a.peers) >= a.minReplicas {
 				return []string{PROBE_RESPONSE, a.agent.GetHostConfig().Gossip.AdvertiseAddress}, nil
 			}
+			a.log.Debugf("%+v", a.peers)
 		default:
 			a.peers[gossipAddr] = discoveryAddr
 		}

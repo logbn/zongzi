@@ -13,12 +13,12 @@ import (
 
 const (
 	cmd_type_host     = "host"
-	cmd_type_shard    = "shard"
 	cmd_type_replica  = "replica"
+	cmd_type_shard    = "shard"
 	cmd_type_snapshot = "snapshot"
 
-	cmd_action_put        = "put"
 	cmd_action_del        = "del"
+	cmd_action_put        = "put"
 	cmd_action_set_status = "set-status"
 
 	query_action_get = "get"
@@ -30,9 +30,9 @@ const (
 func fsmFactory(agent *agent) dbsm.CreateStateMachineFunc {
 	return dbsm.CreateStateMachineFunc(func(shardID, replicaID uint64) dbsm.IStateMachine {
 		node := &fsm{
-			shardID:   shardID,
-			replicaID: replicaID,
 			log:       agent.log,
+			replicaID: replicaID,
+			shardID:   shardID,
 			state: &fsmState{
 				hosts:    orderedmap.NewOrderedMap[string, *Host](),
 				shards:   orderedmap.NewOrderedMap[uint64, *Shard](),
@@ -66,6 +66,7 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 	}
 	res = dbsm.Result{Value: cmd_result_success}
 	switch cmd.Type {
+	// Host
 	case cmd_type_host:
 		var cmd cmdHost
 		if err = json.Unmarshal(ent.Cmd, &cmd); err != nil {
@@ -77,16 +78,16 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 			cmd.Host.Replicas = map[uint64]uint64{}
 		}
 		switch cmd.Action {
-		// Put Host
+		// Put
 		case cmd_action_put:
 			fsm.state.hosts.Set(cmd.Host.ID, &cmd.Host)
-		// Delete Host
+		// Delete
 		case cmd_action_del:
 			fsm.state.hosts.Delete(cmd.Host.ID)
-		// Error
 		default:
 			fsm.log.Errorf("Unrecognized host action %s", cmd.Action)
 		}
+	// Shard
 	case cmd_type_shard:
 		var cmd cmdShard
 		if err := json.Unmarshal(ent.Cmd, &cmd); err != nil {
@@ -98,7 +99,7 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 			cmd.Shard.Replicas = map[uint64]string{}
 		}
 		switch cmd.Action {
-		// Put Shard
+		// Put
 		case cmd_action_put:
 			if cmd.Shard.ID == 0 {
 				cmd.Shard.ID = ent.Index
@@ -108,13 +109,13 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 				fsm.log.Warningf("Error marshaling shard to json %#v", cmd.Shard)
 			}
 			res.Value = cmd.Shard.ID
-		// Delete Shard
+		// Delete
 		case cmd_action_del:
 			fsm.state.shards.Delete(cmd.Shard.ID)
-		// Error
 		default:
 			fsm.log.Errorf("Unrecognized shard action %s", cmd.Action)
 		}
+	// Replica
 	case cmd_type_replica:
 		var cmd cmdReplica
 		if err := json.Unmarshal(ent.Cmd, &cmd); err != nil {
@@ -123,7 +124,7 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 			break
 		}
 		switch cmd.Action {
-		// Put Replica
+		// Put
 		case cmd_action_put:
 			if cmd.Replica.ID == 0 {
 				cmd.Replica.ID = ent.Index
@@ -140,7 +141,7 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 			}
 			fsm.state.replicas.Set(cmd.Replica.ID, &cmd.Replica)
 			res.Value = cmd.Replica.ID
-		// Delete Replica
+		// Delete
 		case cmd_action_del:
 			replica, ok := fsm.state.replicas.Get(cmd.Replica.ID)
 			if !ok {
@@ -157,7 +158,6 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 				fsm.log.Warningf("Shard not found %#v", cmd)
 			}
 			fsm.state.replicas.Delete(replica.ID)
-		// Error
 		default:
 			fsm.log.Errorf("Unrecognized replica action %s", cmd.Action)
 		}
@@ -180,7 +180,6 @@ func (fsm *fsm) Lookup(e any) (val any, err error) {
 				Shards:   fsm.allShards(),
 				Replicas: fsm.allReplicas(),
 			}
-		// Error
 		default:
 			fsm.log.Errorf("Unrecognized snapshot query %s", query.Action)
 		}
@@ -193,7 +192,6 @@ func (fsm *fsm) Lookup(e any) (val any, err error) {
 			} else {
 				fsm.log.Warningf("Host not found %#v", e)
 			}
-		// Error
 		default:
 			fsm.log.Errorf("Unrecognized host query %s", query.Action)
 		}
@@ -212,7 +210,6 @@ func (fsm *fsm) Lookup(e any) (val any, err error) {
 					break
 				}
 			}
-		// Error
 		default:
 			fsm.log.Errorf("Unrecognized replica query %s", query.Action)
 		}
@@ -246,10 +243,10 @@ func (fsm *fsm) allReplicas() (replicas []*Replica) {
 
 func (fsm *fsm) SaveSnapshot(w io.Writer, sfc dbsm.ISnapshotFileCollection, stopc <-chan struct{}) (err error) {
 	b, err := json.Marshal(Snapshot{
-		Index:    fsm.index,
 		Hosts:    fsm.allHosts(),
-		Shards:   fsm.allShards(),
+		Index:    fsm.index,
 		Replicas: fsm.allReplicas(),
+		Shards:   fsm.allShards(),
 	})
 	if err == nil {
 		_, err = io.Copy(w, bytes.NewReader(b))
@@ -281,8 +278,8 @@ func (fsm *fsm) Close() (err error) {
 }
 
 type Snapshot struct {
-	Index    uint64
 	Hosts    []*Host
+	Index    uint64
 	Replicas []*Replica
 	Shards   []*Shard
 }
@@ -297,8 +294,8 @@ type Host struct {
 }
 
 type Shard struct {
-	Replicas map[uint64]string `json:"replicas"` // replicaID: nodehostID
 	ID       uint64            `json:"id"`
+	Replicas map[uint64]string `json:"replicas"` // replicaID: nodehostID
 	Status   ShardStatus       `json:"status"`
 	Type     string            `json:"type"`
 	Version  string            `json:"version"`
@@ -341,8 +338,8 @@ type cmd_SetReplicaStatus struct {
 
 func newCmdSetReplicaStatus(id uint64, status ReplicaStatus) (b []byte) {
 	b, _ = json.Marshal(cmdReplica{cmd{
-		Type:   cmd_type_replica,
 		Action: cmd_action_set_status,
+		Type:   cmd_type_replica,
 	}, Replica{
 		ID:     id,
 		Status: status,
@@ -352,48 +349,48 @@ func newCmdSetReplicaStatus(id uint64, status ReplicaStatus) (b []byte) {
 
 func newCmdReplicaPut(nhid string, shardID, replicaID uint64, isNonVoting bool) (b []byte) {
 	b, _ = json.Marshal(cmdReplica{cmd{
-		Type:   cmd_type_replica,
 		Action: cmd_action_put,
+		Type:   cmd_type_replica,
 	}, Replica{
-		ID:          replicaID,
-		ShardID:     shardID,
 		HostID:      nhid,
-		Status:      ReplicaStatus_New,
+		ID:          replicaID,
 		IsNonVoting: isNonVoting,
+		ShardID:     shardID,
+		Status:      ReplicaStatus_New,
 	}})
 	return
 }
 
-func newCmdHostPut(nhid string, meta []byte, raftAddr string, status HostStatus, shardTypes []string) (b []byte) {
+func newCmdHostPut(nhid, raftAddr string, meta []byte, status HostStatus, shardTypes []string) (b []byte) {
 	b, _ = json.Marshal(cmdHost{cmd{
-		Type:   cmd_type_host,
 		Action: cmd_action_put,
+		Type:   cmd_type_host,
 	}, Host{
 		ID:         nhid,
 		Meta:       meta,
 		RaftAddr:   raftAddr,
-		Status:     status,
 		ShardTypes: shardTypes,
+		Status:     status,
 	}})
 	return
 }
 
 func newCmdShardPut(shardID uint64, shardType string) (b []byte) {
 	b, _ = json.Marshal(cmdShard{cmd{
-		Type:   cmd_type_shard,
 		Action: cmd_action_put,
+		Type:   cmd_type_shard,
 	}, Shard{
 		ID:     shardID,
-		Type:   shardType,
 		Status: ShardStatus_New,
+		Type:   shardType,
 	}})
 	return
 }
 
 func newCmdReplicaDel(replicaID uint64) cmdReplica {
 	return cmdReplica{cmd{
-		Type:   cmd_type_replica,
 		Action: cmd_action_del,
+		Type:   cmd_type_replica,
 	}, Replica{
 		ID: replicaID,
 	}}
@@ -401,7 +398,7 @@ func newCmdReplicaDel(replicaID uint64) cmdReplica {
 
 type query struct {
 	Type   string `json:"type"`
-	Action string `json:"actioon"`
+	Action string `json:"action"`
 }
 
 type queryHost struct {

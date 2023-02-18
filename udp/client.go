@@ -113,7 +113,8 @@ func (c *client) Listen(ctx context.Context, handler HandlerFunc) (err error) {
 		}
 		msg := string(buf[:i])
 		parts := strings.Split(strings.Trim(msg, "\n"), " ")
-		if len(parts) < 3 {
+		if len(parts) < 4 {
+			c.log.Warningf("Not enough arguments for %s", msg)
 			continue
 		}
 		magic, clusterName, sig, cmd, args := parts[0], strings.ToLower(parts[1]), parts[2], parts[3], parts[4:]

@@ -60,15 +60,23 @@ const (
 	SHARD_JOIN_REFUSED = "SHARD_JOIN_REFUSED"
 	SHARD_JOIN_ERROR   = "SHARD_JOIN_ERROR"
 )
+const (
+	PROBE            = "PROBE"
+	PROBE_JOIN       = "PROBE_JOIN"
+	PROBE_JOIN_HOST  = "PROBE_JOIN_HOST"
+	PROBE_JOIN_SHARD = "PROBE_JOIN_SHARD"
+	PROBE_JOIN_ERROR = "PROBE_JOIN_ERROR"
+	PROBE_RESPONSE   = "PROBE_RESPONSE"
 
-// GossipOracle identifies gossip peers
-type GossipOracle interface {
-	// GetSeedList returns a list of gossip peers
-	GetSeedList(Agent) ([]string, error)
+	PROBE_REJOIN      = "PROBE_REJOIN"
+	PROBE_REJOIN_PEER = "PROBE_REJOIN_PEER"
 
-	// Peers returns list of peers before cluster init
-	Peers() map[string]string
-}
+	SHARD_INFO          = "SHARD_INFO"
+	SHARD_INFO_RESPONSE = "SHARD_INFO_RESPONSE"
+
+	PROPOSE_INIT         = "PROPOSE_INIT"
+	PROPOSE_INIT_SUCCESS = "PROPOSE_INIT_SUCCESS"
+)
 
 type (
 	AgentStatus   string
@@ -78,29 +86,29 @@ type (
 )
 
 const (
-	AgentStatus_Pending      = AgentStatus("pending")
-	AgentStatus_Joining      = AgentStatus("joining")
-	AgentStatus_Rejoining    = AgentStatus("rejoining")
-	AgentStatus_Ready        = AgentStatus("ready")
-	AgentStatus_Initializing = AgentStatus("initializing")
 	AgentStatus_Active       = AgentStatus("active")
+	AgentStatus_Initializing = AgentStatus("initializing")
+	AgentStatus_Joining      = AgentStatus("joining")
+	AgentStatus_Pending      = AgentStatus("pending")
+	AgentStatus_Ready        = AgentStatus("ready")
+	AgentStatus_Rejoining    = AgentStatus("rejoining")
 
-	HostStatus_New        = HostStatus("new")
 	HostStatus_Active     = HostStatus("active")
-	HostStatus_Missing    = HostStatus("missing")
-	HostStatus_Recovering = HostStatus("recovering")
 	HostStatus_Gone       = HostStatus("gone")
+	HostStatus_Missing    = HostStatus("missing")
+	HostStatus_New        = HostStatus("new")
+	HostStatus_Recovering = HostStatus("recovering")
 
+	ShardStatus_Active      = ShardStatus("active")
+	ShardStatus_Closed      = ShardStatus("closed")
 	ShardStatus_New         = ShardStatus("new")
 	ShardStatus_Starting    = ShardStatus("starting")
-	ShardStatus_Active      = ShardStatus("active")
 	ShardStatus_Unavailable = ShardStatus("unavailable")
-	ShardStatus_Closed      = ShardStatus("closed")
 
-	ReplicaStatus_New      = ReplicaStatus("new")
 	ReplicaStatus_Active   = ReplicaStatus("active")
-	ReplicaStatus_Inactive = ReplicaStatus("inactive")
 	ReplicaStatus_Done     = ReplicaStatus("done")
+	ReplicaStatus_Inactive = ReplicaStatus("inactive")
+	ReplicaStatus_New      = ReplicaStatus("new")
 )
 
 var DefaultReplicaConfig = ReplicaConfig{

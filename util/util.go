@@ -7,3 +7,12 @@ func Keys[K comparable, V any](m map[K]V) []K {
 	}
 	return r
 }
+
+func SliceContains[T comparable](slice []T, value T) bool {
+	for _, item := range slice {
+		if item == value {
+			return true
+		}
+	}
+	return false
+}
