@@ -19,14 +19,12 @@ type Client interface {
 	Send(d time.Duration, addr string, cmd string, args ...string) (res string, data []string, err error)
 	Listen(ctx context.Context, handler HandlerFunc) error
 	Validate(cmd string, args []string, n int) (res []string, err error)
-	Close()
 }
 
 type HandlerFunc func(cmd string, args ...string) (res []string, err error)
 
 type client struct {
 	log         logger.ILogger
-	connections map[string]net.PacketConn
 	clusterName string
 	magicPrefix string
 	listenAddr  string
@@ -36,7 +34,6 @@ type client struct {
 func NewClient(log logger.ILogger, magicPrefix, listenAddr, clusterName string, secrets []string) *client {
 	return &client{
 		log:         log,
-		connections: map[string]net.PacketConn{},
 		magicPrefix: magicPrefix,
 		clusterName: strings.ToLower(clusterName),
 		listenAddr:  listenAddr,
@@ -51,7 +48,7 @@ func (c *client) Send(d time.Duration, addr string, cmd string, args ...string) 
 	argStr := strings.Join(args, " ")
 	packet := fmt.Sprintf("%s %s %s %s %s", c.magicPrefix, c.clusterName, c.sig(cmd, argStr), cmd, argStr)
 	conn.WriteTo([]byte(packet), raddr)
-	buf := make([]byte, 1024)
+	var buf = make([]byte, 1024)
 	i, _, err := conn.ReadFrom(buf)
 	if err != nil {
 		if errors.Is(err, os.ErrDeadlineExceeded) {
@@ -72,9 +69,6 @@ func (c *client) Send(d time.Duration, addr string, cmd string, args ...string) 
 }
 
 func (c *client) Listen(ctx context.Context, handler HandlerFunc) (err error) {
-	if _, ok := c.connections[c.listenAddr]; ok {
-		return
-	}
 	addr, err := net.ResolveUDPAddr("udp4", c.listenAddr)
 	if err != nil {
 		return
@@ -82,34 +76,29 @@ func (c *client) Listen(ctx context.Context, handler HandlerFunc) (err error) {
 	var conn *net.UDPConn
 	if addr.IP.IsMulticast() {
 		conn, err = net.ListenMulticastUDP("udp4", nil, addr)
-		if err != nil {
-			return
-		}
 	} else {
 		conn, err = net.ListenUDP("udp4", addr)
-		if err != nil {
-			return
-		}
 	}
-	c.connections[c.listenAddr] = conn
-	var done = make(chan struct{})
+	if err != nil {
+		return
+	}
+	defer conn.Close()
 	go func() {
 		select {
 		case <-ctx.Done():
-			if conn, ok := c.connections[c.listenAddr]; ok {
-				conn.Close()
-			}
-		case <-done:
+			conn.Close()
 		}
-		delete(c.connections, c.listenAddr)
 	}()
-	buf := make([]byte, 4096)
 	c.log.Infof("UDP Listening on %s", c.listenAddr)
+	var buf = make([]byte, 4096)
+	var i int
+	var dst *net.UDPAddr
+	var res []string
 	for {
-		i, dst, err := conn.ReadFromUDP(buf)
+		i, dst, err = conn.ReadFromUDP(buf)
 		if err != nil {
-			close(done)
-			return err
+			err = fmt.Errorf("Error reading from UDP: %w", err)
+			break
 		}
 		msg := string(buf[:i])
 		parts := strings.Split(strings.Trim(msg, "\n"), " ")
@@ -127,7 +116,7 @@ func (c *client) Listen(ctx context.Context, handler HandlerFunc) (err error) {
 			continue
 		}
 		c.log.Debugf("Received %s %s", cmd, argStr)
-		res, err := handler(cmd, args...)
+		res, err = handler(cmd, args...)
 		if err != nil {
 			c.log.Errorf("Error %s %s", strings.Join(res, " "), err.Error())
 		} else if res != nil {
@@ -139,10 +128,11 @@ func (c *client) Listen(ctx context.Context, handler HandlerFunc) (err error) {
 		resData := strings.Join(res, " ")
 		_, err = conn.WriteTo([]byte(fmt.Sprintf("%s %s %s", c.magicPrefix, c.clusterName, resData)), dst)
 		if err != nil {
-			close(done)
-			return fmt.Errorf("Error replying to %s (%s): %s", cmd, strings.Join(res, " "), err.Error())
+			err = fmt.Errorf("Error replying to %s (%s): %w", cmd, strings.Join(res, " "), err)
+			break
 		}
 	}
+	return
 }
 
 func (c *client) Validate(cmd string, args []string, n int) (res []string, err error) {
@@ -179,10 +169,4 @@ func (c *client) sigVerify(sig, cmd, args string) bool {
 		}
 	}
 	return false
-}
-
-func (c *client) Close() {
-	for k := range c.connections {
-		c.connections[k].Close()
-	}
 }

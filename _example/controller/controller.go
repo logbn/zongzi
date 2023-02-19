@@ -8,14 +8,23 @@ import (
 	"sync"
 	"time"
 
+	"github.com/benbjohnson/clock"
+
 	"github.com/logbn/zongzi"
 )
+
+func newController() *controller {
+	return &controller{
+		clock: clock.New(),
+	}
+}
 
 type controller struct {
 	agent  zongzi.Agent
 	cancel context.CancelFunc
-	mutex  sync.RWMutex
+	clock  clock.Clock
 	leader bool
+	mutex  sync.RWMutex
 }
 
 func (c *controller) start() {
@@ -26,21 +35,24 @@ func (c *controller) start() {
 	}
 	var (
 		ctx      context.Context
+		err      error
 		index    uint64
 		shard    *zongzi.Shard
 		snapshot *zongzi.Snapshot
 	)
 	ctx, c.cancel = context.WithCancel(context.Background())
 	go func() {
-		t := time.NewTicker(time.Second)
+		t := c.clock.Ticker(time.Second)
 		defer t.Stop()
-		var err error
 		for {
 			select {
 			case <-t.C:
-				var replicas = map[uint64]*zongzi.Replica{}
+				replicas := map[uint64]*zongzi.Replica{}
 				snapshot, err = c.agent.GetSnapshot(index)
-				if err != nil || snapshot == nil {
+				if err != nil {
+					log.Println(`Error: %v`, err)
+				}
+				if snapshot == nil {
 					break
 				}
 				if shard == nil {
@@ -99,10 +111,12 @@ func (c *controller) start() {
 					}
 				}
 				index = snapshot.Index
+				str, _ := c.agent.GetSnapshotJson()
+				log.Println(string(str))
 			case <-ctx.Done():
 				c.mutex.Lock()
-				defer c.mutex.Unlock()
 				c.leader = false
+				c.mutex.Unlock()
 				return
 			}
 			if err != nil {

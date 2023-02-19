@@ -9,7 +9,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
-	"strings"
+	// "strings"
 	"sync"
 	"time"
 
@@ -41,7 +41,6 @@ type Agent interface {
 	GetSnapshot(index uint64) (*Snapshot, error)
 	GetSnapshotJson() ([]byte, error)
 	GetStatus() AgentStatus
-	Init() error
 	Start() error
 	Stop()
 }
@@ -56,14 +55,17 @@ type agent struct {
 	shardTypes  map[string]shardType
 	udpHandlers []udp.HandlerFunc
 
-	cancel context.CancelFunc
-	clock  clock.Clock
-	fsm    *fsm
-	host   *dragonboat.NodeHost
-	hostFS fs.FS
-	log    logger.ILogger
-	mutex  sync.RWMutex
-	status AgentStatus
+	clock     clock.Clock
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+	fsm       *fsm
+	host      *dragonboat.NodeHost
+	hostFS    fs.FS
+	log       logger.ILogger
+	members   map[uint64]string
+	mutex     sync.RWMutex
+	status    AgentStatus
+	wg        sync.WaitGroup
 }
 
 type shardType struct {
@@ -109,17 +111,18 @@ func (a *agent) Start() (err error) {
 			a.setStatus(AgentStatus_Ready)
 		}
 	}()
-	var ctx context.Context
-	ctx, a.cancel = context.WithCancel(context.Background())
+	a.ctx, a.ctxCancel = context.WithCancel(context.Background())
 	go func() {
+		a.wg.Add(1)
+		defer a.wg.Done()
 		for {
-			err := a.client.Listen(ctx, udp.HandlerFunc(a.udpHandlefunc))
+			err := a.client.Listen(a.ctx, udp.HandlerFunc(a.udpHandlefunc))
 			a.log.Errorf("Error reading UDP: %s", err.Error())
 			select {
-			case <-ctx.Done():
+			case <-a.ctx.Done():
 				a.log.Debugf("Stopped Agent Listener")
 				return
-			case <-time.After(time.Second):
+			case <-a.clock.After(time.Second):
 			}
 		}
 	}()
@@ -139,32 +142,33 @@ func (a *agent) Start() (err error) {
 		}
 	}
 	a.primeConfig.IsNonVoting = !util.SliceContains(a.peers, a.hostConfig.RaftAddress)
-	members, err := a.findMembers()
+	a.members, err = a.findMembers()
 	if err != nil {
 		return
 	}
-	if err = a.startReplica(members); err != nil {
+	// Start voting prime shard replica
+	if !a.primeConfig.IsNonVoting {
+		err = a.startReplica(a.members)
 		return
 	}
+	//
 	return
 
-	// If host in seedList
-	//   If log not exists
-	//     If cluster not found
-	//       Bootstrap
-	//     Else
-	//       Join as member
-	//   Else
+	// if host in seedList
+	//   if log exists
 	//     Rejoin as member
-	// Else
-	//   If log not exists
-	//     Join as nonvoting
-	//   Else
+	//   if cluster found
+	//     Join as member
+	//   else
+	//     Find peers
+	//     Bootstrap
+	// else
+	//   if log exists
 	//     Rejoin as nonvoting
+	//   else
+	//     Join as nonvoting
 
 	// If shard listed in log info, start non-voting and read cluster state
-	/*
-	 */
 	/*
 		a.log.Debugf(`Rejoining prime shard`)
 		var t = a.clock.Ticker(time.Second)
@@ -223,36 +227,32 @@ func (a *agent) Start() (err error) {
 	*/
 }
 
+// findGossip resolves peer raft address list to peer gossip address list
 func (a *agent) findGossip() (gossip []string, err error) {
-	var wg sync.WaitGroup
-	var mu sync.Mutex
+	a.wg.Add(1)
+	defer a.wg.Done()
 	for {
 		gossip = gossip[:0]
-		for i, p := range a.peers {
-			if p == a.hostConfig.RaftAddress {
-				mu.Lock()
+		for _, peerRaftAddr := range a.peers {
+			if peerRaftAddr == a.hostConfig.RaftAddress {
 				gossip = append(gossip, a.hostConfig.Gossip.AdvertiseAddress)
-				mu.Unlock()
 				continue
 			}
-			wg.Add(1)
-			go func(i int, addr string) {
-				defer wg.Done()
-				res, args, err := a.client.Send(time.Second, addr, PROBE)
-				if err != nil {
-					return
-				}
-				if res == PROBE_RESPONSE && len(args) == 1 {
-					mu.Lock()
-					gossip = append(gossip, args[0])
-					mu.Unlock()
-				}
-			}(i, p)
+			res, args, err := a.client.Send(time.Second, peerRaftAddr, PROBE)
+			if err == nil && res == PROBE_RESPONSE && len(args) == 1 {
+				gossip = append(gossip, args[0])
+			} else {
+				a.log.Warningf("No probe resp for %s %s %+v %v", peerRaftAddr, res, args, err)
+			}
 		}
-		wg.Wait()
 		a.log.Infof("Found %d of %d peers %+v", len(gossip), len(a.peers), gossip)
 		if len(gossip) < len(a.peers) {
-			a.clock.Sleep(time.Second)
+			select {
+			case <-a.ctx.Done():
+				err = fmt.Errorf(`Cancelling findGossip (agent stopped)`)
+				return
+			case <-a.clock.After(time.Second):
+			}
 			continue
 		}
 		break
@@ -260,7 +260,10 @@ func (a *agent) findGossip() (gossip []string, err error) {
 	return
 }
 
+// findMembers resolves peer raft address list to replicaID and hostID
 func (a *agent) findMembers() (members map[uint64]string, err error) {
+	a.wg.Add(1)
+	defer a.wg.Done()
 	var res string
 	var args []string
 	var replicaID int
@@ -296,28 +299,57 @@ func (a *agent) findMembers() (members map[uint64]string, err error) {
 			}
 		}
 		a.log.Infof("Found %d of %d peers (%d uninitialized)", len(members), len(a.peers), len(uninitialized))
+		// All peers resolved. Start.
 		if len(members) == len(a.peers) {
 			break
 		}
+		// All peers unintialized. Init.
 		if len(uninitialized) == len(a.peers) {
 			for i, raftAddr := range a.peers {
 				replicaID := uint64(i + 1)
 				members[replicaID] = uninitialized[raftAddr]
 				if raftAddr == a.hostConfig.RaftAddress {
 					a.primeConfig.ReplicaID = replicaID
-				} else {
-					res, args, err = a.client.Send(time.Second, raftAddr, PROPOSE_INIT, fmt.Sprintf(`%d`, replicaID))
-					if err != nil {
-						return
-					}
 				}
 			}
 			if a.primeConfig.ReplicaID > 0 {
 				break
 			}
 		}
-		// TODO - Handle join case
-		// TODO - Handle quorum case
+		// Some peers initialized. Resolve.
+		if len(members)+len(uninitialized) == len(a.peers) {
+			for _, raftAddr := range a.peers {
+				if raftAddr == a.hostConfig.RaftAddress {
+					continue
+				}
+				if _, ok := uninitialized[raftAddr]; !ok {
+					res, args, err = a.client.Send(time.Second, raftAddr, SHARD_MEMBERS)
+					if err != nil {
+						a.log.Errorf(`Error sending SHARD_MEMBERS: %v`, err)
+						return
+					}
+					if res != SHARD_MEMBERS_RESPONSE || len(args) != 1 {
+						a.log.Warningf(`Invalid response for SHARD_MEMBERS: %s, %+v`, res, args)
+						continue
+					}
+					err = json.Unmarshal([]byte(args[0]), &members)
+					if err != nil {
+						a.log.Warningf(`Unable to deserialized SHARD_MEMBERS: %s`, args[0])
+						continue
+					}
+					for replicaID, hostID := range members {
+						if hostID == a.host.ID() {
+							a.primeConfig.ReplicaID = replicaID
+							break
+						}
+					}
+					break
+				}
+			}
+			if a.primeConfig.ReplicaID > 0 {
+				break
+			}
+		}
 		a.clock.Sleep(time.Second)
 	}
 	return
@@ -334,21 +366,12 @@ func (a *agent) udpHandlefunc(cmd string, args ...string) (res []string, err err
 		}
 		return []string{SHARD_INFO_RESPONSE, strconv.Itoa(int(a.primeConfig.ReplicaID)), a.host.ID()}, nil
 
-	case PROPOSE_INIT:
-		if a.host == nil {
+	case SHARD_MEMBERS:
+		if a.members == nil {
 			return
 		}
-		if res, err = a.client.Validate(cmd, args, 1); err != nil {
-			return
-		}
-		var i int
-		i, err = strconv.Atoi(args[0])
-		if err != nil {
-			err = fmt.Errorf(`Invalid replicaID "%s" %w`, args[0], err)
-			return
-		}
-		a.primeConfig.ReplicaID = uint64(i)
-		return []string{PROPOSE_INIT_SUCCESS}, nil
+		b, _ := json.Marshal(a.members)
+		return []string{SHARD_MEMBERS_RESPONSE, string(b)}, nil
 
 	case SHARD_JOIN:
 		if len(args) != 3 {
@@ -432,18 +455,6 @@ func (a *agent) startReplica(members map[uint64]string) (err error) {
 
 func (a *agent) GetClusterName() string {
 	return a.clusterName
-}
-
-func (h *agent) HostExists() bool {
-	_, err := h.hostFS.Open("NODEHOST.ID")
-	switch err.(type) {
-	case nil:
-		return true
-	case *os.PathError:
-		return false
-	}
-	panic(err)
-	return false
 }
 
 func (a *agent) GetHost() *dragonboat.NodeHost {
@@ -555,117 +566,6 @@ func (a *agent) GetSnapshot(index uint64) (res *Snapshot, err error) {
 	return
 }
 
-func (a *agent) setRaftNode(r *fsm) {
-	a.fsm = r
-}
-
-// Init initializes the cluster - This happens only once, at the beginning of the cluster lifecycle
-func (a *agent) Init() (err error) {
-	// err = a.init(a.discovery.Peers())
-	return
-}
-
-func (a *agent) init(peers map[string]string) (err error) {
-	status := a.GetStatus()
-	if status == AgentStatus_Initializing {
-		return fmt.Errorf("Agent busy (%s)", status)
-	}
-	replicaID, seedList, err := a.parsePeers(peers)
-	if err != nil {
-		return fmt.Errorf("Agent not ready (%w)", err)
-	}
-	a.log.Infof("Initializing peers %+v", peers)
-	a.setStatus(AgentStatus_Initializing)
-	defer func() {
-		if err == nil {
-			a.setStatus(AgentStatus_Active)
-		} else {
-			a.setStatus(AgentStatus_Pending)
-		}
-	}()
-	// Start nodeHosts w/ collected gossip addresses
-	var members = map[uint64]string{}
-	var res string
-	var args []string
-	for _, gossipAddr := range seedList {
-		if gossipAddr == a.hostConfig.Gossip.AdvertiseAddress {
-			err = a.startHost(seedList)
-			if err != nil {
-				err = fmt.Errorf("Failed to start node host: %v %s", err.Error(), strings.Join(seedList, ", "))
-				return
-			}
-			members[replicaID] = a.GetHostID()
-			continue
-		}
-		raftAddr := peers[gossipAddr]
-		res, args, err = a.client.Send(joinTimeout, raftAddr, INIT_HOST, strings.Join(seedList, ","))
-		if err != nil {
-			return
-		}
-		if res == INIT_HOST_SUCCESS {
-			if len(args) != 2 {
-				err = fmt.Errorf("Invalid response from %s / %s: %v", raftAddr, gossipAddr, args)
-				return
-			}
-			id, err2 := strconv.Atoi(args[0])
-			if err2 != nil {
-				err = fmt.Errorf("Invalid replicaID from %s / %s: %s", raftAddr, gossipAddr, args[0])
-				return
-			}
-			members[uint64(id)] = args[1]
-		} else {
-			err = fmt.Errorf("Unrecognized INIT_HOST response from %s / %s: %s %v", raftAddr, gossipAddr, res, args)
-			return
-		}
-	}
-	memberJson, err := json.Marshal(members)
-	if err != nil {
-		err = fmt.Errorf("Error marshaling member json: %v", err)
-		return
-	}
-	// Start prime shard replicas
-	_, err = a.host.SyncGetShardMembership(raftCtx(), a.primeConfig.ShardID)
-	if err != nil {
-		for _, gossipAddr := range seedList {
-			if gossipAddr == a.hostConfig.Gossip.AdvertiseAddress {
-				a.primeConfig.ReplicaID = replicaID
-				err = a.host.StartReplica(members, false, fsmFactory(a), a.primeConfig)
-				if err != nil {
-					err = fmt.Errorf("Failed to start prime shard a: %v", err.Error())
-					return
-				}
-				continue
-			}
-			discoveryAddr := peers[gossipAddr]
-			for i := 0; i < 10; i++ {
-				res, args, err = a.client.Send(joinTimeout, discoveryAddr, INIT_SHARD, string(memberJson))
-				if err != nil {
-					a.log.Warningf("%v", err)
-					a.clock.Sleep(time.Second)
-					continue
-				}
-				err = nil
-				break
-			}
-			if res != INIT_SHARD_SUCCESS {
-				err = fmt.Errorf("Unrecognized INIT_SHARD response from %s / %s: %s %v", discoveryAddr, gossipAddr, res, args)
-				return
-			}
-		}
-	}
-	// Initialize prime shard fsm
-	for {
-		a.log.Debugf("init prime shard")
-		if err = a.primeInit(members); err == nil {
-			break
-		}
-		a.log.Debugf("%v", err)
-		a.clock.Sleep(time.Second)
-	}
-
-	return
-}
-
 // primeInit proposes addition of initial cluster state to prime shard
 func (a *agent) primeInit(members map[uint64]string) (err error) {
 	sess := a.host.GetNoOPSession(a.primeConfig.ShardID)
@@ -760,21 +660,6 @@ func (a *agent) GetClient() udp.Client {
 	return a.client
 }
 
-func (a *agent) startHost(gossipAddrs []string) (err error) {
-	if a.host != nil {
-		return nil
-	}
-	a.hostConfig.AddressByNodeHostID = true
-	a.hostConfig.Gossip.Seed = gossipAddrs
-	a.hostConfig.Gossip.Meta = append([]byte(a.hostConfig.RaftAddress+`|`), a.hostConfig.Gossip.Meta...)
-	a.host, err = dragonboat.NewNodeHost(a.hostConfig)
-	if err != nil {
-		return
-	}
-
-	return
-}
-
 func (a *agent) GetHostConfig() HostConfig {
 	return a.hostConfig
 }
@@ -784,7 +669,8 @@ func (a *agent) AddUdpHandler(h udp.HandlerFunc) {
 }
 
 func (a *agent) Stop() {
-	a.cancel()
+	a.ctxCancel()
 	a.stopReplica(a.primeConfig)
+	a.wg.Wait()
 	a.log.Infof("Agent stopped.")
 }

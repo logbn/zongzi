@@ -27,7 +27,7 @@ func main() {
 	flag.Parse()
 	zongzi.SetLogLevelSaneDebug()
 	meta, _ := json.Marshal(map[string]any{"zone": *zone})
-	c := &controller{}
+	ctrl := newController()
 	agent, err := zongzi.NewAgent(zongzi.AgentConfig{
 		ClusterName: *name,
 		HostConfig: zongzi.HostConfig{
@@ -38,7 +38,7 @@ func main() {
 			},
 			NodeHostDir:       *dataDir + "/raft",
 			RaftAddress:       *raftAddr,
-			RaftEventListener: c,
+			RaftEventListener: ctrl,
 			RTTMillisecond:    100,
 			WALDir:            *dataDir + "/wal",
 		},
@@ -49,7 +49,7 @@ func main() {
 		panic(err)
 	}
 	agent.RegisterShardType(shardType, bananaFactory(), nil)
-	c.agent = agent
+	ctrl.agent = agent
 	if err = agent.Start(); err != nil {
 		panic(err)
 	}
