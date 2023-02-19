@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/elliotchance/orderedmap/v2"
 	"github.com/lni/dragonboat/v4/logger"
 	dbsm "github.com/lni/dragonboat/v4/statemachine"
 )
@@ -17,11 +16,7 @@ func fsmFactory(agent *agent) dbsm.CreateStateMachineFunc {
 			log:       agent.log,
 			replicaID: replicaID,
 			shardID:   shardID,
-			state: fsmState{
-				hosts:    orderedmap.NewOrderedMap[string, *Host](),
-				shards:   orderedmap.NewOrderedMap[uint64, *Shard](),
-				replicas: orderedmap.NewOrderedMap[uint64, *Replica](),
-			},
+			store:     newFsmStoreMap(),
 		}
 		agent.fsm = node
 		return node
@@ -33,7 +28,7 @@ type fsm struct {
 	log       logger.ILogger
 	replicaID uint64
 	shardID   uint64
-	state     fsmState
+	store     fsmStore
 }
 
 func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
@@ -56,16 +51,15 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 		switch cmd.Action {
 		// Put
 		case cmd_action_put:
-			if host, ok := fsm.state.hosts.Get(cmd.Host.ID); ok {
-				cmd.Host.Replicas = host.Replicas
-			}
-			fsm.state.hosts.Set(cmd.Host.ID, &cmd.Host)
+			fsm.store.HostPut(&cmd.Host)
 			res.Value = cmd_result_success
 			res.Data, _ = json.Marshal(cmd.Host)
 		// Delete
 		case cmd_action_del:
-			fsm.state.hosts.Delete(cmd.Host.ID)
 			res.Value = cmd_result_success
+			res.Data, _ = json.Marshal(map[string]any{
+				"replicasDeleted": fsm.store.HostDelete(cmd.Host.ID),
+			})
 		default:
 			fsm.log.Errorf("Unrecognized host action %s", cmd.Action)
 		}
@@ -84,16 +78,16 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 		case cmd_action_put:
 			if cmd.Shard.ID == 0 {
 				cmd.Shard.ID = ent.Index
-			} else if shard, ok := fsm.state.shards.Get(cmd.Shard.ID); ok {
-				cmd.Shard.Replicas = shard.Replicas
 			}
-			fsm.state.shards.Set(cmd.Shard.ID, &cmd.Shard)
+			fsm.store.ShardPut(&cmd.Shard)
 			res.Value = cmd.Shard.ID
 			res.Data, _ = json.Marshal(cmd.Shard)
 		// Delete
 		case cmd_action_del:
-			fsm.state.shards.Delete(cmd.Shard.ID)
 			res.Value = cmd_result_success
+			res.Data, _ = json.Marshal(map[string]any{
+				"replicasDeleted": fsm.store.ShardDelete(cmd.Shard.ID),
+			})
 		default:
 			fsm.log.Errorf("Unrecognized shard action %s", cmd.Action)
 		}
@@ -110,32 +104,15 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 			if cmd.Replica.ID == 0 {
 				cmd.Replica.ID = ent.Index
 			}
-			if host, ok := fsm.state.hosts.Get(cmd.Replica.HostID); ok {
-				host.Replicas[cmd.Replica.ID] = cmd.Replica.ShardID
-			} else {
-				fsm.log.Warningf("Host not found %#v", cmd)
+			if err := fsm.store.ReplicaPut(&cmd.Replica); err != nil {
+				fsm.log.Warningf("%w: %#v", err, cmd)
 				break
 			}
-			if shard, ok := fsm.state.shards.Get(cmd.Replica.ShardID); ok {
-				shard.Replicas[cmd.Replica.ID] = cmd.Replica.HostID
-			} else {
-				fsm.log.Warningf("Shard not found %#v", cmd)
-				break
-			}
-			fsm.state.replicas.Set(cmd.Replica.ID, &cmd.Replica)
 			res.Value = cmd.Replica.ID
 			res.Data, _ = json.Marshal(cmd.Replica)
 		// Delete
 		case cmd_action_del:
-			if replica, ok := fsm.state.replicas.Get(cmd.Replica.ID); ok {
-				if host, ok := fsm.state.hosts.Get(replica.HostID); ok {
-					delete(host.Replicas, replica.ID)
-				}
-				if shard, ok := fsm.state.shards.Get(replica.ShardID); ok {
-					delete(shard.Replicas, replica.ID)
-				}
-				fsm.state.replicas.Delete(replica.ID)
-			}
+			fsm.store.ReplicaDelete(cmd.Replica.ID)
 			res.Value = cmd_result_success
 		default:
 			fsm.log.Errorf("Unrecognized replica action %s", cmd.Action)
@@ -154,10 +131,10 @@ func (fsm *fsm) Lookup(e any) (val any, err error) {
 		// Get Snapshot
 		case query_action_get:
 			val = &Snapshot{
-				Hosts:    fsm.state.listHosts(),
+				Hosts:    fsm.store.HostList(),
 				Index:    fsm.index,
-				Replicas: fsm.state.listReplicas(),
-				Shards:   fsm.state.listShards(),
+				Replicas: fsm.store.ReplicaList(),
+				Shards:   fsm.store.ShardList(),
 			}
 		default:
 			fsm.log.Errorf("Unrecognized snapshot query %s", query.Action)
@@ -166,31 +143,13 @@ func (fsm *fsm) Lookup(e any) (val any, err error) {
 		switch query.Action {
 		// Get Host
 		case query_action_get:
-			if host, ok := fsm.state.hosts.Get(query.Host.ID); ok {
+			if host := fsm.store.HostFind(query.Host.ID); host != nil {
 				val = *host
 			} else {
 				fsm.log.Warningf("Host not found %#v", e)
 			}
 		default:
 			fsm.log.Errorf("Unrecognized host query %s", query.Action)
-		}
-	} else if query, ok := e.(queryReplica); ok {
-		switch query.Action {
-		// Get Replica
-		case query_action_get:
-			host, ok := fsm.state.hosts.Get(query.Replica.HostID)
-			if !ok {
-				fsm.log.Warningf("Host not found %#v", e)
-				break
-			}
-			for shardID, replicaID := range host.Replicas {
-				if shardID == query.Replica.ShardID {
-					val, _ = fsm.state.replicas.Get(replicaID)
-					break
-				}
-			}
-		default:
-			fsm.log.Errorf("Unrecognized replica query %s", query.Action)
 		}
 	} else {
 		err = fmt.Errorf("Invalid query %#v", e)
@@ -199,12 +158,13 @@ func (fsm *fsm) Lookup(e any) (val any, err error) {
 	return
 }
 
+// TODO - Switch to jsonl
 func (fsm *fsm) SaveSnapshot(w io.Writer, sfc dbsm.ISnapshotFileCollection, stopc <-chan struct{}) (err error) {
 	b, err := json.Marshal(Snapshot{
-		Hosts:    fsm.state.listHosts(),
+		Hosts:    fsm.store.HostList(),
 		Index:    fsm.index,
-		Replicas: fsm.state.listReplicas(),
-		Shards:   fsm.state.listShards(),
+		Replicas: fsm.store.ReplicaList(),
+		Shards:   fsm.store.ShardList(),
 	})
 	if err == nil {
 		_, err = io.Copy(w, bytes.NewReader(b))
@@ -213,19 +173,20 @@ func (fsm *fsm) SaveSnapshot(w io.Writer, sfc dbsm.ISnapshotFileCollection, stop
 	return
 }
 
+// TODO - Switch to jsonl
 func (fsm *fsm) RecoverFromSnapshot(r io.Reader, sfc []dbsm.SnapshotFile, stopc <-chan struct{}) (err error) {
 	var data Snapshot
 	if err = json.NewDecoder(r).Decode(&data); err != nil {
 		return
 	}
 	for _, host := range data.Hosts {
-		fsm.state.hosts.Set(host.ID, host)
+		fsm.store.HostPut(host)
 	}
 	for _, shard := range data.Shards {
-		fsm.state.shards.Set(shard.ID, shard)
+		fsm.store.ShardPut(shard)
 	}
 	for _, replica := range data.Replicas {
-		fsm.state.replicas.Set(replica.ID, replica)
+		fsm.store.ReplicaPut(replica)
 	}
 	fsm.index = data.Index
 	return

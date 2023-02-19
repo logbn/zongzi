@@ -2,8 +2,8 @@ package zongzi
 
 import (
 	"encoding/json"
-
-	"github.com/elliotchance/orderedmap/v2"
+	"fmt"
+	"sync"
 )
 
 const (
@@ -22,38 +22,16 @@ const (
 	cmd_result_success uint64 = 1
 )
 
+var (
+	fsmErrHostNotFound  = fmt.Errorf(`Host not found`)
+	fsmErrShardNotFound = fmt.Errorf(`Shard not found`)
+)
+
 type Snapshot struct {
 	Hosts    []*Host
 	Index    uint64
 	Replicas []*Replica
 	Shards   []*Shard
-}
-
-type fsmState struct {
-	hosts    *orderedmap.OrderedMap[string, *Host]
-	replicas *orderedmap.OrderedMap[uint64, *Replica]
-	shards   *orderedmap.OrderedMap[uint64, *Shard]
-}
-
-func (s fsmState) listHosts() (hosts []*Host) {
-	for el := s.hosts.Front(); el != nil; el = el.Next() {
-		hosts = append(hosts, el.Value)
-	}
-	return hosts
-}
-
-func (s fsmState) listShards() (shards []*Shard) {
-	for el := s.shards.Front(); el != nil; el = el.Next() {
-		shards = append(shards, el.Value)
-	}
-	return shards
-}
-
-func (s fsmState) listReplicas() (replicas []*Replica) {
-	for el := s.replicas.Front(); el != nil; el = el.Next() {
-		replicas = append(replicas, el.Value)
-	}
-	return replicas
 }
 
 type Host struct {
@@ -63,6 +41,8 @@ type Host struct {
 	Replicas   map[uint64]uint64 `json:"replicas"` // replicaID: shardID
 	ShardTypes []string          `json:"shardTypes"`
 	Status     HostStatus        `json:"status"`
+
+	mu sync.RWMutex
 }
 
 type Shard struct {
@@ -71,6 +51,8 @@ type Shard struct {
 	Status   ShardStatus       `json:"status"`
 	Type     string            `json:"type"`
 	Version  string            `json:"version"`
+
+	mu sync.RWMutex
 }
 
 type Replica struct {
@@ -80,6 +62,8 @@ type Replica struct {
 	IsWitness   bool          `json:"isWitness"`
 	ShardID     uint64        `json:"shardID"`
 	Status      ReplicaStatus `json:"status"`
+
+	mu sync.RWMutex
 }
 
 type cmd struct {
@@ -100,12 +84,6 @@ type cmdShard struct {
 type cmdReplica struct {
 	cmd
 	Replica Replica `json:"replica"`
-}
-
-type cmd_SetReplicaStatus struct {
-	cmd
-	ID     uint64
-	Status ReplicaStatus
 }
 
 func newCmdSetReplicaStatus(id uint64, status ReplicaStatus) (b []byte) {
@@ -199,11 +177,6 @@ type queryHost struct {
 	Host Host `json:"host"`
 }
 
-type queryReplica struct {
-	query
-	Replica Replica `json:"replica"`
-}
-
 type querySnapshot struct {
 	query
 }
@@ -214,16 +187,6 @@ func newQueryHostGet(nhid string) queryHost {
 		Action: query_action_get,
 	}, Host{
 		ID: nhid,
-	}}
-}
-
-func newQueryReplicaGet(nhid string, shardID uint64) queryReplica {
-	return queryReplica{query{
-		Type:   cmd_type_replica,
-		Action: query_action_get,
-	}, Replica{
-		HostID:  nhid,
-		ShardID: shardID,
 	}}
 }
 

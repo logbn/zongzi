@@ -472,16 +472,16 @@ func (a *agent) addReplica(nhid string) (replicaID uint64, err error) {
 			return
 		}
 	}
-	res, err := a.host.SyncRead(raftCtx(), a.primeConfig.ShardID, newQueryReplicaGet(nhid, a.primeConfig.ShardID))
-	if err != nil {
-		return
+	for id, shardID := range host.(Host).Replicas {
+		if shardID == a.primeConfig.ShardID {
+			replicaID = id
+			break
+		}
 	}
-	if res == nil {
+	if replicaID == 0 {
 		if replicaID, err = a.primeAddReplica(nhid, 0); err != nil {
 			return
 		}
-	} else {
-		replicaID = res.(*Replica).ID
 	}
 	m, err := a.host.SyncGetShardMembership(raftCtx(), a.primeConfig.ShardID)
 	if err != nil {
