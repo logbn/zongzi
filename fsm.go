@@ -61,7 +61,7 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 				"replicasDeleted": fsm.store.HostDelete(cmd.Host.ID),
 			})
 		default:
-			fsm.log.Errorf("Unrecognized host action %s", cmd.Action)
+			err = fmt.Errorf("Unrecognized host action %s", cmd.Action)
 		}
 	// Shard
 	case cmd_type_shard:
@@ -89,7 +89,7 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 				"replicasDeleted": fsm.store.ShardDelete(cmd.Shard.ID),
 			})
 		default:
-			fsm.log.Errorf("Unrecognized shard action %s", cmd.Action)
+			err = fmt.Errorf("Unrecognized shard action %s", cmd.Action)
 		}
 	// Replica
 	case cmd_type_replica:
@@ -115,10 +115,10 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 			fsm.store.ReplicaDelete(cmd.Replica.ID)
 			res.Value = cmd_result_success
 		default:
-			fsm.log.Errorf("Unrecognized replica action %s", cmd.Action)
+			err = fmt.Errorf("Unrecognized replica action %s", cmd.Action)
 		}
 	default:
-		fsm.log.Errorf("Unrecognized type %s", cmd.Action)
+		err = fmt.Errorf("Unrecognized type %s", cmd.Action)
 	}
 	fsm.index = ent.Index
 
@@ -126,7 +126,19 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 }
 
 func (fsm *fsm) Lookup(e any) (val any, err error) {
-	if query, ok := e.(querySnapshot); ok {
+	if query, ok := e.(queryHost); ok {
+		switch query.Action {
+		// Get Host
+		case query_action_get:
+			if host := fsm.store.HostFind(query.Host.ID); host != nil {
+				val = *host
+			} else {
+				fsm.log.Warningf("Host not found %#v", e)
+			}
+		default:
+			err = fmt.Errorf("Unrecognized host query %s", query.Action)
+		}
+	} else if query, ok := e.(querySnapshot); ok {
 		switch query.Action {
 		// Get Snapshot
 		case query_action_get:
@@ -137,19 +149,7 @@ func (fsm *fsm) Lookup(e any) (val any, err error) {
 				Shards:   fsm.store.ShardList(),
 			}
 		default:
-			fsm.log.Errorf("Unrecognized snapshot query %s", query.Action)
-		}
-	} else if query, ok := e.(queryHost); ok {
-		switch query.Action {
-		// Get Host
-		case query_action_get:
-			if host := fsm.store.HostFind(query.Host.ID); host != nil {
-				val = *host
-			} else {
-				fsm.log.Warningf("Host not found %#v", e)
-			}
-		default:
-			fsm.log.Errorf("Unrecognized host query %s", query.Action)
+			err = fmt.Errorf("Unrecognized snapshot query %s", query.Action)
 		}
 	} else {
 		err = fmt.Errorf("Invalid query %#v", e)

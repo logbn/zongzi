@@ -1,6 +1,7 @@
 package zongzi
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 
@@ -26,17 +27,17 @@ func TestFsm(t *testing.T) {
 		log: nullLogger{},
 	}
 	f := fsmFactory(a)
+	hostID := "test-nh-id-1"
+	shardID := uint64(2)
+	shardType := `banana`
+	testHost := newCmdHostPut(
+		hostID,
+		"test-raft-addr",
+		[]byte("test-meta"),
+		HostStatus_New,
+		[]string{"test-shard-type-1", "test-shard-type-2"},
+	)
 	t.Run("Update", func(t *testing.T) {
-		hostID := "test-nh-id-1"
-		shardID := uint64(2)
-		shardType := `banana`
-		testHost := newCmdHostPut(
-			hostID,
-			"test-raft-addr",
-			[]byte("test-meta"),
-			HostStatus_New,
-			[]string{"test-shard-type-1", "test-shard-type-2"},
-		)
 		t.Run("host", func(t *testing.T) {
 			fsm := f(1, 2).(*fsm)
 			t.Run("put", func(t *testing.T) {
@@ -50,12 +51,33 @@ func TestFsm(t *testing.T) {
 				assert.Equal(t, "test-raft-addr", item.RaftAddr)
 			})
 			t.Run("delete", func(t *testing.T) {
-				res, err := fsm.Update(dbsm.Entry{Cmd: newCmdHostDel(hostID)})
-				require.Nil(t, err)
-				require.Equal(t, 0, len(fsm.store.HostList()))
-				require.Equal(t, uint64(1), res.Value)
-				item := fsm.store.HostFind(hostID)
-				assert.Nil(t, item)
+				t.Run("empty", func(t *testing.T) {
+					res, err := fsm.Update(dbsm.Entry{Cmd: newCmdHostDel(hostID)})
+					require.Nil(t, err)
+					require.Equal(t, 0, len(fsm.store.HostList()))
+					require.Equal(t, uint64(1), res.Value)
+					item := fsm.store.HostFind(hostID)
+					assert.Nil(t, item)
+				})
+				t.Run("with-replicas", func(t *testing.T) {
+					fsm.Update(dbsm.Entry{Cmd: newCmdShardPut(shardID, shardType)})
+					fsm.Update(dbsm.Entry{Cmd: testHost})
+					host := fsm.store.HostFind(hostID)
+					require.NotNil(t, host)
+					for i := uint64(1); i < 5; i++ {
+						res, err := fsm.Update(dbsm.Entry{Cmd: newCmdReplicaPut(hostID, shardID, i, false)})
+						require.Nil(t, err)
+						require.Equal(t, i, res.Value)
+					}
+					require.Equal(t, 4, len(fsm.store.ReplicaList()))
+					assert.Equal(t, 4, len(host.Replicas))
+					res, err := fsm.Update(dbsm.Entry{Cmd: newCmdHostDel(hostID)})
+					require.Nil(t, err)
+					require.Equal(t, 0, len(fsm.store.HostList()))
+					require.Equal(t, 0, len(fsm.store.ReplicaList()))
+					require.Equal(t, uint64(1), res.Value)
+					assert.Equal(t, 0, len(host.Replicas))
+				})
 			})
 		})
 		t.Run("shard", func(t *testing.T) {
@@ -246,7 +268,7 @@ func TestFsm(t *testing.T) {
 					}})
 					require.Nil(t, err)
 					res, err := fsm.Update(dbsm.Entry{Cmd: cmd})
-					require.Nil(t, err)
+					require.NotNil(t, err)
 					require.Equal(t, uint64(0), res.Value)
 					require.Equal(t, []byte(nil), res.Data)
 				}
@@ -265,7 +287,7 @@ func TestFsm(t *testing.T) {
 					}})
 					require.Nil(t, err)
 					res, err := fsm.Update(dbsm.Entry{Cmd: cmd})
-					require.Nil(t, err)
+					require.NotNil(t, err)
 					require.Equal(t, uint64(0), res.Value)
 					require.Equal(t, []byte(nil), res.Data)
 				}
@@ -285,6 +307,92 @@ func TestFsm(t *testing.T) {
 				require.Equal(t, []byte(nil), res.Data)
 			}
 		})
+	})
+	fsm1 := f(1, 2).(*fsm)
+	t.Run("Query", func(t *testing.T) {
+		t.Run("host", func(t *testing.T) {
+			_, err := fsm1.Update(dbsm.Entry{Cmd: testHost})
+			require.Nil(t, err)
+			require.Equal(t, 1, len(fsm1.store.HostList()))
+			t.Run("get", func(t *testing.T) {
+				t.Run("found", func(t *testing.T) {
+					val, err := fsm1.Lookup(newQueryHostGet(hostID))
+					require.Nil(t, err)
+					require.NotNil(t, val)
+					assert.Equal(t, hostID, val.(Host).ID)
+					assert.Equal(t, "test-raft-addr", val.(Host).RaftAddr)
+				})
+				t.Run("not-found", func(t *testing.T) {
+					val, err := fsm1.Lookup(newQueryHostGet(`salami`))
+					require.Nil(t, err)
+					require.Nil(t, val)
+				})
+			})
+			t.Run("unknown", func(t *testing.T) {
+				val, err := fsm1.Lookup(queryHost{query{
+					Action: `salami`,
+				}, Host{}})
+				require.NotNil(t, err)
+				require.Nil(t, val)
+			})
+		})
+		t.Run("snapshot", func(t *testing.T) {
+			_, err := fsm1.Update(dbsm.Entry{Cmd: newCmdShardPut(shardID, shardType)})
+			require.Nil(t, err)
+			require.Equal(t, 1, len(fsm1.store.ShardList()))
+			_, err = fsm1.Update(dbsm.Entry{
+				Index: 418,
+				Cmd:   newCmdReplicaPut(hostID, shardID, 1, false),
+			})
+			require.Nil(t, err)
+			require.Equal(t, 1, len(fsm1.store.ReplicaList()))
+			t.Run("get", func(t *testing.T) {
+				val, err := fsm1.Lookup(newQuerySnapshotGet())
+				require.Nil(t, err)
+				require.NotNil(t, val)
+				assert.Equal(t, uint64(418), val.(*Snapshot).Index)
+				assert.Equal(t, 1, len(val.(*Snapshot).Hosts))
+				assert.Equal(t, 1, len(val.(*Snapshot).Shards))
+				assert.Equal(t, 1, len(val.(*Snapshot).Replicas))
+			})
+			t.Run("unknown", func(t *testing.T) {
+				val, err := fsm1.Lookup(querySnapshot{query{
+					Action: `salami`,
+				}})
+				require.NotNil(t, err)
+				require.Nil(t, val)
+			})
+		})
+		t.Run("invalid", func(t *testing.T) {
+			fsm := f(1, 2).(*fsm)
+			val, err := fsm.Lookup(`salami`)
+			require.NotNil(t, err)
+			require.Nil(t, val)
+		})
+	})
+	var bb bytes.Buffer
+	t.Run("SaveSnapshot", func(t *testing.T) {
+		require.Nil(t, fsm1.SaveSnapshot(&bb, nil, nil))
+	})
+	fsm2 := f(1, 2).(*fsm)
+	t.Run("RecoverFromSnapshot", func(t *testing.T) {
+		t.Run("valid", func(t *testing.T) {
+			require.Nil(t, fsm2.RecoverFromSnapshot(&bb, nil, nil))
+			val, err := fsm2.Lookup(newQuerySnapshotGet())
+			require.Nil(t, err)
+			require.NotNil(t, val)
+			assert.Equal(t, uint64(418), val.(*Snapshot).Index)
+			assert.Equal(t, 1, len(val.(*Snapshot).Hosts))
+			assert.Equal(t, 1, len(val.(*Snapshot).Shards))
+			assert.Equal(t, 1, len(val.(*Snapshot).Replicas))
+		})
+		t.Run("invalid", func(t *testing.T) {
+			require.NotNil(t, fsm2.RecoverFromSnapshot(&bb, nil, nil))
+		})
+	})
+	t.Run("Close", func(t *testing.T) {
+		fsm := f(1, 2).(*fsm)
+		require.Nil(t, fsm.Close())
 	})
 }
 

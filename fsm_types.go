@@ -86,17 +86,6 @@ type cmdReplica struct {
 	Replica Replica `json:"replica"`
 }
 
-func newCmdSetReplicaStatus(id uint64, status ReplicaStatus) (b []byte) {
-	b, _ = json.Marshal(cmdReplica{cmd{
-		Action: cmd_action_set_status,
-		Type:   cmd_type_replica,
-	}, Replica{
-		ID:     id,
-		Status: status,
-	}})
-	return
-}
-
 func newCmdHostPut(nhid, raftAddr string, meta []byte, status HostStatus, shardTypes []string) (b []byte) {
 	b, _ = json.Marshal(cmdHost{cmd{
 		Action: cmd_action_put,
