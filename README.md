@@ -1,22 +1,21 @@
 # Zongzi
 
-A UDP discovery protocol and cluster control system for Dragonboat.
+A cluster coordinator for Dragonboat.
 
-- [x] Plug-n-play UDP Multicast Discovery Protocol
-- [x] Global nodehost registry
-- [x] Global shard registry
-- [x] Cluster controller
-- [x] Host controller
+The primary goal of this package is to completely wrap dragonboat behind a facade that presents a simpler interface
+with a lot of the complex tasks handled automatically using gRPC and good defaults.
 
-## Work in progress
+- [ ] Initialize cluster
+- [ ] Auto-join new hosts
+- [ ] Store desired cluster state
+- [ ] Replicate cluster state to all hosts
+- [ ] Reconcile desired and actual cluster state
+- [ ] Provide cluster-wide gRPC message bus
 
-Note that this repository represents a very crude proof of concept.  
-Expect all aspects of this API to change.
+In order to add a replica to a shard in dragonboat, you must:
 
-There are basically no tests.  
-A lot of refactoring remains to make this API stable and correct.  
-Testing will commence in earnest after the API stabilizes.
+1. Call `SyncRequestAddReplica` on a host that is already a member of the shard
+2. Call `StartReplica` on the host that wishes to join the shard
 
-The primary goal of this repository is to completely wrap dragonboat behind a facade that presents a simpler interface 
-with a lot of the complex tasks handled automatically with good defaults. It will be opinionated by design and is may
-not support some Dragonboat features, even in its final form.
+The Zongzi Agent simplifies these multi-host operations with a local API that automatically coordinates the necessary
+multi-host actions required to achieve the desired result.
