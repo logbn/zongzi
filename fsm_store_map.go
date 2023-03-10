@@ -72,9 +72,6 @@ func (s *fsmStoreMap) ShardList() (shards []*Shard) {
 }
 
 func (s *fsmStoreMap) ShardPut(new *Shard) {
-	if old, ok := s.shards.Get(new.ID); ok {
-		new.Replicas = old.Replicas
-	}
 	s.shards.Set(new.ID, new)
 }
 
@@ -104,16 +101,6 @@ func (s *fsmStoreMap) ReplicaList() (replicas []*Replica) {
 }
 
 func (s *fsmStoreMap) ReplicaPut(new *Replica) error {
-	host, ok := s.hosts.Get(new.HostID)
-	if !ok {
-		return fsmErrHostNotFound
-	}
-	shard, ok := s.shards.Get(new.ShardID)
-	if !ok {
-		return fsmErrShardNotFound
-	}
-	host.Replicas[new.ID] = new.ShardID
-	shard.Replicas[new.ID] = new.HostID
 	s.replicas.Set(new.ID, new)
 	return nil
 }

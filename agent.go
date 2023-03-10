@@ -24,6 +24,7 @@ import (
 type AgentConfig struct {
 	ClusterName   string
 	HostConfig    HostConfig
+	ListenAddr    string
 	Peers         []string
 	ReplicaConfig ReplicaConfig
 	Secrets       []string
@@ -33,7 +34,7 @@ type Agent interface {
 	AddUdpHandler(h udp.HandlerFunc)
 	CreateReplica(shardID uint64, nodeHostID string, isNonVoting bool) (id uint64, err error)
 	CreateShard(shardTypeName string) (shard *Shard, err error)
-	GetClient() udp.Client
+	GetClient() Client
 	GetClusterName() string
 	GetHost() *dragonboat.NodeHost
 	GetHostConfig() HostConfig
@@ -41,6 +42,7 @@ type Agent interface {
 	GetSnapshot(index uint64) (*Snapshot, error)
 	GetSnapshotJson() ([]byte, error)
 	GetStatus() AgentStatus
+	RegisterStateMachine(name string, fn SMFactory, cfg *ReplicaConfig)
 	Start() error
 	Stop()
 }
@@ -73,13 +75,13 @@ type shardType struct {
 	Config  ReplicaConfig
 }
 
+_ := (&agent{}).(Agent)
+
 func NewAgent(cfg AgentConfig) (a *agent, err error) {
 	if cfg.ReplicaConfig.ElectionRTT == 0 {
 		cfg.ReplicaConfig = DefaultReplicaConfig
 	}
-	if cfg.ReplicaConfig.ShardID == 0 {
-		cfg.ReplicaConfig.ShardID = 1
-	}
+	cfg.ReplicaConfig.ShardID = 0 
 	cfg.HostConfig.DeploymentID, err = base36Decode(cfg.ClusterName)
 	if err != nil {
 		return nil, err
@@ -116,6 +118,7 @@ func (a *agent) Start() (err error) {
 		a.wg.Add(1)
 		defer a.wg.Done()
 		for {
+			// gRPC - Start server
 			err := a.client.Listen(a.ctx, udp.HandlerFunc(a.udpHandlefunc))
 			a.log.Errorf("Error reading UDP: %s", err.Error())
 			select {
@@ -280,7 +283,7 @@ func (a *agent) findMembers() (members map[uint64]string, err error) {
 				}
 				continue
 			}
-			res, args, err = a.client.Send(time.Second, raftAddr, SHARD_INFO, strconv.Itoa(int(a.primeConfig.ShardID)))
+			res, args, err = a.client.Send(time.Second, raftAddr, SHARD_INFO)
 			if err != nil {
 				return
 			}
@@ -357,15 +360,18 @@ func (a *agent) findMembers() (members map[uint64]string, err error) {
 
 func (a *agent) udpHandlefunc(cmd string, args ...string) (res []string, err error) {
 	switch cmd {
+	// GET /-/gossip/address
 	case PROBE:
 		return []string{PROBE_RESPONSE, a.hostConfig.Gossip.AdvertiseAddress}, nil
 
+	// GET /1/info
 	case SHARD_INFO:
 		if a.host == nil {
 			return
 		}
 		return []string{SHARD_INFO_RESPONSE, strconv.Itoa(int(a.primeConfig.ReplicaID)), a.host.ID()}, nil
 
+	// GET /1/members
 	case SHARD_MEMBERS:
 		if a.members == nil {
 			return
@@ -373,12 +379,13 @@ func (a *agent) udpHandlefunc(cmd string, args ...string) (res []string, err err
 		b, _ := json.Marshal(a.members)
 		return []string{SHARD_MEMBERS_RESPONSE, string(b)}, nil
 
+	// PUT /1/replicas/{nhid}
 	case SHARD_JOIN:
 		if len(args) != 3 {
 			err = fmt.Errorf("Incorrect arguments in SHARD_JOIN: %#v", args)
 			break
 		}
-		HostID := args[0]
+		hostID := args[0]
 		indexStr := args[1]
 		index, err := parseUint64(indexStr)
 		if err != nil {
@@ -388,9 +395,9 @@ func (a *agent) udpHandlefunc(cmd string, args ...string) (res []string, err err
 		}
 		voting := args[2] == "true"
 		if voting {
-			err = a.host.SyncRequestAddReplica(raftCtx(), a.primeConfig.ShardID, index, HostID, index)
+			err = a.host.SyncRequestAddReplica(raftCtx(), a.primeConfig.ShardID, index, hostID, index)
 		} else {
-			err = a.host.SyncRequestAddNonVoting(raftCtx(), a.primeConfig.ShardID, index, HostID, index)
+			err = a.host.SyncRequestAddNonVoting(raftCtx(), a.primeConfig.ShardID, index, hostID, index)
 		}
 		if err != nil {
 			res = []string{SHARD_JOIN_ERROR}
@@ -615,11 +622,10 @@ func (a *agent) CreateShard(shardTypeName string) (shard *Shard, err error) {
 	if err != nil {
 		return
 	}
-	return &Shard{
+	return &pb.Shard{
 		ID:       res.Value,
 		Type:     shardTypeName,
-		Replicas: map[uint64]string{},
-		Status:   "new",
+		Status:   pb.Shard_STATUS_NEW,
 	}, nil
 }
 
@@ -633,12 +639,12 @@ func (a *agent) CreateReplica(shardID uint64, nodeHostID string, isNonVoting boo
 	return
 }
 
-// RegisterShardType registers a state machine factory for a shard. Call before Start.
-func (a *agent) RegisterShardType(shardTypeName string, fn CreateStateMachineFunc, cfg *ReplicaConfig) {
+// RegisterStateMachine registers a shard type. Call before Start.
+func (a *agent) RegisterStateMachine(uri, version string, smf SMFactory, svc Service, cfg *ReplicaConfig) {
 	if cfg == nil {
 		cfg = &DefaultReplicaConfig
 	}
-	a.shardTypes[shardTypeName] = shardType{fn, *cfg}
+	a.shardTypes[uri] = shardType{version, smf, qs, *cfg}
 }
 
 func (a *agent) stopReplica(cfg ReplicaConfig) (err error) {

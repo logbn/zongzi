@@ -277,7 +277,6 @@ func TestFsm(t *testing.T) {
 				for _, action := range []string{
 					cmd_action_put,
 					cmd_action_del,
-					cmd_action_set_status,
 				} {
 					cmd, err := json.Marshal(cmdHost{cmd{
 						Action: action,

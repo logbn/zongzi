@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+option go_package = "github.com/logbn/zongzi/internal";
+
+// MessageService provides a gRPC api for internal host communication
+service MessageService {
+	// Propose provides unary request/response command forwarding
+	rpc Propose(Request) returns (Response) {}
+
+	// Stream provides streaming proposal forwarding
+	rpc Stream(stream Request) returns (stream Response) {}
+
+	// Query provides unary request/response query forwarding
+	rpc Query(Request) returns (Response) {}
+
+	// Watch provides streaming query response forwarding
+	rpc Watch(Request) returns (stream Response) {}
+}
+
+message Request {
+    uint64 shard_id = 1;
+    uint64 replica_id = 2;
+	bool linear = 3;
+    bytes data = 15;
+}
+
+message Response {
+    uint64 value = 1;
+    string error = 2;
+    bytes data = 15;
+}

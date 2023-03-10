@@ -19,3 +19,10 @@ In order to add a replica to a shard in dragonboat, you must:
 
 The Zongzi Agent simplifies these multi-host operations with a local API that automatically coordinates the necessary
 multi-host actions required to achieve the desired result.
+
+## Constraints
+
+1. Although [dragonboat statemachine reads](https://pkg.go.dev/github.com/lni/dragonboat/v4#NodeHost.ReadLocalNode) 
+accept and return `interface{}`, all queries and responses sent through the Agent must be expressed as `[]byte`, just
+like command proposals. This serialization overhead is necessary for request forwarding because empty interfaces are 
+not serializable.

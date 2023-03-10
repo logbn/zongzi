@@ -15,25 +15,27 @@ import (
 var (
 	name       = flag.String("n", "test001", "Cluster name (base36 maxlen 12)")
 	dataDir    = flag.String("d", "/var/lib/zongzi/node", "Base data directory")
-	raftAddr   = flag.String("r", "127.0.0.1:10801", "Raft address")
-	gossipAddr = flag.String("g", "127.0.0.1:10802", "Gossip address")
 	peers      = flag.String("p", "127.0.0.1:10801", "Peer nodes")
+	listenAddr = flag.String("l", "127.0.0.1:10801", "Listen address")
+	gossipAddr = flag.String("g", "127.0.0.1:10802", "Gossip address")
+	raftAddr   = flag.String("r", "127.0.0.1:10803", "Raft address")
 	zone       = flag.String("z", "us-west-1a", "Zone")
 	secret     = flag.String("s", "", "Shared secrets (csv)")
-	shardType  = "banana"
 )
 
 func main() {
 	flag.Parse()
-	zongzi.SetLogLevelSaneDebug()
+	zongzi.SetLogLevelDebug()
 	meta, _ := json.Marshal(map[string]any{"zone": *zone})
 	ctrl := newController()
 	agent, err := zongzi.NewAgent(zongzi.AgentConfig{
-		ClusterName: *name,
+		AdvertiseAddress: *listenAddr,
+		BindAddress:      fmt.Sprintf("0.0.0.0:%s", strings.Split(*listenAddr, ":")[1]),
+		ClusterName:      *name,
 		HostConfig: zongzi.HostConfig{
 			Gossip: zongzi.GossipConfig{
-				BindAddress:      fmt.Sprintf("0.0.0.0:%s", strings.Split(*gossipAddr, ":")[1]),
 				AdvertiseAddress: *gossipAddr,
+				BindAddress:      fmt.Sprintf("0.0.0.0:%s", strings.Split(*gossipAddr, ":")[1]),
 				Meta:             meta,
 			},
 			NodeHostDir:       *dataDir + "/raft",
@@ -48,7 +50,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	agent.RegisterShardType(shardType, bananaFactory(), nil)
+	agent.RegisterStateMachine(
+		StateMachineUri,
+		StateMachineVersion,
+		StateMachineFactory(),
+	)
 	ctrl.agent = agent
 	if err = agent.Start(); err != nil {
 		panic(err)

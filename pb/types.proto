@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+import "google/protobuf/any.proto";
+import "google/protobuf/field_mask.proto";
+
+option go_package = "github.com/logbn/zongzi/pb";
+
+message CMD {
+	Method method = 1;
+    enum Method {
+        METHOD_UNSPECIFIED = 0;
+        METHOD_GET = 1;
+        METHOD_PUT = 2;
+        METHOD_PATCH = 3;
+        METHOD_DELETE = 4;
+    }
+	Type type = 2;
+    enum Type {
+        TYPE_UNSPECIFIED = 0;
+        TYPE_HOST = 1;
+        TYPE_SHARD = 2;
+        TYPE_REPLICA = 3;
+        TYPE_SNAPSHOT = 4;
+    }
+    google.protobuf.FieldMask field_mask = 14;
+    google.protobuf.Any data = 15;
+}
+
+message Host {
+    uint64 id = 1;
+    Status status = 2;
+    enum Status {
+        STATUS_UNSPECIFIED = 0;
+        STATUS_NEW = 1;
+        STATUS_ACTIVE = 2;
+        STATUS_MISSING = 3;
+        STATUS_RECOVERING = 4;
+        STATUS_GONE = 5;
+    }
+    string address = 3;
+    repeated string shard_types = 4;
+    bytes meta = 5;
+}
+
+message Shard {
+    uint64 id = 1;
+    Status status = 2;
+    enum Status {
+        STATUS_UNSPECIFIED = 0;
+        STATUS_NEW = 1;
+        STATUS_ACTIVE = 2;
+        STATUS_CLOSED      = 3;
+        STATUS_STARTING    = 4;
+        STATUS_UNAVAILABLE = 5;
+    }
+    string type = 3;
+    uint64 version = 4;
+}
+
+message Replica {
+    uint64 id = 1;
+    Status status = 2;
+    enum Status {
+        STATUS_UNSPECIFIED = 0;
+        STATUS_NEW = 1;
+        STATUS_ACTIVE = 2;
+        STATUS_INACTIVE = 3;
+        STATUS_DONE = 4;
+    }
+    uint64 shard_id = 3;
+    bool is_non_voting = 4;
+    bool is_witness = 5;
+}
+
+message Snapshot {
+    uint64 index = 1;
+    repeated Host hosts = 2;
+    repeated Shard shards = 3;
+    repeated Replica replicas = 4;
+}

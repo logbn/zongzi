@@ -14,8 +14,6 @@ func fsmFactory(agent *agent) dbsm.CreateStateMachineFunc {
 	return dbsm.CreateStateMachineFunc(func(shardID, replicaID uint64) dbsm.IStateMachine {
 		node := &fsm{
 			log:       agent.log,
-			replicaID: replicaID,
-			shardID:   shardID,
 			store:     newFsmStoreMap(),
 		}
 		agent.fsm = node
@@ -26,8 +24,8 @@ func fsmFactory(agent *agent) dbsm.CreateStateMachineFunc {
 type fsm struct {
 	index     uint64
 	log       logger.ILogger
-	replicaID uint64
-	shardID   uint64
+	maxReplicaID uint64
+	maxShardID   uint64
 	store     fsmStore
 }
 
@@ -77,7 +75,8 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 		// Put
 		case cmd_action_put:
 			if cmd.Shard.ID == 0 {
-				cmd.Shard.ID = ent.Index
+				fsm.shardIndex++
+				cmd.Shard.ID = fsm.shardIndex
 			}
 			fsm.store.ShardPut(&cmd.Shard)
 			res.Value = cmd.Shard.ID
@@ -101,8 +100,20 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 		switch cmd.Action {
 		// Put
 		case cmd_action_put:
+			if _, ok := fsm.store.HostFind(cmd.Replica.HostID); !ok {
+				fsm.log.Warningf("%w: %#v", fsmErrHostNotFound, cmd)
+				break
+			}
+			shard, ok := fsm.store.ShardFind(cmd.Replica.ShardID)
+			if !ok {
+				fsm.log.Warningf("%w: %#v", fsmErrShardNotFound, cmd)
+				break
+			}
 			if cmd.Replica.ID == 0 {
-				cmd.Replica.ID = ent.Index
+				shard.replicaIndex++
+				cmd.Replica.ID = shard.replicaIndex
+			} else if cmd.Replica.ID > shard.replicaIndex {
+				shard.replicaIndex = cmd.Replica.ID
 			}
 			if err := fsm.store.ReplicaPut(&cmd.Replica); err != nil {
 				fsm.log.Warningf("%w: %#v", err, cmd)
@@ -126,6 +137,14 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 }
 
 func (fsm *fsm) Lookup(e any) (val any, err error) {
+	if _, ok := e.([]byte); !ok {
+		err = fmt.Errorf(`Invalid query is not a byte slice %#v`, e)
+		return
+	}
+	parts := bytes.Split(e.([]byte), ` `)
+	switch string(parts[0]) {
+	case cmd_query_host:
+		id, err := strconv.Atoi(
 	if query, ok := e.(queryHost); ok {
 		switch query.Action {
 		// Get Host
@@ -145,6 +164,7 @@ func (fsm *fsm) Lookup(e any) (val any, err error) {
 			val = &Snapshot{
 				Hosts:    fsm.store.HostList(),
 				Index:    fsm.index,
+				IdxShard: fsm.idxShard,
 				Replicas: fsm.store.ReplicaList(),
 				Shards:   fsm.store.ShardList(),
 			}
@@ -163,6 +183,8 @@ func (fsm *fsm) SaveSnapshot(w io.Writer, sfc dbsm.ISnapshotFileCollection, stop
 	b, err := json.Marshal(Snapshot{
 		Hosts:    fsm.store.HostList(),
 		Index:    fsm.index,
+		ShardIndex: fsm.shardIndex,
+		ReplicaIndex: fsm.replicaIndex,
 		Replicas: fsm.store.ReplicaList(),
 		Shards:   fsm.store.ShardList(),
 	})
@@ -189,6 +211,8 @@ func (fsm *fsm) RecoverFromSnapshot(r io.Reader, sfc []dbsm.SnapshotFile, stopc 
 		fsm.store.ReplicaPut(replica)
 	}
 	fsm.index = data.Index
+	fsm.shardIndex = data.ShardIndex
+	fsm.replicaIndex = data.ReplicaIndex
 	return
 }
 

@@ -21,9 +21,9 @@ const (
 )
 
 type (
-	ReadonlyLogReader = dragonboat.ReadonlyLogReader
-	ShardView         = dragonboat.ShardView
-	ShardInfo         = dragonboat.ShardInfo
+	LogReader = dragonboat.ReadonlyLogReader
+	ShardView = dragonboat.ShardView
+	ShardInfo = dragonboat.ShardInfo
 
 	ReplicaConfig = config.Config
 	GossipConfig  = config.GossipConfig
@@ -35,7 +35,7 @@ type (
 	SnapshotInfo   = raftio.SnapshotInfo
 	EntryInfo      = raftio.EntryInfo
 
-	CreateStateMachineFunc  = statemachine.CreateStateMachineFunc
+	SMFactory               = statemachine.CreateStateMachineFunc
 	IStateMachine           = statemachine.IStateMachine
 	Result                  = statemachine.Result
 	Entry                   = statemachine.Entry
@@ -44,22 +44,12 @@ type (
 )
 
 const (
-	INIT               = "INIT"
-	INIT_ERROR         = "INIT_ERROR"
-	INIT_CONFLICT      = "INIT_CONFLICT"
-	INIT_SUCCESS       = "INIT_SUCCESS"
-	INIT_HOST          = "INIT_HOST"
-	INIT_HOST_ERROR    = "INIT_HOST_ERROR"
-	INIT_HOST_SUCCESS  = "INIT_HOST_SUCCESS"
-	INIT_SHARD         = "INIT_SHARD"
-	INIT_SHARD_ERROR   = "INIT_SHARD_ERROR"
-	INIT_SHARD_SUCCESS = "INIT_SHARD_SUCCESS"
-
 	SHARD_JOIN         = "SHARD_JOIN"
 	SHARD_JOIN_SUCCESS = "SHARD_JOIN_SUCCESS"
 	SHARD_JOIN_REFUSED = "SHARD_JOIN_REFUSED"
 	SHARD_JOIN_ERROR   = "SHARD_JOIN_ERROR"
 )
+
 const (
 	PROBE            = "PROBE"
 	PROBE_JOIN       = "PROBE_JOIN"
@@ -155,7 +145,7 @@ func SetLogLevel(level logger.LogLevel) {
 	logger.GetLogger("zongzi").SetLevel(level)
 }
 
-func SetLogLevelSaneDebug() {
+func SetLogLevelDebug() {
 	SetLogLevel(logger.DEBUG)
 	logger.GetLogger("gossip").SetLevel(logger.ERROR)
 	logger.GetLogger("dragonboat").SetLevel(logger.WARNING)

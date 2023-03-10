@@ -15,7 +15,7 @@ type controller struct {
 	mutex     sync.RWMutex
 	leader    bool
 	index     uint64
-	logReader ReadonlyLogReader
+	logReader LogReader
 }
 
 func newController(a *agent) *controller {

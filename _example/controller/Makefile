@@ -8,36 +8,24 @@ clean-data:
 	@rm -rf $(DATA_DIR)/node*
 	@rm -rf $(DATA_DIR)/raft*
 
-SEEDS := 127.0.0.1:10811,127.0.0.1:10821,127.0.0.1:10831
+PEERS := 127.0.0.1:10811,127.0.0.1:10821,127.0.0.1:10831
 
 SECRETS := df9feaeab4102aa677d38c75a64a56da6e069c31a7894d4dc0f05e034c969bb3
 
 test-node-1:
-	@go run *.go -n "test001" -d $(DATA_DIR)/node1 -r 127.0.0.1:10811 -g 127.0.0.1:10812 -p $(SEEDS) -z us-west-1a -s $(SECRETS)
+	@go run *.go -n "test001" -d $(DATA_DIR)/node1 -l 127.0.0.1:10811 -g 127.0.0.1:10812 -r 127.0.0.1:10813 -p $(PEERS) -z us-west-1a -s $(SECRETS)
 
 test-node-2:
-	@go run *.go -n "test001" -d $(DATA_DIR)/node2 -r 127.0.0.1:10821 -g 127.0.0.1:10822 -p $(SEEDS) -z us-west-1b -s $(SECRETS)
+	@go run *.go -n "test001" -d $(DATA_DIR)/node2 -l 127.0.0.1:10821 -g 127.0.0.1:10822 -r 127.0.0.1:10823 -p $(PEERS) -z us-west-1b -s $(SECRETS)
 
 test-node-3:
-	@go run *.go -n "test001" -d $(DATA_DIR)/node3 -r 127.0.0.1:10831 -g 127.0.0.1:10832 -p $(SEEDS) -z us-west-1c -s $(SECRETS)
+	@go run *.go -n "test001" -d $(DATA_DIR)/node3 -l 127.0.0.1:10831 -g 127.0.0.1:10832 -r 127.0.0.1:10833 -p $(PEERS) -z us-west-1c -s $(SECRETS)
 
 test-node-4:
-	@go run *.go -n "test001" -d $(DATA_DIR)/node4 -r 127.0.0.1:10841 -g 127.0.0.1:10842 -p $(SEEDS) -z us-west-1a -s $(SECRETS)
+	@go run *.go -n "test001" -d $(DATA_DIR)/node4 -l 127.0.0.1:10841 -g 127.0.0.1:10842 -r 127.0.0.1:10843 -p $(PEERS) -z us-west-1a -s $(SECRETS)
 
 test-node-5:
-	@go run *.go -n "test001" -d $(DATA_DIR)/node4 -r 127.0.0.1:10851 -g 127.0.0.1:10852 -p $(SEEDS) -z us-west-1b -s $(SECRETS)
+	@go run *.go -n "test001" -d $(DATA_DIR)/node5 -l 127.0.0.1:10851 -g 127.0.0.1:10852 -r 127.0.0.1:10853 -p $(PEERS) -z us-west-1b -s $(SECRETS)
 
 test-node-6:
-	@go run *.go -n "test001" -d $(DATA_DIR)/node4 -r 127.0.0.1:10861 -g 127.0.0.1:10862 -p $(SEEDS) -z us-west-1c -s $(SECRETS)
-
-init-1:
-# @bash -c 'echo "zongzi test001 INIT" > /dev/udp/239.108.0.1/10811'
-	@bash -c 'echo "zongzi test001 7DcCsmVaQmag0piQ0Rh9gplgWuItQslxG1emSucK2i4= INIT" > /dev/udp/127.0.0.1/10811'
-
-init-2:
-# @bash -c 'echo "zongzi test001 INIT" > /dev/udp/239.108.0.1/10821'
-	@bash -c 'echo "zongzi test001 7DcCsmVaQmag0piQ0Rh9gplgWuItQslxG1emSucK2i4= INIT" > /dev/udp/127.0.0.1/10821'
-
-init-3:
-# @bash -c 'echo "zongzi test001 INIT" > /dev/udp/239.108.0.1/10831'
-	@bash -c 'echo "zongzi test001 7DcCsmVaQmag0piQ0Rh9gplgWuItQslxG1emSucK2i4= INIT" > /dev/udp/127.0.0.1/10831'
+	@go run *.go -n "test001" -d $(DATA_DIR)/node6 -l 127.0.0.1:10861 -g 127.0.0.1:10862 -r 127.0.0.1:10863 -p $(PEERS) -z us-west-1c -s $(SECRETS)

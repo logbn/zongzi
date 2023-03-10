@@ -12,9 +12,8 @@ const (
 	cmd_type_shard    = "shard"
 	cmd_type_snapshot = "snapshot"
 
-	cmd_action_del        = "del"
-	cmd_action_put        = "put"
-	cmd_action_set_status = "set-status"
+	cmd_action_del = "del"
+	cmd_action_put = "put"
 
 	query_action_get = "get"
 
