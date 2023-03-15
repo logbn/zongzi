@@ -13,8 +13,8 @@ import (
 func fsmFactory(agent *agent) dbsm.CreateStateMachineFunc {
 	return dbsm.CreateStateMachineFunc(func(shardID, replicaID uint64) dbsm.IStateMachine {
 		node := &fsm{
-			log:       agent.log,
-			store:     newFsmStoreMap(),
+			log:   agent.log,
+			store: newFsmStoreMap(),
 		}
 		agent.fsm = node
 		return node
@@ -22,11 +22,11 @@ func fsmFactory(agent *agent) dbsm.CreateStateMachineFunc {
 }
 
 type fsm struct {
-	index     uint64
-	log       logger.ILogger
+	index        uint64
+	log          logger.ILogger
 	maxReplicaID uint64
 	maxShardID   uint64
-	store     fsmStore
+	store        fsmStore
 }
 
 func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
@@ -137,14 +137,14 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 }
 
 func (fsm *fsm) Lookup(e any) (val any, err error) {
-	if _, ok := e.([]byte); !ok {
-		err = fmt.Errorf(`Invalid query is not a byte slice %#v`, e)
-		return
-	}
-	parts := bytes.Split(e.([]byte), ` `)
-	switch string(parts[0]) {
-	case cmd_query_host:
-		id, err := strconv.Atoi(
+	// if _, ok := e.([]byte); !ok {
+	// 	err = fmt.Errorf(`Invalid query is not a byte slice %#v`, e)
+	// 	return
+	// }
+	// parts := bytes.Split(e.([]byte), ` `)
+	// switch string(parts[0]) {
+	// case cmd_query_host:
+	// id, err := strconv.Atoi(
 	if query, ok := e.(queryHost); ok {
 		switch query.Action {
 		// Get Host
@@ -181,12 +181,12 @@ func (fsm *fsm) Lookup(e any) (val any, err error) {
 // TODO - Switch to jsonl
 func (fsm *fsm) SaveSnapshot(w io.Writer, sfc dbsm.ISnapshotFileCollection, stopc <-chan struct{}) (err error) {
 	b, err := json.Marshal(Snapshot{
-		Hosts:    fsm.store.HostList(),
-		Index:    fsm.index,
-		ShardIndex: fsm.shardIndex,
+		Hosts:        fsm.store.HostList(),
+		Index:        fsm.index,
+		ShardIndex:   fsm.shardIndex,
 		ReplicaIndex: fsm.replicaIndex,
-		Replicas: fsm.store.ReplicaList(),
-		Shards:   fsm.store.ShardList(),
+		Replicas:     fsm.store.ReplicaList(),
+		Shards:       fsm.store.ShardList(),
 	})
 	if err == nil {
 		_, err = io.Copy(w, bytes.NewReader(b))

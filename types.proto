@@ -3,9 +3,9 @@ syntax = "proto3";
 import "google/protobuf/any.proto";
 import "google/protobuf/field_mask.proto";
 
-option go_package = "github.com/logbn/zongzi/pb";
+option go_package = "github.com/logbn/zongzi";
 
-message CMD {
+message cmd {
 	Method method = 1;
     enum Method {
         METHOD_UNSPECIFIED = 0;
@@ -30,12 +30,12 @@ message Host {
     uint64 id = 1;
     Status status = 2;
     enum Status {
-        STATUS_UNSPECIFIED = 0;
-        STATUS_NEW = 1;
-        STATUS_ACTIVE = 2;
-        STATUS_MISSING = 3;
-        STATUS_RECOVERING = 4;
-        STATUS_GONE = 5;
+        Status_UNSPECIFIED = 0;
+        Status_NEW = 1;
+        Status_ACTIVE = 2;
+        Status_MISSING = 3;
+        Status_RECOVERING = 4;
+        Status_GONE = 5;
     }
     string address = 3;
     repeated string shard_types = 4;
@@ -46,12 +46,12 @@ message Shard {
     uint64 id = 1;
     Status status = 2;
     enum Status {
-        STATUS_UNSPECIFIED = 0;
-        STATUS_NEW = 1;
-        STATUS_ACTIVE = 2;
-        STATUS_CLOSED      = 3;
-        STATUS_STARTING    = 4;
-        STATUS_UNAVAILABLE = 5;
+        Status_UNSPECIFIED = 0;
+        Status_NEW = 1;
+        Status_ACTIVE = 2;
+        Status_CLOSED      = 3;
+        Status_STARTING    = 4;
+        Status_UNAVAILABLE = 5;
     }
     string type = 3;
     uint64 version = 4;
@@ -61,11 +61,11 @@ message Replica {
     uint64 id = 1;
     Status status = 2;
     enum Status {
-        STATUS_UNSPECIFIED = 0;
-        STATUS_NEW = 1;
-        STATUS_ACTIVE = 2;
-        STATUS_INACTIVE = 3;
-        STATUS_DONE = 4;
+        Status_UNSPECIFIED = 0;
+        Status_NEW = 1;
+        Status_ACTIVE = 2;
+        Status_INACTIVE = 3;
+        Status_DONE = 4;
     }
     uint64 shard_id = 3;
     bool is_non_voting = 4;

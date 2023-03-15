@@ -75,13 +75,11 @@ type shardType struct {
 	Config  ReplicaConfig
 }
 
-_ := (&agent{}).(Agent)
-
 func NewAgent(cfg AgentConfig) (a *agent, err error) {
 	if cfg.ReplicaConfig.ElectionRTT == 0 {
 		cfg.ReplicaConfig = DefaultReplicaConfig
 	}
-	cfg.ReplicaConfig.ShardID = 0 
+	cfg.ReplicaConfig.ShardID = 0
 	cfg.HostConfig.DeploymentID, err = base36Decode(cfg.ClusterName)
 	if err != nil {
 		return nil, err
@@ -623,9 +621,9 @@ func (a *agent) CreateShard(shardTypeName string) (shard *Shard, err error) {
 		return
 	}
 	return &pb.Shard{
-		ID:       res.Value,
-		Type:     shardTypeName,
-		Status:   pb.Shard_STATUS_NEW,
+		ID:     res.Value,
+		Type:   shardTypeName,
+		Status: pb.Shard_STATUS_NEW,
 	}, nil
 }
 

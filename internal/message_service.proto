@@ -7,11 +7,11 @@ service MessageService {
 	// Propose provides unary request/response command forwarding
 	rpc Propose(Request) returns (Response) {}
 
-	// Stream provides streaming proposal forwarding
-	rpc Stream(stream Request) returns (stream Response) {}
-
 	// Query provides unary request/response query forwarding
 	rpc Query(Request) returns (Response) {}
+
+	// Stream provides streaming proposal forwarding
+	rpc Stream(stream Request) returns (stream Response) {}
 
 	// Watch provides streaming query response forwarding
 	rpc Watch(Request) returns (stream Response) {}

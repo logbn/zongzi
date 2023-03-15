@@ -9,4 +9,6 @@ cover:
 	@go tool cover -html=_dist/coverage.out -o _dist/coverage.html
 
 gen:
-	@ protoc pb/*.proto --go_out=pb --go_opt=paths=source_relative -I pb
+	@ protoc *.proto --go_out=. --go_opt=paths=source_relative -I .
+	@ protoc internal/*.proto --go_out=internal --go_opt=paths=source_relative \
+		--go-grpc_out=internal --go-grpc_opt=paths=source_relative -I internal

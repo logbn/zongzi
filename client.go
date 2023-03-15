@@ -1,4 +1,4 @@
-package udp
+package zongzi
 
 import (
 	"context"
@@ -39,12 +39,13 @@ func NewClient(log logger.ILogger, listenAddr, clusterName string, secrets []str
 	}
 }
 
-func (c *client) Propose(ctx context.Context, replicaID uint64, cmd []byte, linear bool) (value uint64, data []byte, err error) {
-	addrs, err := c.getAddrs(replicaID, true)
+func (c *client) Propose(ctx context.Context, shardID, replicaID uint64, cmd []byte, linear bool) (value uint64, data []byte, err error) {
+	addrs, err := c.getAddrs(shardID, replicaID, true)
 	if err != nil {
 		return
 	}
-	res, err := c.service(addr).Propose(ctx, &internal.ProposeRequest{
+	res, err := c.service(addr).Propose(ctx, &internal.Request{
+		ShardID:   shardID,
 		ReplicaID: replicaID,
 		Linear:    linear,
 		Data:      cmd,
@@ -57,12 +58,13 @@ func (c *client) Propose(ctx context.Context, replicaID uint64, cmd []byte, line
 	return
 }
 
-func (c *client) Query(ctx context.Context, replicaID uint64, query []byte, linear bool) (value uint64, data []byte, err error) {
-	addrs, err := c.getAddrs(replicaID, true)
+func (c *client) Query(ctx context.Context, shardID, replicaID uint64, query []byte, linear bool) (value uint64, data []byte, err error) {
+	addrs, err := c.getAddrs(shardID, replicaID, true)
 	if err != nil {
 		return
 	}
-	res, err := c.service(addr).Query(ctx, &internal.QueryRequest{
+	res, err := c.service(addr).Query(ctx, &internal.Request{
+		ShardID:   shardID,
 		ReplicaID: replicaID,
 		Linear:    linear,
 		Data:      query,
