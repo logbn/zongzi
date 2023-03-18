@@ -141,14 +141,6 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 }
 
 func (fsm *fsm) Lookup(e any) (val any, err error) {
-	// if _, ok := e.([]byte); !ok {
-	// 	err = fmt.Errorf(`Invalid query is not a byte slice %#v`, e)
-	// 	return
-	// }
-	// parts := bytes.Split(e.([]byte), ` `)
-	// switch string(parts[0]) {
-	// case cmd_query_host:
-	// id, err := strconv.Atoi(
 	if query, ok := e.(queryHost); ok {
 		switch query.Action {
 		// Get Host
@@ -160,6 +152,18 @@ func (fsm *fsm) Lookup(e any) (val any, err error) {
 			}
 		default:
 			err = fmt.Errorf("Unrecognized host query %s", query.Action)
+		}
+	} else if query, ok := e.(queryReplica); ok {
+		switch query.Action {
+		// Get Replica
+		case query_action_get:
+			if replica := fsm.store.ReplicaFind(query.Replica.ID); replica != nil {
+				val = replica
+			} else {
+				fsm.log.Warningf("Replica not found %#v", e)
+			}
+		default:
+			err = fmt.Errorf("Unrecognized replica query %s", query.Action)
 		}
 	} else if query, ok := e.(querySnapshot); ok {
 		switch query.Action {

@@ -64,12 +64,3 @@ func TestClient(t *testing.T) {
 		})
 	})
 }
-
-type nullLogger struct{}
-
-func (nullLogger) SetLevel(logger.LogLevel)                    {}
-func (nullLogger) Debugf(format string, args ...interface{})   {}
-func (nullLogger) Infof(format string, args ...interface{})    {}
-func (nullLogger) Warningf(format string, args ...interface{}) {}
-func (nullLogger) Errorf(format string, args ...interface{})   {}
-func (nullLogger) Panicf(format string, args ...interface{})   {}

@@ -53,7 +53,7 @@ message JoinRequest {
 	uint64 index = 1;
 	uint64 replica_id = 2;
 	string host_id = 3;
-	bool voting = 4;
+	bool is_non_voting = 4;
 }
 message JoinResponse {
     uint64 value = 1;
@@ -61,12 +61,11 @@ message JoinResponse {
 }
 
 message Request {
-    uint64 replica_id = 1;
+    uint64 shard_id = 1;
 	bool linear = 2;
     bytes data = 15;
 }
 message Response {
     uint64 value = 1;
-    string error = 2;
     bytes data = 15;
 }

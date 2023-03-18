@@ -5,11 +5,10 @@ go 1.19
 require (
 	github.com/benbjohnson/clock v1.3.0
 	github.com/elliotchance/orderedmap/v2 v2.2.0
-	github.com/golang/protobuf v1.5.2
+	github.com/hashicorp/golang-lru/v2 v2.0.2
 	github.com/lni/dragonboat/v4 v4.0.0-20220830122730-42573c0b37fc
 	github.com/martinlindhe/base36 v1.1.1
 	github.com/stretchr/testify v1.7.1
-	google.golang.org/genproto v0.0.0-20210624195500-8bfb893ecb84
 	google.golang.org/grpc v1.38.0
 	google.golang.org/protobuf v1.26.0
 )
@@ -26,6 +25,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/getsentry/sentry-go v0.12.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/btree v0.0.0-20180813153112-4030bb1f1f0c // indirect
 	github.com/google/uuid v1.3.0 // indirect
@@ -54,5 +54,6 @@ require (
 	golang.org/x/net v0.0.0-20211008194852-3b03d305991f // indirect
 	golang.org/x/sys v0.0.0-20220209214540-3681064d5158 // indirect
 	golang.org/x/text v0.3.7 // indirect
+	google.golang.org/genproto v0.0.0-20210624195500-8bfb893ecb84 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )

@@ -35,42 +35,40 @@ type Config struct {
 type Agent interface {
 	CreateReplica(shardID uint64, nodeHostID string, isNonVoting bool) (*Replica, error)
 	CreateShard(shardTypeName string) (shard *Shard, err error)
+	FindReplica(replicaID uint64) (*Replica, error)
 	GetClient() Client
 	GetClusterName() string
 	GetHost() *dragonboat.NodeHost
-	GetHostConfig() HostConfig
 	GetHostID() string
-	GetPrimeConfig() ReplicaConfig
 	GetSnapshot(index uint64) (*Snapshot, error)
 	GetSnapshotJson() ([]byte, error)
 	GetStatus() AgentStatus
-	FindReplica(shardID, replicaID uint64) (*Replica, error)
 	RegisterStateMachine(name string, fn SMFactory, cfg *ReplicaConfig)
 	Start() error
 	Stop()
 }
 
 type agent struct {
-	apiConfig   ApiConfig
-	clock       clock.Clock
-	clusterName string
-	controller  *controller
-	ctx         context.Context
-	ctxCancel   context.CancelFunc
-	fsm         *fsm
-	grpcClient  *grpcClient
-	grpcServer  *grpcServer
-	host        *dragonboat.NodeHost
-	hostConfig  HostConfig
-	hostFS      fs.FS
-	log         logger.ILogger
-	members     map[uint64]string
-	mutex       sync.RWMutex
-	peers       []string
-	primeConfig ReplicaConfig
-	shardTypes  map[string]shardType
-	status      AgentStatus
-	wg          sync.WaitGroup
+	apiConfig      ApiConfig
+	clock          clock.Clock
+	clusterName    string
+	controller     *controller
+	ctx            context.Context
+	ctxCancel      context.CancelFunc
+	fsm            *fsm
+	grpcClientPool *grpcClientPool
+	grpcServer     *grpcServer
+	host           *dragonboat.NodeHost
+	hostConfig     HostConfig
+	hostFS         fs.FS
+	log            logger.ILogger
+	members        map[uint64]string
+	mutex          sync.RWMutex
+	peers          []string
+	primeConfig    ReplicaConfig
+	shardTypes     map[string]shardType
+	status         AgentStatus
+	wg             sync.WaitGroup
 }
 
 type shardType struct {
@@ -89,23 +87,26 @@ func NewAgent(cfg AgentConfig) (a *agent, err error) {
 	}
 	log := logger.GetLogger(magicPrefix)
 	a = &agent{
-		apiConfig:   cfg.ApiConfig,
-		clock:       clock.New(),
-		clusterName: cfg.ClusterName,
-		hostConfig:  cfg.HostConfig,
-		hostFS:      os.DirFS(cfg.HostConfig.NodeHostDir),
-		log:         log,
-		peers:       cfg.Peers,
-		primeConfig: cfg.ReplicaConfig,
-		shardTypes:  map[string]shardType{},
-		status:      AgentStatus_Pending,
+		apiConfig:      cfg.Api,
+		clock:          clock.New(),
+		clusterName:    cfg.ClusterName,
+		grpcClientPool: newGrpcClientPool(cfg.Secrets, 1e4),
+		grpcServer:     newGrpcServer(cfg.BindAddress, cfg.Secrets),
+		hostConfig:     cfg.Host,
+		hostFS:         os.DirFS(cfg.HostConfig.NodeHostDir),
+		log:            log,
+		peers:          cfg.Peers,
+		primeConfig:    cfg.ReplicaConfig,
+		shardTypes:     map[string]shardType{},
+		status:         AgentStatus_Pending,
 	}
 	sort.Strings(a.peers)
 	a.controller = newController(a)
-	a.grpcClient = newGrpcClient(a, 1e4)
-	a.grpcServer = newGrpcServer(a, cfg.BindAddress, cfg.Secrets)
 	a.hostConfig.AddressByNodeHostID = true
-	a.hostConfig.Gossip.Meta = append([]byte(a.hostConfig.RaftAddress+`|`), a.hostConfig.Gossip.Meta...)
+	a.hostConfig.Gossip.Meta = bytes.Join([][]byte{
+		[]byte(cfg.Api.AdvertiseAddress),
+		a.hostConfig.Gossip.Meta,
+	}, `|`)
 	a.hostConfig.RaftEventListener = newCompositeRaftEventListener(a.controller, a.hostConfig.RaftEventListener)
 	return a, nil
 }
@@ -147,7 +148,7 @@ func (a *agent) Start() (err error) {
 			break
 		}
 	}
-	a.primeConfig.IsNonVoting = !sliceContains(a.peers, a.hostConfig.RaftAddress)
+	a.primeConfig.IsNonVoting = !sliceContains(a.peers, a.apiConfig.AdvertiseAddress)
 	a.members, err = a.findMembers()
 	if err != nil {
 		return
@@ -189,34 +190,25 @@ func (a *agent) Start() (err error) {
 				for _, nhid := range shardView.Nodes {
 					sv, _ := reg.GetShardInfo(a.primeConfig.ShardID)
 					index = sv.ConfigChangeIndex
-					raftAddr, _, err = a.parseMeta(nhid)
+					apiAddr, _, err = a.parseMeta(nhid)
 					if err != nil {
 						a.log.Warningf(err.Error())
 						continue
 					}
-					voting := "true"
-					if len(shardView.Nodes) > minReplicas {
-						voting = "false"
-					}
-					indexStr := fmt.Sprintf("%d", index)
-					res, args, err = a.client.Send(joinTimeout, raftAddr, SHARD_JOIN, a.GetHostID(), indexStr, voting)
+					res, err = a.grpcClientPool.get(apiAddr).Join(&internal.JoinRequest{
+						Index: index,
+						ReplicaID: index,
+						HostID: a.GetHostID(),
+						IsNonVoting: len(shardView.Nodes) >= minReplicas,
+					})
 					if err != nil {
 						continue
 					}
-					if res == SHARD_JOIN_REFUSED {
-						err = fmt.Errorf("Join request refused: %s", args[0])
+					if res.Value < 1 {
+						err = fmt.Errorf("Join request refused: %s", res.Error)
 						return
 					}
-					if res != SHARD_JOIN_SUCCESS || len(args) < 1 {
-						a.log.Warningf("Invalid shard join response from %s: %s (%v)", raftAddr, res, args)
-						continue
-					}
-					i, err = strconv.Atoi(args[0])
-					if err != nil || i < 1 {
-						a.log.Errorf("Invalid replicaID response from %s: %s", raftAddr, args[0])
-						continue
-					}
-					a.primeConfig.ReplicaID = uint64(i)
+					a.primeConfig.ReplicaID = res.Value
 					break
 				}
 				a.log.Warningf("Unable to add replica: %v", err)
@@ -239,16 +231,16 @@ func (a *agent) findGossip() (gossip []string, err error) {
 	defer a.wg.Done()
 	for {
 		gossip = gossip[:0]
-		for _, peerRaftAddr := range a.peers {
-			if peerRaftAddr == a.hostConfig.RaftAddress {
+		for _, peerApiAddr := range a.peers {
+			if peerApiAddr == a.apiConfig.AdvertiseAddress {
 				gossip = append(gossip, a.hostConfig.Gossip.AdvertiseAddress)
 				continue
 			}
-			res, err := a.grpcClient.get(peerRaftAddr).Probe(raftCtx(), nil)
+			res, err := a.grpcClientPool.get(peerApiAddr).Probe(raftCtx(), nil)
 			if err == nil && res != nil {
 				gossip = append(gossip, res.GossipAdvertiseAddress)
 			} else {
-				a.log.Warningf("No probe resp for %s %s %+v %v", peerRaftAddr, res, args, err)
+				a.log.Warningf("No probe response for %s %s %+v %v", peerApiAddr, res, args, err)
 			}
 		}
 		a.log.Infof("Found %d of %d peers %+v", len(gossip), len(a.peers), gossip)
@@ -270,38 +262,30 @@ func (a *agent) findGossip() (gossip []string, err error) {
 func (a *agent) findMembers() (members map[uint64]string, err error) {
 	a.wg.Add(1)
 	defer a.wg.Done()
-	var res string
+	var res *internal.InfoResponse
 	var args []string
 	var replicaID int
 	var uninitialized map[string]string
 	for {
 		uninitialized = map[string]string{}
 		members = map[uint64]string{}
-		for _, raftAddr := range a.peers {
-			if raftAddr == a.hostConfig.RaftAddress && a.GetHostID() != "" {
+		for _, apiAddr := range a.peers {
+			if apiAddr == a.apiConfig.AdvertiseAddress && a.GetHostID() != "" {
 				if a.primeConfig.ReplicaID > 0 {
 					members[a.primeConfig.ReplicaID] = a.GetHostID()
 				} else {
-					uninitialized[raftAddr] = a.GetHostID()
+					uninitialized[apiAddr] = a.GetHostID()
 				}
 				continue
 			}
-			res, args, err = a.client.Send(time.Second, raftAddr, SHARD_INFO)
+			res, err = a.grpcClientPool.get(apiAddr).Info(raftCtx(), nil)
 			if err != nil {
 				return
 			}
-			if res == SHARD_INFO_RESPONSE && len(args) == 2 {
-				replicaID, err = strconv.Atoi(args[0])
-				if err != nil {
-					err = fmt.Errorf("Invalid replicaID: %w, %+v", err, args)
-					return
-				}
-				hostID := args[1]
-				if args[0] == "0" {
-					uninitialized[raftAddr] = hostID
-				} else {
-					members[uint64(replicaID)] = hostID
-				}
+			if res.ReplicaID == 0 {
+				uninitialized[apiAddr] = res.HostID
+			} else {
+				members[res.ReplicaID] = res.HostID
 			}
 		}
 		a.log.Infof("Found %d of %d peers (%d uninitialized)", len(members), len(a.peers), len(uninitialized))
@@ -311,10 +295,10 @@ func (a *agent) findMembers() (members map[uint64]string, err error) {
 		}
 		// All peers unintialized. Init.
 		if len(uninitialized) == len(a.peers) {
-			for i, raftAddr := range a.peers {
+			for i, apiAddr := range a.peers {
 				replicaID := uint64(i + 1)
-				members[replicaID] = uninitialized[raftAddr]
-				if raftAddr == a.hostConfig.RaftAddress {
+				members[replicaID] = uninitialized[apiAddr]
+				if apiAddr == a.apiConfig.AdvertiseAddress {
 					a.primeConfig.ReplicaID = replicaID
 				}
 			}
@@ -324,26 +308,16 @@ func (a *agent) findMembers() (members map[uint64]string, err error) {
 		}
 		// Some peers initialized. Resolve.
 		if len(members)+len(uninitialized) == len(a.peers) {
-			for _, raftAddr := range a.peers {
-				if raftAddr == a.hostConfig.RaftAddress {
+			for _, apiAddr := range a.peers {
+				if apiAddr == a.apiConfig.AdvertiseAddress {
 					continue
 				}
-				if _, ok := uninitialized[raftAddr]; !ok {
-					res, args, err = a.client.Send(time.Second, raftAddr, SHARD_MEMBERS)
+				if _, ok := uninitialized[apiAddr]; !ok {
+					res, err = a.grpcClientPool.get(apiAddr).Members(raftCtx(), nil)
 					if err != nil {
-						a.log.Errorf(`Error sending SHARD_MEMBERS: %v`, err)
 						return
 					}
-					if res != SHARD_MEMBERS_RESPONSE || len(args) != 1 {
-						a.log.Warningf(`Invalid response for SHARD_MEMBERS: %s, %+v`, res, args)
-						continue
-					}
-					err = json.Unmarshal([]byte(args[0]), &members)
-					if err != nil {
-						a.log.Warningf(`Unable to deserialized SHARD_MEMBERS: %s`, args[0])
-						continue
-					}
-					for replicaID, hostID := range members {
+					for replicaID, hostID := range res.Members {
 						if hostID == a.host.ID() {
 							a.primeConfig.ReplicaID = replicaID
 							break
@@ -393,9 +367,9 @@ func (a *agent) startReplica(members map[uint64]string) (err error) {
 		req.Release()
 		break
 	}
-	a.log.Debugf(`Updating host %s %s %s`, nhid, raftAddr, string(meta))
+	a.log.Debugf(`Updating host %s %s %s`, nhid, apiAddr, string(meta))
 	sess := a.host.GetNoOPSession(a.primeConfig.ShardID)
-	cmd := newCmdHostPut(nhid, raftAddr, meta, HostStatus_Active, keys(a.shardTypes))
+	cmd := newCmdHostPut(nhid, apiAddr, meta, HostStatus_Active, keys(a.shardTypes))
 	_, err = a.host.SyncPropose(raftCtx(), sess, cmd)
 	if err != nil {
 		return
@@ -442,6 +416,17 @@ func (a *agent) addReplica(nhid string) (replicaID uint64, err error) {
 		return
 	}
 	return
+}
+
+func (a *agent) FindReplica(id uint64) (replica *Replica, err error) {
+	res, err := a.host.SyncRead(raftCtx(), a.primeConfig.ShardID, newQueryReplicaGet(id))
+	if res != nil {
+		replica = res.(*Replica)
+	}
+	return
+}
+
+func (a *agent) query(ctx context.Context, shardID uint64, data []byte, linear bool) (res *internal.Response, err error) {
 }
 
 func (a *agent) parseMeta(nhid string) (apiAddr, raftAddr string, meta []byte, err error) {
@@ -596,22 +581,10 @@ func (a *agent) GetHostID() (res string) {
 	return
 }
 
-func (a *agent) GetHostConfig() HostConfig {
-	return a.hostConfig
-}
-
-func (a *agent) GetPrimeConfig() ReplicaConfig {
-	return a.primeConfig
-}
-
-func (a *agent) GetMembers() map[uint64]string {
-	return a.members
-}
-
 func (a *agent) Stop() {
 	a.ctxCancel()
 	a.wg.Wait()
 	a.stopReplica(a.primeConfig)
-	a.grpcClient.Stop()
+	a.grpcClientPool.Close()
 	a.log.Infof("Agent stopped.")
 }

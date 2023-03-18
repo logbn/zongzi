@@ -41,6 +41,7 @@ func main() {
 				Meta:             meta,
 			},
 			NodeHostDir:       *dataDir + "/raft",
+			NotifyCommit:      true,
 			RaftAddress:       *raftAddr,
 			RaftEventListener: ctrl,
 			RTTMillisecond:    100,

@@ -2,6 +2,7 @@ package zongzi
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -35,39 +36,35 @@ type (
 	NodeInfo       = raftio.NodeInfo
 	SnapshotInfo   = raftio.SnapshotInfo
 
-	Entry                   = statemachine.Entry
-	ISnapshotFileCollection = statemachine.ISnapshotFileCollection
-	IStateMachine           = statemachine.IStateMachine
-	Result                  = statemachine.Result
-	SMFactory               = statemachine.CreateStateMachineFunc
-	SnapshotFile            = statemachine.SnapshotFile
+	Entry  = statemachine.Entry
+	Result = statemachine.Result
 )
 
-const (
-	SHARD_JOIN         = "SHARD_JOIN"
-	SHARD_JOIN_SUCCESS = "SHARD_JOIN_SUCCESS"
-	SHARD_JOIN_REFUSED = "SHARD_JOIN_REFUSED"
-	SHARD_JOIN_ERROR   = "SHARD_JOIN_ERROR"
+type Watch struct {
+	ctx        context.Context
+	query      Entry
+	resultChan chan Result
+}
+
+var (
+	ErrAborted       = dragonboat.ErrAborted
+	ErrCanceled      = dragonboat.ErrCanceled
+	ErrRejected      = dragonboat.ErrRejected
+	ErrShardClosed   = dragonboat.ErrShardClosed
+	ErrShardNotReady = dragonboat.ErrShardNotReady
+	ErrTimeout       = dragonboat.ErrTimeout
 )
 
-const (
-	PROBE            = "PROBE"
-	PROBE_JOIN       = "PROBE_JOIN"
-	PROBE_JOIN_HOST  = "PROBE_JOIN_HOST"
-	PROBE_JOIN_SHARD = "PROBE_JOIN_SHARD"
-	PROBE_JOIN_ERROR = "PROBE_JOIN_ERROR"
-	PROBE_RESPONSE   = "PROBE_RESPONSE"
+var (
+	ErrReplicaNotFound   = fmt.Errorf("Replica not found")
+	ErrReplicaNotActive  = fmt.Errorf("Replica not active")
+	ErrReplicaNotAllowed = fmt.Errorf("Replica not allowed")
 
-	PROBE_REJOIN      = "PROBE_REJOIN"
-	PROBE_REJOIN_PEER = "PROBE_REJOIN_PEER"
+	ErrAgentNotReady = fmt.Errorf("Agent not ready")
 
-	SHARD_INFO             = "SHARD_INFO"
-	SHARD_INFO_RESPONSE    = "SHARD_INFO_RESPONSE"
-	SHARD_MEMBERS          = "SHARD_MEMBERS"
-	SHARD_MEMBERS_RESPONSE = "SHARD_MEMBERS_RESPONSE"
-
-	PROPOSE_INIT         = "PROPOSE_INIT"
-	PROPOSE_INIT_SUCCESS = "PROPOSE_INIT_SUCCESS"
+	// ErrNotifyCommitDisabled is logged when non-linearizable writes are requested but disabled.
+	// Set property `NotifyCommit` to `true` in `HostConfig` to add support for non-linearizable writes.
+	ErrNotifyCommitDisabled = fmt.Errorf("Attempting to make non-linearizable write while NotifyCommit is disabled")
 )
 
 type (
@@ -130,9 +127,13 @@ func base36Encode(id uint64) string {
 	return base36.Encode(id)
 }
 
-func raftCtx() context.Context {
-	ctx, _ := context.WithTimeout(context.Background(), raftTimeout)
-	return ctx
+func raftCtx(ctxs ...context.Context) (ctx context.Context) {
+	ctx = context.Background()
+	if len(ctxs) > 0 {
+		ctx = ctxs[0]
+	}
+	ctx, _ = context.WithTimeout(ctx, raftTimeout)
+	return
 }
 
 func SetLogLevel(level logger.LogLevel) {

@@ -166,6 +166,11 @@ type queryHost struct {
 	Host Host `json:"host"`
 }
 
+type queryReplica struct {
+	query
+	Replica Replica `json:"replica"`
+}
+
 type querySnapshot struct {
 	query
 }
@@ -183,5 +188,14 @@ func newQuerySnapshotGet() querySnapshot {
 	return querySnapshot{query{
 		Type:   cmd_type_snapshot,
 		Action: query_action_get,
+	}}
+}
+
+func newQueryReplicaGet(id uint64) queryReplica {
+	return queryReplica{query{
+		Type:   cmd_type_replica,
+		Action: query_action_get,
+	}, Replica{
+		ID: id,
 	}}
 }
