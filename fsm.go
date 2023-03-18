@@ -24,8 +24,8 @@ func fsmFactory(agent *agent) dbsm.CreateStateMachineFunc {
 type fsm struct {
 	index        uint64
 	log          logger.ILogger
-	maxReplicaID uint64
-	maxShardID   uint64
+	replicaIndex uint64
+	shardIndex   uint64
 	store        fsmStore
 }
 
@@ -77,6 +77,9 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 			if cmd.Shard.ID == 0 {
 				fsm.shardIndex++
 				cmd.Shard.ID = fsm.shardIndex
+			} else if cmd.Shard.ID > fsm.shardIndex {
+				fsm.log.Warningf("%w: %#v", fsmErrIDOutOfRange, cmd)
+				break
 			}
 			fsm.store.ShardPut(&cmd.Shard)
 			res.Value = cmd.Shard.ID
@@ -110,10 +113,11 @@ func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
 				break
 			}
 			if cmd.Replica.ID == 0 {
-				shard.replicaIndex++
+				fsm.replicaIndex++
 				cmd.Replica.ID = shard.replicaIndex
-			} else if cmd.Replica.ID > shard.replicaIndex {
-				shard.replicaIndex = cmd.Replica.ID
+			} else if cmd.Replica.ID > fsm.replicaIndex {
+				fsm.log.Warningf("%w: %#v", fsmErrIDOutOfRange, cmd)
+				break
 			}
 			if err := fsm.store.ReplicaPut(&cmd.Replica); err != nil {
 				fsm.log.Warningf("%w: %#v", err, cmd)

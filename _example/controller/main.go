@@ -26,13 +26,15 @@ var (
 func main() {
 	flag.Parse()
 	zongzi.SetLogLevelDebug()
-	meta, _ := json.Marshal(map[string]any{"zone": *zone})
 	ctrl := newController()
-	agent, err := zongzi.NewAgent(zongzi.AgentConfig{
-		AdvertiseAddress: *listenAddr,
-		BindAddress:      fmt.Sprintf("0.0.0.0:%s", strings.Split(*listenAddr, ":")[1]),
-		ClusterName:      *name,
-		HostConfig: zongzi.HostConfig{
+	meta, _ := json.Marshal(map[string]any{"zone": *zone})
+	agent, err := zongzi.NewAgent(zongzi.Config{
+		Api: zongzi.ApiConfig{
+			AdvertiseAddress: *listenAddr,
+			BindAddress:      fmt.Sprintf("0.0.0.0:%s", strings.Split(*listenAddr, ":")[1]),
+		},
+		ClusterName: *name,
+		Host: zongzi.HostConfig{
 			Gossip: zongzi.GossipConfig{
 				AdvertiseAddress: *gossipAddr,
 				BindAddress:      fmt.Sprintf("0.0.0.0:%s", strings.Split(*gossipAddr, ":")[1]),

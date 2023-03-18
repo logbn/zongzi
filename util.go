@@ -25,21 +25,21 @@ type (
 	ShardView = dragonboat.ShardView
 	ShardInfo = dragonboat.ShardInfo
 
-	ReplicaConfig = config.Config
 	GossipConfig  = config.GossipConfig
 	HostConfig    = config.NodeHostConfig
+	ReplicaConfig = config.Config
 
+	ConnectionInfo = raftio.ConnectionInfo
+	EntryInfo      = raftio.EntryInfo
 	LeaderInfo     = raftio.LeaderInfo
 	NodeInfo       = raftio.NodeInfo
-	ConnectionInfo = raftio.ConnectionInfo
 	SnapshotInfo   = raftio.SnapshotInfo
-	EntryInfo      = raftio.EntryInfo
 
-	SMFactory               = statemachine.CreateStateMachineFunc
-	IStateMachine           = statemachine.IStateMachine
-	Result                  = statemachine.Result
 	Entry                   = statemachine.Entry
 	ISnapshotFileCollection = statemachine.ISnapshotFileCollection
+	IStateMachine           = statemachine.IStateMachine
+	Result                  = statemachine.Result
+	SMFactory               = statemachine.CreateStateMachineFunc
 	SnapshotFile            = statemachine.SnapshotFile
 )
 
@@ -104,6 +104,7 @@ const (
 )
 
 var DefaultReplicaConfig = ReplicaConfig{
+	ShardID:             0,
 	CheckQuorum:         true,
 	CompactionOverhead:  1000,
 	ElectionRTT:         10,
@@ -172,4 +173,21 @@ func (c *compositeRaftEventListener) LeaderUpdated(info LeaderInfo) {
 func parseUint64(s string) (uint64, error) {
 	i, err := strconv.Atoi(s)
 	return uint64(i), err
+}
+
+func keys[K comparable, V any](m map[K]V) []K {
+	r := make([]K, 0, len(m))
+	for k := range m {
+		r = append(r, k)
+	}
+	return r
+}
+
+func sliceContains[T comparable](slice []T, value T) bool {
+	for _, item := range slice {
+		if item == value {
+			return true
+		}
+	}
+	return false
 }

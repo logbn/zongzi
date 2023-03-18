@@ -37,9 +37,10 @@ message Host {
         Status_RECOVERING = 4;
         Status_GONE = 5;
     }
-    string address = 3;
-    repeated string shard_types = 4;
-    bytes meta = 5;
+    repeated string shard_types = 3;
+    string api_address = 4;
+    string raft_address = 5;
+    bytes meta = 15;
 }
 
 message Shard {

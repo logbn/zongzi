@@ -16,58 +16,61 @@ import (
 	"github.com/benbjohnson/clock"
 	"github.com/lni/dragonboat/v4"
 	"github.com/lni/dragonboat/v4/logger"
-
-	"github.com/logbn/zongzi/udp"
-	"github.com/logbn/zongzi/util"
 )
 
-type AgentConfig struct {
+type ApiConfig struct {
+	AdvertiseAddress string
+	BindAddress      string
+}
+
+type Config struct {
+	Api           ApiConfig
 	ClusterName   string
-	HostConfig    HostConfig
-	ListenAddr    string
+	Host          HostConfig
 	Peers         []string
 	ReplicaConfig ReplicaConfig
 	Secrets       []string
 }
 
 type Agent interface {
-	AddUdpHandler(h udp.HandlerFunc)
-	CreateReplica(shardID uint64, nodeHostID string, isNonVoting bool) (id uint64, err error)
+	CreateReplica(shardID uint64, nodeHostID string, isNonVoting bool) (*Replica, error)
 	CreateShard(shardTypeName string) (shard *Shard, err error)
 	GetClient() Client
 	GetClusterName() string
 	GetHost() *dragonboat.NodeHost
 	GetHostConfig() HostConfig
 	GetHostID() string
+	GetPrimeConfig() ReplicaConfig
 	GetSnapshot(index uint64) (*Snapshot, error)
 	GetSnapshotJson() ([]byte, error)
 	GetStatus() AgentStatus
+	FindReplica(shardID, replicaID uint64) (*Replica, error)
 	RegisterStateMachine(name string, fn SMFactory, cfg *ReplicaConfig)
 	Start() error
 	Stop()
 }
 
 type agent struct {
-	client      udp.Client
+	apiConfig   ApiConfig
+	clock       clock.Clock
 	clusterName string
 	controller  *controller
+	ctx         context.Context
+	ctxCancel   context.CancelFunc
+	fsm         *fsm
+	grpcClient  *grpcClient
+	grpcServer  *grpcServer
+	host        *dragonboat.NodeHost
 	hostConfig  HostConfig
+	hostFS      fs.FS
+	log         logger.ILogger
+	members     map[uint64]string
+	mutex       sync.RWMutex
 	peers       []string
 	primeConfig ReplicaConfig
 	shardTypes  map[string]shardType
-	udpHandlers []udp.HandlerFunc
-
-	clock     clock.Clock
-	ctx       context.Context
-	ctxCancel context.CancelFunc
-	fsm       *fsm
-	host      *dragonboat.NodeHost
-	hostFS    fs.FS
-	log       logger.ILogger
-	members   map[uint64]string
-	mutex     sync.RWMutex
-	status    AgentStatus
-	wg        sync.WaitGroup
+	status      AgentStatus
+	wg          sync.WaitGroup
 }
 
 type shardType struct {
@@ -86,19 +89,21 @@ func NewAgent(cfg AgentConfig) (a *agent, err error) {
 	}
 	log := logger.GetLogger(magicPrefix)
 	a = &agent{
-		log:         log,
-		hostConfig:  cfg.HostConfig,
-		primeConfig: cfg.ReplicaConfig,
-		clusterName: cfg.ClusterName,
-		client:      udp.NewClient(log, magicPrefix, cfg.HostConfig.RaftAddress, cfg.ClusterName, cfg.Secrets),
-		hostFS:      os.DirFS(cfg.HostConfig.NodeHostDir),
+		apiConfig:   cfg.ApiConfig,
 		clock:       clock.New(),
+		clusterName: cfg.ClusterName,
+		hostConfig:  cfg.HostConfig,
+		hostFS:      os.DirFS(cfg.HostConfig.NodeHostDir),
+		log:         log,
+		peers:       cfg.Peers,
+		primeConfig: cfg.ReplicaConfig,
 		shardTypes:  map[string]shardType{},
 		status:      AgentStatus_Pending,
-		peers:       cfg.Peers,
 	}
 	sort.Strings(a.peers)
 	a.controller = newController(a)
+	a.grpcClient = newGrpcClient(a, 1e4)
+	a.grpcServer = newGrpcServer(a, cfg.BindAddress, cfg.Secrets)
 	a.hostConfig.AddressByNodeHostID = true
 	a.hostConfig.Gossip.Meta = append([]byte(a.hostConfig.RaftAddress+`|`), a.hostConfig.Gossip.Meta...)
 	a.hostConfig.RaftEventListener = newCompositeRaftEventListener(a.controller, a.hostConfig.RaftEventListener)
@@ -112,16 +117,16 @@ func (a *agent) Start() (err error) {
 		}
 	}()
 	a.ctx, a.ctxCancel = context.WithCancel(context.Background())
+	a.wg.Add(1)
 	go func() {
-		a.wg.Add(1)
 		defer a.wg.Done()
 		for {
-			// gRPC - Start server
-			err := a.client.Listen(a.ctx, udp.HandlerFunc(a.udpHandlefunc))
-			a.log.Errorf("Error reading UDP: %s", err.Error())
+			if err := a.grpcServer.Start(a.ctx); err != nil {
+				a.log.Errorf("Error starting gRPC server: %s", err.Error())
+			}
 			select {
 			case <-a.ctx.Done():
-				a.log.Debugf("Stopped Agent Listener")
+				a.log.Debugf("Stopped gRPC Server")
 				return
 			case <-a.clock.After(time.Second):
 			}
@@ -142,7 +147,7 @@ func (a *agent) Start() (err error) {
 			break
 		}
 	}
-	a.primeConfig.IsNonVoting = !util.SliceContains(a.peers, a.hostConfig.RaftAddress)
+	a.primeConfig.IsNonVoting = !sliceContains(a.peers, a.hostConfig.RaftAddress)
 	a.members, err = a.findMembers()
 	if err != nil {
 		return
@@ -239,9 +244,9 @@ func (a *agent) findGossip() (gossip []string, err error) {
 				gossip = append(gossip, a.hostConfig.Gossip.AdvertiseAddress)
 				continue
 			}
-			res, args, err := a.client.Send(time.Second, peerRaftAddr, PROBE)
-			if err == nil && res == PROBE_RESPONSE && len(args) == 1 {
-				gossip = append(gossip, args[0])
+			res, err := a.grpcClient.get(peerRaftAddr).Probe(raftCtx(), nil)
+			if err == nil && res != nil {
+				gossip = append(gossip, res.GossipAdvertiseAddress)
 			} else {
 				a.log.Warningf("No probe resp for %s %s %+v %v", peerRaftAddr, res, args, err)
 			}
@@ -356,66 +361,6 @@ func (a *agent) findMembers() (members map[uint64]string, err error) {
 	return
 }
 
-func (a *agent) udpHandlefunc(cmd string, args ...string) (res []string, err error) {
-	switch cmd {
-	// GET /-/gossip/address
-	case PROBE:
-		return []string{PROBE_RESPONSE, a.hostConfig.Gossip.AdvertiseAddress}, nil
-
-	// GET /1/info
-	case SHARD_INFO:
-		if a.host == nil {
-			return
-		}
-		return []string{SHARD_INFO_RESPONSE, strconv.Itoa(int(a.primeConfig.ReplicaID)), a.host.ID()}, nil
-
-	// GET /1/members
-	case SHARD_MEMBERS:
-		if a.members == nil {
-			return
-		}
-		b, _ := json.Marshal(a.members)
-		return []string{SHARD_MEMBERS_RESPONSE, string(b)}, nil
-
-	// PUT /1/replicas/{nhid}
-	case SHARD_JOIN:
-		if len(args) != 3 {
-			err = fmt.Errorf("Incorrect arguments in SHARD_JOIN: %#v", args)
-			break
-		}
-		hostID := args[0]
-		indexStr := args[1]
-		index, err := parseUint64(indexStr)
-		if err != nil {
-			res = []string{SHARD_JOIN_ERROR}
-			err = fmt.Errorf("Invalid index in SHARD_JOIN: %v", indexStr)
-			break
-		}
-		voting := args[2] == "true"
-		if voting {
-			err = a.host.SyncRequestAddReplica(raftCtx(), a.primeConfig.ShardID, index, hostID, index)
-		} else {
-			err = a.host.SyncRequestAddNonVoting(raftCtx(), a.primeConfig.ShardID, index, hostID, index)
-		}
-		if err != nil {
-			res = []string{SHARD_JOIN_ERROR}
-			break
-		}
-		res = []string{SHARD_JOIN_SUCCESS, indexStr}
-	default:
-		for _, h := range a.udpHandlers {
-			res, err = h(cmd, args...)
-			if res != nil || err != nil {
-				break
-			}
-		}
-		if res == nil && err == nil {
-			err = fmt.Errorf("Unrecognized command: %s", cmd)
-		}
-	}
-	return
-}
-
 func (a *agent) startReplica(members map[uint64]string) (err error) {
 	a.log.Debugf("Starting Replica %+v", members)
 	err = a.host.StartReplica(members, false, fsmFactory(a), a.primeConfig)
@@ -427,7 +372,7 @@ func (a *agent) startReplica(members map[uint64]string) (err error) {
 		return
 	}
 	nhid := a.host.ID()
-	raftAddr, meta, err := a.parseMeta(nhid)
+	addr, meta, err := a.parseMeta(nhid)
 	if err != nil {
 		return
 	}
@@ -450,7 +395,7 @@ func (a *agent) startReplica(members map[uint64]string) (err error) {
 	}
 	a.log.Debugf(`Updating host %s %s %s`, nhid, raftAddr, string(meta))
 	sess := a.host.GetNoOPSession(a.primeConfig.ShardID)
-	cmd := newCmdHostPut(nhid, raftAddr, meta, HostStatus_Active, util.Keys(a.shardTypes))
+	cmd := newCmdHostPut(nhid, raftAddr, meta, HostStatus_Active, keys(a.shardTypes))
 	_, err = a.host.SyncPropose(raftCtx(), sess, cmd)
 	if err != nil {
 		return
@@ -499,21 +444,7 @@ func (a *agent) addReplica(nhid string) (replicaID uint64, err error) {
 	return
 }
 
-func (a *agent) parsePeers(peers map[string]string) (replicaID uint64, seedList []string, err error) {
-	seedList = util.Keys(peers)
-	sort.Strings(seedList)
-	for i, gossipAddr := range seedList {
-		if gossipAddr == a.hostConfig.Gossip.AdvertiseAddress {
-			replicaID = uint64(i + 1)
-		}
-	}
-	if replicaID == 0 {
-		err = fmt.Errorf("Node not found")
-	}
-	return
-}
-
-func (a *agent) parseMeta(nhid string) (raftAddr string, meta []byte, err error) {
+func (a *agent) parseMeta(nhid string) (apiAddr, raftAddr string, meta []byte, err error) {
 	reg, ok := a.host.GetNodeHostRegistry()
 	if !ok {
 		err = fmt.Errorf("Unable to retrieve HostRegistry")
@@ -524,9 +455,14 @@ func (a *agent) parseMeta(nhid string) (raftAddr string, meta []byte, err error)
 		err = fmt.Errorf("Unable to retrieve node host meta (%s)", nhid)
 		return
 	}
-	parts := bytes.Split(meta, []byte(`|`))
-	raftAddr = string(parts[0])
-	meta = parts[1]
+	parts := bytes.SplitN(meta, []byte(`|`), 3)
+	if len(parts) < 3 {
+		err = fmt.Errorf("Malformed meta: %s", string(meta))
+		return
+	}
+	apiAddr = string(parts[0])
+	raftAddr = string(parts[1])
+	meta = parts[2]
 	return
 }
 
@@ -592,12 +528,12 @@ func (a *agent) primeInit(members map[uint64]string) (err error) {
 
 // primeAddHost proposes addition of host metadata to the prime shard state
 func (a *agent) primeAddHost(nhid string) (err error) {
-	raftAddr, meta, err := a.parseMeta(nhid)
+	addr, meta, err := a.parseMeta(nhid)
 	if err != nil {
 		return
 	}
 	sess := a.host.GetNoOPSession(a.primeConfig.ShardID)
-	cmd := newCmdHostPut(nhid, raftAddr, meta, HostStatus_New, nil)
+	cmd := newCmdHostPut(nhid, addr, meta, HostStatus_New, nil)
 	_, err = a.host.SyncPropose(raftCtx(), sess, cmd)
 	return
 }
@@ -653,28 +589,29 @@ func (a *agent) stopReplica(cfg ReplicaConfig) (err error) {
 	return
 }
 
-func (a *agent) GetHostID() string {
+func (a *agent) GetHostID() (res string) {
 	if a.host != nil {
-		return a.host.ID()
+		res = a.host.ID()
 	}
-	return ""
-}
-
-func (a *agent) GetClient() udp.Client {
-	return a.client
+	return
 }
 
 func (a *agent) GetHostConfig() HostConfig {
 	return a.hostConfig
 }
 
-func (a *agent) AddUdpHandler(h udp.HandlerFunc) {
-	a.udpHandlers = append(a.udpHandlers, h)
+func (a *agent) GetPrimeConfig() ReplicaConfig {
+	return a.primeConfig
+}
+
+func (a *agent) GetMembers() map[uint64]string {
+	return a.members
 }
 
 func (a *agent) Stop() {
 	a.ctxCancel()
-	a.stopReplica(a.primeConfig)
 	a.wg.Wait()
+	a.stopReplica(a.primeConfig)
+	a.grpcClient.Stop()
 	a.log.Infof("Agent stopped.")
 }

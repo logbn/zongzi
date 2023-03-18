@@ -24,6 +24,7 @@ const (
 var (
 	fsmErrHostNotFound  = fmt.Errorf(`Host not found`)
 	fsmErrShardNotFound = fmt.Errorf(`Shard not found`)
+	fsmErrIDOutOfRange  = fmt.Errorf(`ID out of range`)
 )
 
 type Snapshot struct {
@@ -37,7 +38,7 @@ type Host struct {
 	ID         string            `json:"id"`
 	Meta       []byte            `json:"meta"`
 	RaftAddr   string            `json:"raft_address"`
-	Replicas   map[uint64]uint64 `json:"replicas"` // replicaID: shardID
+	Replicas   map[uint64]uint64 `json:"replicas"` // shardID: replicaID
 	ShardTypes []string          `json:"shardTypes"`
 	Status     HostStatus        `json:"status"`
 
@@ -46,7 +47,7 @@ type Host struct {
 
 type Shard struct {
 	ID       uint64            `json:"id"`
-	Replicas map[uint64]string `json:"replicas"` // replicaID: nodehostID
+	Replicas map[uint64]string `json:"replicas"` // hostID: replicaID
 	Status   ShardStatus       `json:"status"`
 	Type     string            `json:"type"`
 	Version  string            `json:"version"`

@@ -1,9 +1,0 @@
-func (a *agent) GetClient() *zongzi.Client
-
-type Client interface {
-	Listen(ctx context.Context, shardID uint64, func(sync bool, msg []byte) (res []byte, err error)) error
-	Send(ctx context.Context, shardID uint64, msg []byte) (res []byte, err error)
-	SendReplica(ctx context.Context, replicaID uint64, msg []byte) (res []byte, err error)
-}
-
-
