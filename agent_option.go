@@ -7,7 +7,7 @@ import (
 
 type AgentOption func(*Agent) error
 
-func AgentOptionApiAddress(advertiseAddress string, bindAddress ...string) AgentOption {
+func WithApiAddress(advertiseAddress string, bindAddress ...string) AgentOption {
 	return func(a *Agent) error {
 		a.advertiseAddress = advertiseAddress
 		if len(bindAddress) > 0 {
@@ -19,7 +19,7 @@ func AgentOptionApiAddress(advertiseAddress string, bindAddress ...string) Agent
 	}
 }
 
-func AgentOptionGossipAddress(advertiseAddress string, bindAddress ...string) AgentOption {
+func WithGossipAddress(advertiseAddress string, bindAddress ...string) AgentOption {
 	return func(a *Agent) error {
 		a.configHost.Gossip.AdvertiseAddress = advertiseAddress
 		if len(bindAddress) > 0 {
@@ -31,7 +31,7 @@ func AgentOptionGossipAddress(advertiseAddress string, bindAddress ...string) Ag
 	}
 }
 
-func AgentOptionHostConfig(cfg HostConfig) AgentOption {
+func WithHostConfig(cfg HostConfig) AgentOption {
 	return func(a *Agent) error {
 		if len(cfg.Gossip.AdvertiseAddress) == 0 && len(a.configHost.Gossip.AdvertiseAddress) > 0 {
 			cfg.Gossip.AdvertiseAddress = a.configHost.Gossip.AdvertiseAddress
@@ -47,14 +47,14 @@ func AgentOptionHostConfig(cfg HostConfig) AgentOption {
 	}
 }
 
-func AgentOptionMeta(meta []byte) AgentOption {
+func WithMeta(meta []byte) AgentOption {
 	return func(a *Agent) error {
 		a.configHost.Gossip.Meta = meta
 		return nil
 	}
 }
 
-func AgentOptionReplicaConfig(cfg ReplicaConfig) AgentOption {
+func WithReplicaConfig(cfg ReplicaConfig) AgentOption {
 	return func(a *Agent) error {
 		a.configPrime = cfg
 		return nil

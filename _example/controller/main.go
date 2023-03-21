@@ -30,9 +30,9 @@ func main() {
 	agent, err := zongzi.NewAgent(
 		*clusterName,
 		strings.Split(*peers, ","),
-		zongzi.AgentOptionApiAddress(*listenAddr),
-		zongzi.AgentOptionGossipAddress(*gossipAddr),
-		zongzi.AgentOptionHostConfig(zongzi.HostConfig{
+		zongzi.WithApiAddress(*listenAddr),
+		zongzi.WithGossipAddress(*gossipAddr),
+		zongzi.WithHostConfig(zongzi.HostConfig{
 			NodeHostDir:       *dataDir + "/raft",
 			NotifyCommit:      true,
 			RaftAddress:       *raftAddr,
@@ -40,8 +40,8 @@ func main() {
 			RTTMillisecond:    100,
 			WALDir:            *dataDir + "/wal",
 		}),
-		zongzi.AgentOptionMeta(meta),
-		zongzi.AgentOptionSecrets(strings.Split(*secret, ",")),
+		zongzi.WithMeta(meta),
+		zongzi.WithSecrets(strings.Split(*secret, ",")),
 	)
 	if err != nil {
 		panic(err)

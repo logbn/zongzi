@@ -37,8 +37,6 @@ type (
 )
 
 type (
-	LogReader = dragonboat.ReadonlyLogReader
-
 	HostConfig    = config.NodeHostConfig
 	ReplicaConfig = config.Config
 

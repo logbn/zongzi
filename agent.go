@@ -57,10 +57,10 @@ func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent
 		status:      AgentStatus_Pending,
 	}
 	for _, opt := range append([]AgentOption{
-		AgentOptionApiAddress(DefaultApiAddress),
-		AgentOptionGossipAddress(DefaultGossipAddress),
-		AgentOptionHostConfig(DefaultHostConfig),
-		AgentOptionReplicaConfig(DefaultReplicaConfig),
+		WithApiAddress(DefaultApiAddress),
+		WithGossipAddress(DefaultGossipAddress),
+		WithHostConfig(DefaultHostConfig),
+		WithReplicaConfig(DefaultReplicaConfig),
 	}, opts...) {
 		if err = opt(a); err != nil {
 			return
@@ -266,6 +266,26 @@ func (a *Agent) GetHostID() (id string) {
 		return a.host.ID()
 	}
 	return ""
+}
+
+func (a *Agent) GetReplicaClient(replicaID uint64) (c *ReplicaClient) {
+	a.Read(func(s *State) {
+		replica, ok := s.Replicas.Get(replicaID)
+		if ok && replica.ShardID > 0 {
+			c = newReplicaClient(replica, a)
+		}
+	})
+	return
+}
+
+func (a *Agent) GetHostClient(hostID string) (c *HostClient) {
+	a.Read(func(s *State) {
+		host, ok := s.Hosts.Get(hostID)
+		if ok {
+			c = newHostClient(host, a)
+		}
+	})
+	return
 }
 
 func (a *Agent) Stop() {
