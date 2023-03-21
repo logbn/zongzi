@@ -2,98 +2,112 @@ package zongzi
 
 import (
 	"encoding/json"
-	"fmt"
 	"sync"
 )
 
 const (
-	cmd_type_host     = "host"
-	cmd_type_replica  = "replica"
-	cmd_type_shard    = "shard"
-	cmd_type_snapshot = "snapshot"
+	command_type_host     = "host"
+	command_type_replica  = "replica"
+	command_type_shard    = "shard"
+	command_type_snapshot = "snapshot"
 
-	cmd_action_del = "del"
-	cmd_action_put = "put"
+	command_action_del  = "del"
+	command_action_put  = "put"
+	command_action_post = "post"
 
 	query_action_get = "get"
-
-	cmd_result_failure uint64 = 0
-	cmd_result_success uint64 = 1
-)
-
-var (
-	fsmErrHostNotFound  = fmt.Errorf(`Host not found`)
-	fsmErrShardNotFound = fmt.Errorf(`Shard not found`)
-	fsmErrIDOutOfRange  = fmt.Errorf(`ID out of range`)
 )
 
 type Snapshot struct {
-	Hosts    []*Host
-	Index    uint64
-	Replicas []*Replica
-	Shards   []*Shard
+	Hosts        []Host
+	Index        uint64
+	ReplicaIndex uint64
+	Replicas     []Replica
+	ShardIndex   uint64
+	Shards       []Shard
+
+	mu sync.RWMutex
 }
 
 type Host struct {
-	ID         string            `json:"id"`
-	Meta       []byte            `json:"meta"`
-	RaftAddr   string            `json:"raft_address"`
-	Replicas   map[uint64]uint64 `json:"replicas"` // shardID: replicaID
-	ShardTypes []string          `json:"shardTypes"`
-	Status     HostStatus        `json:"status"`
+	ID      string `json:"id"`
+	Created uint64 `json:"created"`
+	Updated uint64 `json:"updated"`
 
-	mu sync.RWMutex
+	ApiAddress string     `json:"apiAddress"`
+	Meta       []byte     `json:"meta"`
+	ShardTypes []string   `json:"shardTypes"`
+	Status     HostStatus `json:"status"`
+
+	Replicas []*Replica `json:"-"`
 }
 
 type Shard struct {
-	ID       uint64            `json:"id"`
-	Replicas map[uint64]string `json:"replicas"` // hostID: replicaID
-	Status   ShardStatus       `json:"status"`
-	Type     string            `json:"type"`
-	Version  string            `json:"version"`
+	ID      uint64 `json:"id"`
+	Created uint64 `json:"created"`
+	Updated uint64 `json:"updated"`
 
-	mu sync.RWMutex
+	Status  ShardStatus `json:"status"`
+	Type    string      `json:"type"`
+	Version string      `json:"version"`
+
+	Replicas []*Replica `json:"-"`
+}
+
+func (s *Shard) Members() (res map[uint64]string) {
+	res = map[uint64]string{}
+	for _, replica := range s.Replicas {
+		if replica.IsNonVoting || replica.IsWitness {
+			continue
+		}
+		res[replica.ID] = replica.HostID
+	}
+	return
 }
 
 type Replica struct {
+	ID      uint64 `json:"id"`
+	Created uint64 `json:"created"`
+	Updated uint64 `json:"updated"`
+
 	HostID      string        `json:"hostID"`
-	ID          uint64        `json:"id"`
 	IsNonVoting bool          `json:"isNonVoting"`
 	IsWitness   bool          `json:"isWitness"`
 	ShardID     uint64        `json:"shardID"`
 	Status      ReplicaStatus `json:"status"`
 
-	mu sync.RWMutex
+	Host  *Host  `json:"-"`
+	Shard *Shard `json:"-"`
 }
 
-type cmd struct {
+type command struct {
 	Action string `json:"action"`
 	Type   string `json:"type"`
 }
 
-type cmdHost struct {
-	cmd
+type commandHost struct {
+	command
 	Host Host `json:"host"`
 }
 
-type cmdShard struct {
-	cmd
+type commandShard struct {
+	command
 	Shard Shard `json:"shard"`
 }
 
-type cmdReplica struct {
-	cmd
+type commandReplica struct {
+	command
 	Replica Replica `json:"replica"`
 }
 
-func newCmdHostPut(nhid, raftAddr string, meta []byte, status HostStatus, shardTypes []string) (b []byte) {
-	b, _ = json.Marshal(cmdHost{cmd{
-		Action: cmd_action_put,
-		Type:   cmd_type_host,
+func newCmdHostPut(nhid, apiAddr string, meta []byte, status HostStatus, shardTypes []string) (b []byte) {
+	b, _ = json.Marshal(commandHost{command{
+		Action: command_action_put,
+		Type:   command_type_host,
 	}, Host{
+		ApiAddress: apiAddr,
 		ID:         nhid,
 		Meta:       meta,
-		RaftAddr:   raftAddr,
 		ShardTypes: shardTypes,
 		Status:     status,
 	}})
@@ -101,19 +115,30 @@ func newCmdHostPut(nhid, raftAddr string, meta []byte, status HostStatus, shardT
 }
 
 func newCmdHostDel(nhid string) (b []byte) {
-	b, _ = json.Marshal(cmdHost{cmd{
-		Action: cmd_action_del,
-		Type:   cmd_type_host,
+	b, _ = json.Marshal(commandHost{command{
+		Action: command_action_del,
+		Type:   command_type_host,
 	}, Host{
 		ID: nhid,
 	}})
 	return
 }
 
+func newCmdShardPost(shardType string) (b []byte) {
+	b, _ = json.Marshal(commandShard{command{
+		Action: command_action_post,
+		Type:   command_type_shard,
+	}, Shard{
+		Status: ShardStatus_New,
+		Type:   shardType,
+	}})
+	return
+}
+
 func newCmdShardPut(shardID uint64, shardType string) (b []byte) {
-	b, _ = json.Marshal(cmdShard{cmd{
-		Action: cmd_action_put,
-		Type:   cmd_type_shard,
+	b, _ = json.Marshal(commandShard{command{
+		Action: command_action_put,
+		Type:   command_type_shard,
 	}, Shard{
 		ID:     shardID,
 		Status: ShardStatus_New,
@@ -123,9 +148,9 @@ func newCmdShardPut(shardID uint64, shardType string) (b []byte) {
 }
 
 func newCmdShardDel(shardID uint64) (b []byte) {
-	b, _ = json.Marshal(cmdShard{cmd{
-		Action: cmd_action_del,
-		Type:   cmd_type_shard,
+	b, _ = json.Marshal(commandShard{command{
+		Action: command_action_del,
+		Type:   command_type_shard,
 	}, Shard{
 		ID: shardID,
 	}})
@@ -133,9 +158,9 @@ func newCmdShardDel(shardID uint64) (b []byte) {
 }
 
 func newCmdReplicaPut(nhid string, shardID, replicaID uint64, isNonVoting bool) (b []byte) {
-	b, _ = json.Marshal(cmdReplica{cmd{
-		Action: cmd_action_put,
-		Type:   cmd_type_replica,
+	b, _ = json.Marshal(commandReplica{command{
+		Action: command_action_put,
+		Type:   command_type_replica,
 	}, Replica{
 		HostID:      nhid,
 		ID:          replicaID,
@@ -147,9 +172,9 @@ func newCmdReplicaPut(nhid string, shardID, replicaID uint64, isNonVoting bool) 
 }
 
 func newCmdReplicaDel(replicaID uint64) (b []byte) {
-	b, _ = json.Marshal(cmdReplica{cmd{
-		Action: cmd_action_del,
-		Type:   cmd_type_replica,
+	b, _ = json.Marshal(commandReplica{command{
+		Action: command_action_del,
+		Type:   command_type_replica,
 	}, Replica{
 		ID: replicaID,
 	}})
@@ -177,7 +202,7 @@ type querySnapshot struct {
 
 func newQueryHostGet(nhid string) queryHost {
 	return queryHost{query{
-		Type:   cmd_type_host,
+		Type:   command_type_host,
 		Action: query_action_get,
 	}, Host{
 		ID: nhid,
@@ -186,14 +211,14 @@ func newQueryHostGet(nhid string) queryHost {
 
 func newQuerySnapshotGet() querySnapshot {
 	return querySnapshot{query{
-		Type:   cmd_type_snapshot,
+		Type:   command_type_snapshot,
 		Action: query_action_get,
 	}}
 }
 
 func newQueryReplicaGet(id uint64) queryReplica {
 	return queryReplica{query{
-		Type:   cmd_type_replica,
+		Type:   command_type_replica,
 		Action: query_action_get,
 	}, Replica{
 		ID: id,

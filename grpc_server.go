@@ -2,6 +2,7 @@ package zongzi
 
 import (
 	"context"
+	"net"
 
 	"google.golang.org/grpc"
 
@@ -11,44 +12,44 @@ import (
 type grpcServer struct {
 	internal.UnimplementedZongziServer
 
-	agent *agent
-	server  *grpc.Server
+	agent      *Agent
+	server     *grpc.Server
 	listenAddr string
-	secrets []string
+	secrets    []string
 }
 
 func newGrpcServer(listenAddr string, secrets []string) *grpcServer {
 	return &grpcServer{
 		listenAddr: listenAddr,
-		secrets: secrets,
+		secrets:    secrets,
 	}
 }
 
 func (s *grpcServer) Probe(ctx context.Context, req *internal.ProbeRequest) (res *internal.ProbeResponse, err error) {
-	return &internal.ProbeResponse {
-		GossipAdvertiseAddress: s.agent.hostConfig.Gossip.AdvertiseAddress,
+	return &internal.ProbeResponse{
+		GossipAdvertiseAddress: s.agent.configHost.Gossip.AdvertiseAddress,
 	}, nil
 }
 
 func (s *grpcServer) Info(ctx context.Context, req *internal.InfoRequest) (res *internal.InfoResponse, err error) {
-	return &internal.InfoResponse {
-		HostID: s.agent.GetHostID(),
-		ReplicaID: s.agent.primeConfig.ReplicaID,
+	return &internal.InfoResponse{
+		HostId:    s.agent.GetHostID(),
+		ReplicaId: s.agent.configPrime.ReplicaID,
 	}, nil
 }
 
 func (s *grpcServer) Members(ctx context.Context, req *internal.MembersRequest) (res *internal.MembersResponse, err error) {
-	return &internal.MembersResponse {
+	return &internal.MembersResponse{
 		Members: s.agent.members,
 	}, nil
 }
 
 func (s *grpcServer) Join(ctx context.Context, req *internal.JoinRequest) (res *internal.JoinResponse, err error) {
-	h := a.GetHost()
-	if req.Voting {
-		err = h.SyncRequestAddReplica(raftCtx(), a.GetPrimeConfig().ShardID, req.ReplicaID, req.HostID, req.Index)
+	h := s.agent.host
+	if !req.IsNonVoting {
+		err = h.SyncRequestAddReplica(raftCtx(), s.agent.configPrime.ShardID, req.ReplicaId, req.HostId, req.Index)
 	} else {
-		err = h.SyncRequestAddNonVoting(raftCtx(), a.GetPrimeConfig().ShardID, req.ReplicaID, req.HostID, req.Index)
+		err = h.SyncRequestAddNonVoting(raftCtx(), s.agent.configPrime.ShardID, req.ReplicaId, req.HostId, req.Index)
 	}
 	res = &internal.JoinResponse{}
 	if err == nil {
@@ -62,10 +63,10 @@ func (s *grpcServer) Join(ctx context.Context, req *internal.JoinRequest) (res *
 
 func (s *grpcServer) Propose(ctx context.Context, req *internal.Request) (res *internal.Response, err error) {
 	if s.agent.GetStatus() != AgentStatus_Ready {
-		err = errAgentNotReady
+		err = ErrAgentNotReady
 		return
 	}
-	rs, err := s.agent.host.Propose(a.host.GetNoOPSession(req.ShardID), req.Data, raftTimeout)
+	rs, err := s.agent.host.Propose(s.agent.host.GetNoOPSession(req.ShardId), req.Data, raftTimeout)
 	if err != nil {
 		return
 	}
@@ -83,8 +84,8 @@ func (s *grpcServer) Propose(ctx context.Context, req *internal.Request) (res *i
 			} else if r.Completed() {
 				if req.Linear {
 					res = &internal.Response{
-						Value: rr.GetResult().Value,
-						Data: rr.GetResult().Data,
+						Value: r.GetResult().Value,
+						Data:  r.GetResult().Data,
 					}
 				}
 				return
@@ -117,9 +118,9 @@ func (s *grpcServer) Propose(ctx context.Context, req *internal.Request) (res *i
 func (s *grpcServer) Query(ctx context.Context, req *internal.Request) (res *internal.Response, err error) {
 	var r any
 	if req.Linear {
-		r, err = s.agent.host.SyncRead(raftCtx(), req.ShardID, req.Data)
+		r, err = s.agent.host.SyncRead(raftCtx(), req.ShardId, req.Data)
 	} else {
-		r, err = s.agent.host.StaleRead(req.ShardID, req.Data)
+		r, err = s.agent.host.StaleRead(req.ShardId, req.Data)
 	}
 	if r != nil {
 		res = r.(*internal.Response)
@@ -127,7 +128,7 @@ func (s *grpcServer) Query(ctx context.Context, req *internal.Request) (res *int
 	return
 }
 
-func (s *grpcServer) Start(a *agent) error {
+func (s *grpcServer) Start(a *Agent) error {
 	s.agent = a
 	lis, err := net.Listen("tcp", s.listenAddr)
 	if err != nil {
@@ -136,9 +137,8 @@ func (s *grpcServer) Start(a *agent) error {
 	var opts []grpc.ServerOption
 	// https://github.com/grpc/grpc-go/tree/master/examples/features/authentication
 	// opts = append(opts, grpc.UnaryInterceptor(ensureValidToken))
-	s.server := grpc.NewServer(opts...)
-	internal.RegisterCoordinationServiceServer(s.server, s)
-	var err error
+	s.server = grpc.NewServer(opts...)
+	internal.RegisterZongziServer(s.server, s)
 	var done = make(chan bool)
 	go func() {
 		err = s.server.Serve(lis)

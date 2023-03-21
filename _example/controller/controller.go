@@ -111,8 +111,9 @@ func (c *controller) start() {
 					}
 				}
 				index = snapshot.Index
-				str, _ := c.agent.GetSnapshotJson()
-				log.Println(string(str))
+				c.agent.Read(func(s *zongzi.ClusterState) {
+					log.Println(string(s.MarshalJSON()))
+				})
 			case <-ctx.Done():
 				c.mutex.Lock()
 				c.leader = false

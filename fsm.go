@@ -7,223 +7,230 @@ import (
 	"io"
 
 	"github.com/lni/dragonboat/v4/logger"
-	dbsm "github.com/lni/dragonboat/v4/statemachine"
+	"github.com/lni/dragonboat/v4/statemachine"
 )
 
-func fsmFactory(agent *agent) dbsm.CreateStateMachineFunc {
-	return dbsm.CreateStateMachineFunc(func(shardID, replicaID uint64) dbsm.IStateMachine {
+func fsmFactory(agent *Agent) statemachine.CreateOnDiskStateMachineFunc {
+	return statemachine.CreateOnDiskStateMachineFunc(func(shardID, replicaID uint64) statemachine.IOnDiskStateMachine {
 		node := &fsm{
-			log:   agent.log,
-			store: newFsmStoreMap(),
+			log:       agent.log,
+			replicaID: replicaID,
+			shardID:   shardID,
+			state:     newState(),
 		}
 		agent.fsm = node
 		return node
 	})
 }
 
+var _ statemachine.IOnDiskStateMachine = (*fsm)(nil)
+
 type fsm struct {
-	index        uint64
-	log          logger.ILogger
-	replicaIndex uint64
-	shardIndex   uint64
-	store        fsmStore
+	log       logger.ILogger
+	replicaID uint64
+	shardID   uint64
+	state     *State
 }
 
-func (fsm *fsm) Update(ent dbsm.Entry) (res dbsm.Result, err error) {
-	var cmd cmd
-	if err = json.Unmarshal(ent.Cmd, &cmd); err != nil {
-		err = fmt.Errorf("Invalid entry %#v, %w", ent, err)
-		return
+func (fsm *fsm) Update(entries []Entry) ([]Entry, error) {
+	var err error
+	var cmds = make([]any, len(entries), 0)
+	for i, entry := range entries {
+		var cmdBase command
+		if err = json.Unmarshal(entry.Cmd, &cmdBase); err != nil {
+			fsm.log.Errorf("Invalid entry %#v, %w", entry, err)
+			continue
+		}
+		switch cmdBase.Type {
+		// Host
+		case command_type_host:
+			var cmd commandHost
+			if err = json.Unmarshal(entry.Cmd, &cmd); err != nil {
+				fsm.log.Errorf("Invalid host cmd %#v, %w", entry, err)
+				break
+			}
+			cmds[i] = cmd
+		// Shard
+		case command_type_shard:
+			var cmd commandShard
+			if err = json.Unmarshal(entry.Cmd, &cmd); err != nil {
+				fsm.log.Errorf("Invalid shard cmd %#v, %w", entry, err)
+				break
+			}
+			cmds[i] = cmd
+		// Replica
+		case command_type_replica:
+			var cmd commandReplica
+			if err = json.Unmarshal(entry.Cmd, &cmd); err != nil {
+				fsm.log.Errorf("Invalid replica cmd %#v, %w", entry, err)
+				break
+			}
+			cmds[i] = cmd
+		default:
+			fsm.log.Errorf("Unrecognized cmd type %s", cmdBase.Type)
+		}
 	}
-	switch cmd.Type {
-	// Host
-	case cmd_type_host:
-		var cmd cmdHost
-		if err = json.Unmarshal(ent.Cmd, &cmd); err != nil {
-			fsm.log.Errorf("Invalid host cmd %#v, %w", ent, err)
-			break
-		}
-		if cmd.Host.Replicas == nil {
-			cmd.Host.Replicas = map[uint64]uint64{}
-		}
-		switch cmd.Action {
-		// Put
-		case cmd_action_put:
-			fsm.store.HostPut(&cmd.Host)
-			res.Value = cmd_result_success
-			res.Data, _ = json.Marshal(cmd.Host)
-		// Delete
-		case cmd_action_del:
-			res.Value = cmd_result_success
-			res.Data, _ = json.Marshal(map[string]any{
-				"replicasDeleted": fsm.store.HostDelete(cmd.Host.ID),
-			})
-		default:
-			err = fmt.Errorf("Unrecognized host action %s", cmd.Action)
-		}
-	// Shard
-	case cmd_type_shard:
-		var cmd cmdShard
-		if err = json.Unmarshal(ent.Cmd, &cmd); err != nil {
-			fsm.log.Errorf("Invalid shard cmd %#v, %w", ent, err)
-			break
-		}
-		if cmd.Shard.Replicas == nil {
-			cmd.Shard.Replicas = map[uint64]string{}
-		}
-		switch cmd.Action {
-		// Put
-		case cmd_action_put:
-			if cmd.Shard.ID == 0 {
-				fsm.shardIndex++
-				cmd.Shard.ID = fsm.shardIndex
-			} else if cmd.Shard.ID > fsm.shardIndex {
-				fsm.log.Warningf("%w: %#v", fsmErrIDOutOfRange, cmd)
-				break
+	fsm.state.mutex.Lock()
+	defer fsm.state.mutex.Unlock()
+	for i, entry := range entries {
+		switch cmds[i].(type) {
+		// Host
+		case commandHost:
+			var cmd = cmds[i].(commandHost)
+			switch cmd.Action {
+			// Put
+			case command_action_put:
+				if old, ok := fsm.state.Hosts.Get(cmd.Host.ID); ok {
+					cmd.Host.Replicas = old.Replicas
+				} else {
+					cmd.Host.Created = entry.Index
+				}
+				cmd.Host.Updated = entry.Index
+				fsm.state.Hosts.Set(cmd.Host.ID, &cmd.Host)
+				entries[i].Result.Value = 1
+			// Delete
+			case command_action_del:
+				host, ok := fsm.state.Hosts.Get(cmd.Host.ID)
+				if !ok {
+					break
+				}
+				for _, replica := range host.Replicas {
+					shard, _ := fsm.state.Hosts.Get(replica.HostID)
+					shard.Replicas = sliceWithout(shard.Replicas, replica)
+					shard.Updated = entry.Index
+					fsm.state.Replicas.Delete(replica.ID)
+				}
+				fsm.state.Hosts.Delete(host.ID)
+				entries[i].Result.Value = 1
+			default:
+				err = fmt.Errorf("Unrecognized host action %s", cmd.Action)
 			}
-			fsm.store.ShardPut(&cmd.Shard)
-			res.Value = cmd.Shard.ID
-			res.Data, _ = json.Marshal(cmd.Shard)
-		// Delete
-		case cmd_action_del:
-			res.Value = cmd_result_success
-			res.Data, _ = json.Marshal(map[string]any{
-				"replicasDeleted": fsm.store.ShardDelete(cmd.Shard.ID),
-			})
-		default:
-			err = fmt.Errorf("Unrecognized shard action %s", cmd.Action)
+		// Shard
+		case commandShard:
+			var cmd = cmds[i].(commandShard)
+			switch cmd.Action {
+			// Post
+			case command_action_post:
+				fsm.state.ShardIndex++
+				cmd.Shard.ID = fsm.state.ShardIndex
+				cmd.Shard.Created = entry.Index
+				cmd.Shard.Updated = entry.Index
+				fsm.state.Shards.Set(cmd.Shard.ID, &cmd.Shard)
+				entries[i].Result.Value = cmd.Shard.ID
+			// Put
+			case command_action_put:
+				if cmd.Shard.ID > fsm.state.ShardIndex {
+					fsm.log.Warningf("%w: %#v", ErrIDOutOfRange, cmd)
+					break
+				}
+				if old, ok := fsm.state.Shards.Get(cmd.Shard.ID); ok {
+					cmd.Shard.Replicas = old.Replicas
+				} else {
+					cmd.Shard.Created = entry.Index
+				}
+				cmd.Shard.Updated = entry.Index
+				fsm.state.Shards.Set(cmd.Shard.ID, &cmd.Shard)
+				entries[i].Result.Value = 1
+			// Delete
+			case command_action_del:
+				shard, ok := fsm.state.Shards.Get(cmd.Shard.ID)
+				if !ok {
+					break
+				}
+				for _, replica := range shard.Replicas {
+					host, _ := fsm.state.Hosts.Get(replica.HostID)
+					host.Replicas = sliceWithout(host.Replicas, replica)
+					host.Updated = entry.Index
+					fsm.state.Replicas.Delete(replica.ID)
+				}
+				fsm.state.Shards.Delete(shard.ID)
+				entries[i].Result.Value = 1
+			default:
+				err = fmt.Errorf("Unrecognized shard action %s", cmd.Action)
+			}
+		// Replica
+		case commandReplica:
+			var cmd = cmds[i].(commandReplica)
+			switch cmd.Action {
+			// Put
+			case command_action_put:
+				host, ok := fsm.state.Hosts.Get(cmd.Replica.HostID)
+				if !ok {
+					fsm.log.Warningf("%w: %#v", ErrHostNotFound, cmd)
+					break
+				}
+				shard, ok := fsm.state.Shards.Get(cmd.Replica.ShardID)
+				if !ok {
+					fsm.log.Warningf("%w: %#v", ErrShardNotFound, cmd)
+					break
+				}
+				cmd.Replica.Updated = entry.Index
+				if cmd.Replica.ID == 0 {
+					fsm.state.ReplicaIndex++
+					cmd.Replica.ID = fsm.state.ReplicaIndex
+					cmd.Replica.Created = entry.Index
+					cmd.Replica.Host = host
+					cmd.Replica.Shard = shard
+					host.Replicas = append(host.Replicas, &cmd.Replica)
+					host.Updated = entry.Index
+					shard.Replicas = append(shard.Replicas, &cmd.Replica)
+					shard.Updated = entry.Index
+				} else if cmd.Replica.ID > fsm.state.ReplicaIndex {
+					fsm.log.Warningf("%w: %#v", ErrIDOutOfRange, cmd)
+					break
+				}
+				fsm.state.Replicas.Set(cmd.Replica.ID, &cmd.Replica)
+				entries[i].Result.Value = cmd.Replica.ID
+			// Delete
+			case command_action_del:
+				replica, ok := fsm.state.Replicas.Get(cmd.Replica.ID)
+				if !ok {
+					fsm.log.Warningf("%w: %#v", ErrReplicaNotFound, cmd)
+					break
+				}
+				host, _ := fsm.state.Hosts.Get(replica.HostID)
+				host.Replicas = sliceWithout(host.Replicas, replica)
+				host.Updated = entry.Index
+				shard, _ := fsm.state.Shards.Get(replica.ShardID)
+				shard.Replicas = sliceWithout(shard.Replicas, replica)
+				shard.Updated = entry.Index
+				fsm.state.Replicas.Delete(cmd.Replica.ID)
+				entries[i].Result.Value = 1
+			default:
+				fsm.log.Errorf("Unrecognized replica action: %s - %#v", cmd.Action, cmd)
+			}
 		}
-	// Replica
-	case cmd_type_replica:
-		var cmd cmdReplica
-		if err = json.Unmarshal(ent.Cmd, &cmd); err != nil {
-			fsm.log.Errorf("Invalid replica cmd %#v, %w", ent, err)
-			break
-		}
-		switch cmd.Action {
-		// Put
-		case cmd_action_put:
-			if _, ok := fsm.store.HostFind(cmd.Replica.HostID); !ok {
-				fsm.log.Warningf("%w: %#v", fsmErrHostNotFound, cmd)
-				break
-			}
-			shard, ok := fsm.store.ShardFind(cmd.Replica.ShardID)
-			if !ok {
-				fsm.log.Warningf("%w: %#v", fsmErrShardNotFound, cmd)
-				break
-			}
-			if cmd.Replica.ID == 0 {
-				fsm.replicaIndex++
-				cmd.Replica.ID = shard.replicaIndex
-			} else if cmd.Replica.ID > fsm.replicaIndex {
-				fsm.log.Warningf("%w: %#v", fsmErrIDOutOfRange, cmd)
-				break
-			}
-			if err := fsm.store.ReplicaPut(&cmd.Replica); err != nil {
-				fsm.log.Warningf("%w: %#v", err, cmd)
-				break
-			}
-			res.Value = cmd.Replica.ID
-			res.Data, _ = json.Marshal(cmd.Replica)
-		// Delete
-		case cmd_action_del:
-			fsm.store.ReplicaDelete(cmd.Replica.ID)
-			res.Value = cmd_result_success
-		default:
-			err = fmt.Errorf("Unrecognized replica action %s", cmd.Action)
-		}
-	default:
-		err = fmt.Errorf("Unrecognized type %s", cmd.Action)
+		fsm.state.Index = entry.Index
 	}
-	fsm.index = ent.Index
 
+	return entries, nil
+}
+
+func (fsm *fsm) PrepareSnapshot() (cursor any, err error) {
+	fsm.state.mutex.RLock()
 	return
 }
 
-func (fsm *fsm) Lookup(e any) (val any, err error) {
-	if query, ok := e.(queryHost); ok {
-		switch query.Action {
-		// Get Host
-		case query_action_get:
-			if host := fsm.store.HostFind(query.Host.ID); host != nil {
-				val = *host
-			} else {
-				fsm.log.Warningf("Host not found %#v", e)
-			}
-		default:
-			err = fmt.Errorf("Unrecognized host query %s", query.Action)
-		}
-	} else if query, ok := e.(queryReplica); ok {
-		switch query.Action {
-		// Get Replica
-		case query_action_get:
-			if replica := fsm.store.ReplicaFind(query.Replica.ID); replica != nil {
-				val = replica
-			} else {
-				fsm.log.Warningf("Replica not found %#v", e)
-			}
-		default:
-			err = fmt.Errorf("Unrecognized replica query %s", query.Action)
-		}
-	} else if query, ok := e.(querySnapshot); ok {
-		switch query.Action {
-		// Get Snapshot
-		case query_action_get:
-			val = &Snapshot{
-				Hosts:    fsm.store.HostList(),
-				Index:    fsm.index,
-				IdxShard: fsm.idxShard,
-				Replicas: fsm.store.ReplicaList(),
-				Shards:   fsm.store.ShardList(),
-			}
-		default:
-			err = fmt.Errorf("Unrecognized snapshot query %s", query.Action)
-		}
-	} else {
-		err = fmt.Errorf("Invalid query %#v", e)
-	}
-
-	return
-}
-
-// TODO - Switch to jsonl
-func (fsm *fsm) SaveSnapshot(w io.Writer, sfc dbsm.ISnapshotFileCollection, stopc <-chan struct{}) (err error) {
-	b, err := json.Marshal(Snapshot{
-		Hosts:        fsm.store.HostList(),
-		Index:        fsm.index,
-		ShardIndex:   fsm.shardIndex,
-		ReplicaIndex: fsm.replicaIndex,
-		Replicas:     fsm.store.ReplicaList(),
-		Shards:       fsm.store.ShardList(),
-	})
+func (fsm *fsm) SaveSnapshot(cursor any, w io.Writer, close <-chan struct{}) (err error) {
+	defer fsm.state.mutex.RUnlock()
+	b, err := fsm.state.MarshalJson()
 	if err == nil {
 		_, err = io.Copy(w, bytes.NewReader(b))
 	}
-
 	return
 }
 
-// TODO - Switch to jsonl
-func (fsm *fsm) RecoverFromSnapshot(r io.Reader, sfc []dbsm.SnapshotFile, stopc <-chan struct{}) (err error) {
-	var data Snapshot
-	if err = json.NewDecoder(r).Decode(&data); err != nil {
+func (fsm *fsm) RecoverFromSnapshot(r io.Reader, close <-chan struct{}) (err error) {
+	fsm.state.mutex.Lock()
+	defer fsm.state.mutex.Unlock()
+	b, err := io.ReadAll(r)
+	if err != nil {
 		return
 	}
-	for _, host := range data.Hosts {
-		fsm.store.HostPut(host)
-	}
-	for _, shard := range data.Shards {
-		fsm.store.ShardPut(shard)
-	}
-	for _, replica := range data.Replicas {
-		fsm.store.ReplicaPut(replica)
-	}
-	fsm.index = data.Index
-	fsm.shardIndex = data.ShardIndex
-	fsm.replicaIndex = data.ReplicaIndex
-	return
+	return fsm.state.UnmarshalJSON(b)
 }
 
-func (fsm *fsm) Close() (err error) {
-	return
-}
+func (fsm *fsm) Lookup(interface{}) (res interface{}, err error)  { return }
+func (fsm *fsm) Close() (err error)                               { return }
+func (fsm *fsm) Open(close <-chan struct{}) (i uint64, err error) { return }
+func (fsm *fsm) Sync() (err error)                                { return }

@@ -6,13 +6,12 @@ import (
 	"testing"
 
 	"github.com/lni/dragonboat/v4/logger"
-	dbsm "github.com/lni/dragonboat/v4/statemachine"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestFsmFactory(t *testing.T) {
-	a := &agent{}
+	a, _ := NewAgent("test", []string{})
 	f := fsmFactory(a)
 	require.NotNil(t, f)
 	ism := f(1, 2)
@@ -23,7 +22,7 @@ func TestFsmFactory(t *testing.T) {
 }
 
 func TestFsm(t *testing.T) {
-	a := &agent{
+	a := &Agent{
 		log: nullLogger{},
 	}
 	f := fsmFactory(a)
@@ -41,75 +40,81 @@ func TestFsm(t *testing.T) {
 		t.Run("host", func(t *testing.T) {
 			fsm := f(1, 2).(*fsm)
 			t.Run("put", func(t *testing.T) {
-				res, err := fsm.Update(dbsm.Entry{Cmd: testHost})
+				entries, err := fsm.Update([]Entry{{Cmd: testHost}})
 				require.Nil(t, err)
-				require.Equal(t, 1, len(fsm.store.HostList()))
-				require.Equal(t, uint64(1), res.Value)
-				item := fsm.store.HostFind(hostID)
+				require.Equal(t, 1, fsm.state.Hosts.Len())
+				require.Equal(t, uint64(1), entries[0].Result.Value)
+				item, ok := fsm.state.Hosts.Get(hostID)
+				require.True(t, ok)
 				require.NotNil(t, item)
 				assert.Equal(t, hostID, item.ID)
-				assert.Equal(t, "test-raft-addr", item.RaftAddr)
+				assert.Equal(t, "test-raft-addr", item.ApiAddress)
 			})
 			t.Run("delete", func(t *testing.T) {
 				t.Run("empty", func(t *testing.T) {
-					res, err := fsm.Update(dbsm.Entry{Cmd: newCmdHostDel(hostID)})
+					entries, err := fsm.Update([]Entry{{Cmd: newCmdHostDel(hostID)}})
 					require.Nil(t, err)
-					require.Equal(t, 0, len(fsm.store.HostList()))
-					require.Equal(t, uint64(1), res.Value)
-					item := fsm.store.HostFind(hostID)
-					assert.Nil(t, item)
+					require.Equal(t, 0, fsm.state.Hosts.Len())
+					require.Equal(t, uint64(1), entries[0].Result.Value)
+					item, ok := fsm.state.Hosts.Get(hostID)
+					require.False(t, ok)
+					require.Nil(t, item)
 				})
 				t.Run("with-replicas", func(t *testing.T) {
-					fsm.Update(dbsm.Entry{Cmd: newCmdShardPut(shardID, shardType)})
-					fsm.Update(dbsm.Entry{Cmd: testHost})
-					host := fsm.store.HostFind(hostID)
+					fsm.Update([]Entry{{Cmd: newCmdShardPut(shardID, shardType)}})
+					fsm.Update([]Entry{{Cmd: testHost}})
+					host, ok := fsm.state.Hosts.Get(hostID)
+					require.True(t, ok)
 					require.NotNil(t, host)
 					for i := uint64(1); i < 5; i++ {
-						res, err := fsm.Update(dbsm.Entry{Cmd: newCmdReplicaPut(hostID, shardID, i, false)})
+						entries, err := fsm.Update([]Entry{{Cmd: newCmdReplicaPut(hostID, shardID, i, false)}})
 						require.Nil(t, err)
-						require.Equal(t, i, res.Value)
+						require.Equal(t, i, entries[0].Result.Value)
 					}
-					require.Equal(t, 4, len(fsm.store.ReplicaList()))
+					require.Equal(t, 4, fsm.state.Replicas.Len())
 					assert.Equal(t, 4, len(host.Replicas))
-					res, err := fsm.Update(dbsm.Entry{Cmd: newCmdHostDel(hostID)})
+					entries, err := fsm.Update([]Entry{{Cmd: newCmdHostDel(hostID)}})
 					require.Nil(t, err)
-					require.Equal(t, 0, len(fsm.store.HostList()))
-					require.Equal(t, 0, len(fsm.store.ReplicaList()))
-					require.Equal(t, uint64(1), res.Value)
+					require.Equal(t, 0, fsm.state.Hosts.Len())
+					require.Equal(t, 0, fsm.state.Replicas.Len())
+					require.Equal(t, uint64(1), entries[0].Result.Value)
 					assert.Equal(t, 0, len(host.Replicas))
 				})
 			})
 		})
 		t.Run("shard", func(t *testing.T) {
 			fsm := f(1, 2).(*fsm)
-			_, err := fsm.Update(dbsm.Entry{Cmd: testHost})
+			_, err := fsm.Update([]Entry{{Cmd: testHost}})
 			require.Nil(t, err)
-			require.Equal(t, 1, len(fsm.store.HostList()))
-			host := fsm.store.HostFind(hostID)
+			require.Equal(t, 1, fsm.state.Hosts.Len())
+			host, ok := fsm.state.Hosts.Get(hostID)
+			require.True(t, ok)
 			require.NotNil(t, host)
 			t.Run("put", func(t *testing.T) {
 				t.Run("new", func(t *testing.T) {
-					res, err := fsm.Update(dbsm.Entry{
+					res, err := fsm.Update([]Entry{{
 						Index: 10,
 						Cmd:   newCmdShardPut(0, shardType),
-					})
+					}})
 					require.Nil(t, err)
-					require.Equal(t, 1, len(fsm.store.ShardList()))
-					require.Equal(t, uint64(10), res.Value)
-					item := fsm.store.ShardFind(10)
+					require.Equal(t, 1, fsm.state.Shards.Len())
+					require.Equal(t, uint64(10), res[0].Result.Value)
+					item, ok := fsm.state.Shards.Get(10)
+					require.True(t, ok)
 					require.NotNil(t, item)
 					assert.Equal(t, uint64(10), item.ID)
 					assert.Equal(t, shardType, item.Type)
 				})
 				t.Run("existing", func(t *testing.T) {
-					res, err := fsm.Update(dbsm.Entry{
+					res, err := fsm.Update([]Entry{{
 						Index: 5,
 						Cmd:   newCmdShardPut(shardID, shardType),
-					})
+					}})
 					require.Nil(t, err)
-					require.Equal(t, 2, len(fsm.store.ShardList()))
-					require.Equal(t, shardID, res.Value)
-					item := fsm.store.ShardFind(shardID)
+					require.Equal(t, 2, fsm.state.Shards.Len())
+					require.Equal(t, shardID, res[0].Result.Value)
+					item, ok := fsm.state.Shards.Get(shardID)
+					require.True(t, ok)
 					require.NotNil(t, item)
 					assert.Equal(t, shardID, item.ID)
 					assert.Equal(t, shardType, item.Type)
@@ -117,138 +122,149 @@ func TestFsm(t *testing.T) {
 			})
 			t.Run("delete", func(t *testing.T) {
 				t.Run("empty", func(t *testing.T) {
-					res, err := fsm.Update(dbsm.Entry{Cmd: newCmdShardDel(10)})
+					res, err := fsm.Update([]Entry{{Cmd: newCmdShardDel(10)}})
 					require.Nil(t, err)
-					require.Equal(t, 1, len(fsm.store.ShardList()))
-					require.Equal(t, uint64(1), res.Value)
-					item := fsm.store.ShardFind(10)
-					assert.Nil(t, item)
+					require.Equal(t, 1, fsm.state.Shards.Len())
+					require.Equal(t, uint64(1), res[0].Result.Value)
+					item, ok := fsm.state.Shards.Get(10)
+					require.False(t, ok)
+					require.Nil(t, item)
 				})
 				t.Run("with-replicas", func(t *testing.T) {
 					var i uint64
 					for i = 1; i < 5; i++ {
-						res, err := fsm.Update(dbsm.Entry{
+						res, err := fsm.Update([]Entry{{
 							Index: i,
 							Cmd:   newCmdReplicaPut(hostID, shardID, i, false),
-						})
+						}})
 						require.Nil(t, err)
-						require.Equal(t, i, res.Value)
+						require.Equal(t, i, res[0].Result.Value)
 					}
-					require.Equal(t, 4, len(fsm.store.ReplicaList()))
+					require.Equal(t, 4, fsm.state.Replicas.Len())
 					assert.Equal(t, 4, len(host.Replicas))
-					res, err := fsm.Update(dbsm.Entry{Cmd: newCmdShardDel(shardID)})
+					res, err := fsm.Update([]Entry{{Cmd: newCmdShardDel(shardID)}})
 					require.Nil(t, err)
-					require.Equal(t, 0, len(fsm.store.ShardList()))
-					require.Equal(t, 0, len(fsm.store.ReplicaList()))
-					require.Equal(t, uint64(1), res.Value)
+					require.Equal(t, 0, fsm.state.Shards.Len())
+					require.Equal(t, 0, fsm.state.Replicas.Len())
+					require.Equal(t, uint64(1), res[0].Result.Value)
 					assert.Equal(t, 0, len(host.Replicas))
 				})
 			})
 		})
 		t.Run("replica", func(t *testing.T) {
 			fsm := f(1, 2).(*fsm)
-			_, err := fsm.Update(dbsm.Entry{Cmd: testHost})
+			_, err := fsm.Update([]Entry{{Cmd: testHost}})
 			require.Nil(t, err)
-			host := fsm.store.HostFind(hostID)
+			host, ok := fsm.state.Hosts.Get(hostID)
+			require.True(t, ok)
 			require.NotNil(t, host)
-			_, err = fsm.Update(dbsm.Entry{Cmd: newCmdShardPut(shardID, shardType)})
+			_, err = fsm.Update([]Entry{{Cmd: newCmdShardPut(shardID, shardType)}})
 			require.Nil(t, err)
-			shard := fsm.store.ShardFind(shardID)
+			shard, ok := fsm.state.Shards.Get(shardID)
+			require.True(t, ok)
 			require.NotNil(t, shard)
 			t.Run("put", func(t *testing.T) {
 				t.Run("new", func(t *testing.T) {
-					res, err := fsm.Update(dbsm.Entry{
+					res, err := fsm.Update([]Entry{{
 						Index: 10,
 						Cmd:   newCmdReplicaPut(hostID, shardID, 0, false),
-					})
+					}})
 					require.Nil(t, err)
-					require.Equal(t, 1, len(fsm.store.ReplicaList()))
-					require.Equal(t, uint64(10), res.Value)
-					item := fsm.store.ReplicaFind(10)
+					require.Equal(t, 1, fsm.state.Replicas.Len())
+					require.Equal(t, uint64(10), res[0].Result.Value)
+					item, ok := fsm.state.Replicas.Get(10)
+					require.True(t, ok)
 					require.NotNil(t, item)
 					assert.Equal(t, uint64(10), item.ID)
 					assert.Equal(t, hostID, item.HostID)
 					assert.False(t, item.IsNonVoting)
 					assert.False(t, item.IsWitness)
-					id, ok := host.Replicas[item.ID]
+					require.Equal(t, 1, len(host.Replicas))
+					replica := host.Replicas[0]
 					assert.True(t, ok)
-					assert.Equal(t, shardID, id)
+					assert.Equal(t, shardID, replica.ShardID)
 				})
 				t.Run("existing", func(t *testing.T) {
-					res, err := fsm.Update(dbsm.Entry{
+					res, err := fsm.Update([]Entry{{
 						Index: 5,
 						Cmd:   newCmdReplicaPut(hostID, shardID, 1, false),
-					})
+					}})
 					require.Nil(t, err)
-					require.Equal(t, 2, len(fsm.store.ReplicaList()))
-					require.Equal(t, uint64(1), res.Value)
-					item := fsm.store.ReplicaFind(1)
+					require.Equal(t, 2, fsm.state.Replicas.Len())
+					require.Equal(t, uint64(1), res[0].Result.Value)
+					item, ok := fsm.state.Replicas.Get(1)
+					require.True(t, ok)
 					require.NotNil(t, item)
 					assert.Equal(t, uint64(1), item.ID)
 					assert.Equal(t, hostID, item.HostID)
 					assert.False(t, item.IsNonVoting)
 					assert.False(t, item.IsWitness)
-					id, ok := host.Replicas[item.ID]
+					require.Equal(t, 1, len(host.Replicas))
+					replica := host.Replicas[0]
 					assert.True(t, ok)
-					assert.Equal(t, shardID, id)
+					assert.Equal(t, shardID, replica.ShardID)
 				})
 				t.Run("host-not-exist", func(t *testing.T) {
-					res, err := fsm.Update(dbsm.Entry{
+					res, err := fsm.Update([]Entry{{
 						Index: 20,
 						Cmd:   newCmdReplicaPut(`shambles`, shardID, 0, false),
-					})
+					}})
 					require.Nil(t, err)
-					require.Equal(t, 2, len(fsm.store.ReplicaList()))
-					require.Equal(t, uint64(0), res.Value)
+					require.Equal(t, 2, fsm.state.Replicas.Len())
+					require.Equal(t, uint64(0), res[0].Result.Value)
 				})
 				t.Run("shard-not-exist", func(t *testing.T) {
-					res, err := fsm.Update(dbsm.Entry{
+					res, err := fsm.Update([]Entry{{
 						Index: 30,
 						Cmd:   newCmdReplicaPut(hostID, 0, 0, false),
-					})
+					}})
 					require.Nil(t, err)
-					require.Equal(t, 2, len(fsm.store.ReplicaList()))
-					require.Equal(t, uint64(0), res.Value)
+					require.Equal(t, 2, fsm.state.Replicas.Len())
+					require.Equal(t, uint64(0), res[0].Result.Value)
 				})
 			})
 			t.Run("delete", func(t *testing.T) {
 				t.Run("success", func(t *testing.T) {
-					res, err := fsm.Update(dbsm.Entry{Cmd: newCmdReplicaDel(10)})
+					res, err := fsm.Update([]Entry{{Cmd: newCmdReplicaDel(10)}})
 					require.Nil(t, err)
-					require.Equal(t, 1, len(fsm.store.ReplicaList()))
-					require.Equal(t, uint64(1), res.Value)
-					item := fsm.store.ReplicaFind(10)
+					require.Equal(t, 1, fsm.state.Replicas.Len())
+					require.Equal(t, uint64(1), res[0].Result.Value)
+					item, ok := fsm.state.Replicas.Get(10)
+					require.False(t, ok)
 					require.Nil(t, item)
 				})
 				t.Run("nonexistant", func(t *testing.T) {
-					res, err := fsm.Update(dbsm.Entry{Cmd: newCmdReplicaDel(10)})
+					res, err := fsm.Update([]Entry{{Cmd: newCmdReplicaDel(10)}})
 					require.Nil(t, err)
-					require.Equal(t, 1, len(fsm.store.ReplicaList()))
-					require.Equal(t, uint64(1), res.Value)
-					item := fsm.store.ReplicaFind(10)
+					require.Equal(t, 1, fsm.state.Replicas.Len())
+					require.Equal(t, uint64(1), res[0].Result.Value)
+					item, ok := fsm.state.Replicas.Get(10)
+					require.False(t, ok)
 					require.Nil(t, item)
 				})
 			})
 			t.Run("put-preserves-replicas", func(t *testing.T) {
 				t.Run("host", func(t *testing.T) {
-					res, err := fsm.Update(dbsm.Entry{Cmd: testHost})
+					res, err := fsm.Update([]Entry{{Cmd: testHost}})
 					require.Nil(t, err)
-					require.Equal(t, 1, len(fsm.store.HostList()))
-					require.Equal(t, uint64(1), res.Value)
-					id, ok := host.Replicas[uint64(1)]
+					require.Equal(t, 1, fsm.state.Hosts.Len())
+					require.Equal(t, uint64(1), res[0].Result.Value)
+					require.Equal(t, 1, len(host.Replicas))
+					replica := host.Replicas[0]
 					assert.True(t, ok)
-					assert.Equal(t, shardID, id)
+					assert.Equal(t, shardID, replica.ShardID)
 				})
 				t.Run("shard", func(t *testing.T) {
-					res, err := fsm.Update(dbsm.Entry{
+					res, err := fsm.Update([]Entry{{
 						Cmd: newCmdShardPut(shardID, shardType),
-					})
+					}})
 					require.Nil(t, err)
-					require.Equal(t, 1, len(fsm.store.ShardList()))
-					require.Equal(t, shardID, res.Value)
-					id, ok := shard.Replicas[uint64(1)]
+					require.Equal(t, 1, fsm.state.Shards.Len())
+					require.Equal(t, shardID, res[0].Result.Value)
+					require.Equal(t, 1, len(host.Replicas))
+					replica := shard.Replicas[0]
 					assert.True(t, ok)
-					assert.Equal(t, hostID, id)
+					assert.Equal(t, hostID, replica.ID)
 				})
 			})
 		})
@@ -256,39 +272,39 @@ func TestFsm(t *testing.T) {
 			fsm := f(1, 2).(*fsm)
 			t.Run("action", func(t *testing.T) {
 				for _, ctype := range []string{
-					cmd_type_host,
-					cmd_type_replica,
-					cmd_type_shard,
+					command_type_host,
+					command_type_replica,
+					command_type_shard,
 				} {
-					cmd, err := json.Marshal(cmdHost{cmd{
+					cmd, err := json.Marshal(commandHost{command{
 						Action: "squash",
 						Type:   ctype,
 					}, Host{
 						ID: hostID,
 					}})
 					require.Nil(t, err)
-					res, err := fsm.Update(dbsm.Entry{Cmd: cmd})
+					res, err := fsm.Update([]Entry{{Cmd: cmd}})
 					require.NotNil(t, err)
-					require.Equal(t, uint64(0), res.Value)
-					require.Equal(t, []byte(nil), res.Data)
+					require.Equal(t, uint64(0), res[0].Result.Value)
+					require.Equal(t, []byte(nil), res[0].Result.Data)
 				}
 			})
 			t.Run("type", func(t *testing.T) {
 				for _, action := range []string{
-					cmd_action_put,
-					cmd_action_del,
+					command_action_put,
+					command_action_del,
 				} {
-					cmd, err := json.Marshal(cmdHost{cmd{
+					cmd, err := json.Marshal(commandHost{command{
 						Action: action,
 						Type:   "banana",
 					}, Host{
 						ID: hostID,
 					}})
 					require.Nil(t, err)
-					res, err := fsm.Update(dbsm.Entry{Cmd: cmd})
+					res, err := fsm.Update([]Entry{{Cmd: cmd}})
 					require.NotNil(t, err)
-					require.Equal(t, uint64(0), res.Value)
-					require.Equal(t, []byte(nil), res.Data)
+					require.Equal(t, uint64(0), res[0].Result.Value)
+					require.Equal(t, []byte(nil), res[0].Result.Data)
 				}
 			})
 		})
@@ -300,75 +316,14 @@ func TestFsm(t *testing.T) {
 				`{"type":"shard", "shard":[]}`,
 				`{"type":"replica", "replica":false}`,
 			} {
-				res, err := fsm.Update(dbsm.Entry{Cmd: []byte(cmd)})
+				res, err := fsm.Update([]Entry{{Cmd: []byte(cmd)}})
 				require.NotNil(t, err, cmd)
-				require.Equal(t, uint64(0), res.Value)
-				require.Equal(t, []byte(nil), res.Data)
+				require.Equal(t, uint64(0), res[0].Result.Value)
+				require.Equal(t, []byte(nil), res[0].Result.Data)
 			}
 		})
 	})
 	fsm1 := f(1, 2).(*fsm)
-	t.Run("Query", func(t *testing.T) {
-		t.Run("host", func(t *testing.T) {
-			_, err := fsm1.Update(dbsm.Entry{Cmd: testHost})
-			require.Nil(t, err)
-			require.Equal(t, 1, len(fsm1.store.HostList()))
-			t.Run("get", func(t *testing.T) {
-				t.Run("found", func(t *testing.T) {
-					val, err := fsm1.Lookup(newQueryHostGet(hostID))
-					require.Nil(t, err)
-					require.NotNil(t, val)
-					assert.Equal(t, hostID, val.(Host).ID)
-					assert.Equal(t, "test-raft-addr", val.(Host).RaftAddr)
-				})
-				t.Run("not-found", func(t *testing.T) {
-					val, err := fsm1.Lookup(newQueryHostGet(`salami`))
-					require.Nil(t, err)
-					require.Nil(t, val)
-				})
-			})
-			t.Run("unknown", func(t *testing.T) {
-				val, err := fsm1.Lookup(queryHost{query{
-					Action: `salami`,
-				}, Host{}})
-				require.NotNil(t, err)
-				require.Nil(t, val)
-			})
-		})
-		t.Run("snapshot", func(t *testing.T) {
-			_, err := fsm1.Update(dbsm.Entry{Cmd: newCmdShardPut(shardID, shardType)})
-			require.Nil(t, err)
-			require.Equal(t, 1, len(fsm1.store.ShardList()))
-			_, err = fsm1.Update(dbsm.Entry{
-				Index: 418,
-				Cmd:   newCmdReplicaPut(hostID, shardID, 1, false),
-			})
-			require.Nil(t, err)
-			require.Equal(t, 1, len(fsm1.store.ReplicaList()))
-			t.Run("get", func(t *testing.T) {
-				val, err := fsm1.Lookup(newQuerySnapshotGet())
-				require.Nil(t, err)
-				require.NotNil(t, val)
-				assert.Equal(t, uint64(418), val.(*Snapshot).Index)
-				assert.Equal(t, 1, len(val.(*Snapshot).Hosts))
-				assert.Equal(t, 1, len(val.(*Snapshot).Shards))
-				assert.Equal(t, 1, len(val.(*Snapshot).Replicas))
-			})
-			t.Run("unknown", func(t *testing.T) {
-				val, err := fsm1.Lookup(querySnapshot{query{
-					Action: `salami`,
-				}})
-				require.NotNil(t, err)
-				require.Nil(t, val)
-			})
-		})
-		t.Run("invalid", func(t *testing.T) {
-			fsm := f(1, 2).(*fsm)
-			val, err := fsm.Lookup(`salami`)
-			require.NotNil(t, err)
-			require.Nil(t, val)
-		})
-	})
 	var bb bytes.Buffer
 	t.Run("SaveSnapshot", func(t *testing.T) {
 		require.Nil(t, fsm1.SaveSnapshot(&bb, nil, nil))
@@ -376,17 +331,14 @@ func TestFsm(t *testing.T) {
 	fsm2 := f(1, 2).(*fsm)
 	t.Run("RecoverFromSnapshot", func(t *testing.T) {
 		t.Run("valid", func(t *testing.T) {
-			require.Nil(t, fsm2.RecoverFromSnapshot(&bb, nil, nil))
-			val, err := fsm2.Lookup(newQuerySnapshotGet())
-			require.Nil(t, err)
-			require.NotNil(t, val)
-			assert.Equal(t, uint64(418), val.(*Snapshot).Index)
-			assert.Equal(t, 1, len(val.(*Snapshot).Hosts))
-			assert.Equal(t, 1, len(val.(*Snapshot).Shards))
-			assert.Equal(t, 1, len(val.(*Snapshot).Replicas))
+			require.Nil(t, fsm2.RecoverFromSnapshot(&bb, nil))
+			assert.Equal(t, uint64(418), fsm2.state.Index)
+			assert.Equal(t, 1, fsm2.state.Hosts.Len())
+			assert.Equal(t, 1, fsm2.state.Shards.Len())
+			assert.Equal(t, 1, fsm2.state.Replicas.Len())
 		})
 		t.Run("invalid", func(t *testing.T) {
-			require.NotNil(t, fsm2.RecoverFromSnapshot(&bb, nil, nil))
+			require.NotNil(t, fsm2.RecoverFromSnapshot(&bb, nil))
 		})
 	})
 	t.Run("Close", func(t *testing.T) {

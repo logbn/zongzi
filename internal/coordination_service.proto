@@ -4,6 +4,9 @@ option go_package = "github.com/logbn/zongzi/internal";
 
 // Zongzi provides a gRPC api for internal host communication
 service Zongzi {
+	// Ping is a noop for timing purposes
+	rpc Ping(PingRequest) returns (PingResponse) {}
+
 	// Probe returns Gossip.AdvertiseAddress
 	// Used by new hosts to start dragonboat
 	rpc Probe(ProbeRequest) returns (ProbeResponse) {}
@@ -32,6 +35,9 @@ service Zongzi {
 	// Watch provides streaming query response forwarding
 	// rpc Watch(Request) returns (stream Response) {}
 }
+
+message PingRequest {}
+message PingResponse {}
 
 message ProbeRequest {}
 message ProbeResponse {

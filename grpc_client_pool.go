@@ -1,8 +1,6 @@
 package zongzi
 
 import (
-	"sync"
-
 	"github.com/hashicorp/golang-lru/v2"
 	"google.golang.org/grpc"
 
@@ -10,40 +8,48 @@ import (
 )
 
 type grpcClientPool struct {
-	conns   *lru.Cache
+	clients *lru.Cache[string, grpcClientPoolEntry]
 	secrets []string
 }
 
-func newGrpcClientPool(lruSize int, secrets []string) *grpcClientPool {
-	onEvict := func(addr string, conn internal.ZongziClient) {
-		conn.Close()
-	}
-	return &grpcClient{
-		conns:   lru.NewWithEvict[string, internal.ZongziClient](lruSize, onEvict),
+type grpcClientPoolEntry struct {
+	client internal.ZongziClient
+	conn   *grpc.ClientConn
+}
+
+func grpcClientPoolEvictFunc(addr string, e grpcClientPoolEntry) {
+	e.conn.Close()
+}
+
+func newGrpcClientPool(size int, secrets []string) *grpcClientPool {
+	clients, _ := lru.NewWithEvict[string, grpcClientPoolEntry](size, grpcClientPoolEvictFunc)
+	return &grpcClientPool{
+		clients: clients,
 		secrets: secrets,
 	}
 }
 
-func (c *grpcClientPool) get(addr string) (conn internal.ZongziClient, err error) {
-	conn, ok := c.conns.get(addr)
-	if ok {
-		return
+func (c *grpcClientPool) get(addr string) (client internal.ZongziClient) {
+	e, ok := c.clients.Get(addr)
+	if !ok {
+		return e.client
 	}
 	var opts []grpc.DialOption
 	// https://github.com/grpc/grpc-go/tree/master/examples/features/authentication
 	// opts = append(opts, grpc.WithPerRPCCredentials(perRPC))
 	conn, err := grpc.Dial(addr, opts...)
 	if err != nil {
-		return
+		return &grpcClientErr{err}
 	}
-	c.conns.Add(addr, conn)
+	client = internal.NewZongziClient(conn)
+	c.clients.Add(addr, grpcClientPoolEntry{client, conn})
 	return
 }
 
 func (c *grpcClientPool) remove(addr string) bool {
-	return c.conns.Remove(addr)
+	return c.clients.Remove(addr)
 }
 
 func (c *grpcClientPool) Close() {
-	c.conns.Purge()
+	c.clients.Purge()
 }

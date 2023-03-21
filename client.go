@@ -2,70 +2,56 @@ package zongzi
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
-	"errors"
-	"fmt"
-	"net"
-	"os"
-	"strings"
-	"time"
 
-	"github.com/lni/dragonboat/v4/logger"
+	"github.com/logbn/zongzi/internal"
 )
 
-type Client interface {
-	Propose(ctx context.Context, replicaID uint64, cmd []byte, linear bool) (value uint64, data []byte, err error)
-	Query(ctx context.Context, replicaID uint64, query []byte, linear bool) (value uint64, data []byte, err error)
+type ReplicaClient interface {
+	Ping(ctx context.Context, host Host) (err error)
+	Propose(ctx context.Context, replica Replica, cmd []byte, linear bool) (value uint64, data []byte, err error)
+	Query(ctx context.Context, replica Replica, query []byte, linear bool) (value uint64, data []byte, err error)
 }
-
-type HandlerFunc func(cmd string, args ...string) (res []string, err error)
 
 type client struct {
-	agent *agent
+	agent *Agent
 }
 
-func newClient(a agent) *client {
+func newClient(a *Agent) *client {
 	return &client{
 		agent: a,
 	}
 }
 
-func (c *client) Propose(ctx context.Context, replicaID uint64, cmd []byte, linear bool) (value uint64, data []byte, err error) {
-	replica, err := c.agent.FindReplica(replicaID)
-	if err != nil {
+func (c *client) Ping(ctx context.Context, host Host) (err error) {
+	if host.ID == c.agent.GetHostID() {
 		return
 	}
-	if replica == nil {
-		err = ErrReplicaNotFound
-		return
-	}
+	_, err = c.agent.grpcClientPool.get(host.ApiAddress).Ping(ctx, nil)
+	return
+}
+
+func (c *client) Propose(ctx context.Context, replica Replica, cmd []byte, linear bool) (value uint64, data []byte, err error) {
 	if replica.ShardID < 1 {
 		err = ErrReplicaNotAllowed
 		return
 	}
-	if replica.Status != ReplicaStatus_Active {
-		err = ErrReplicaNotActive
-		return
+	if !linear && !c.agent.configHost.NotifyCommit {
+		c.agent.log.Warningf(`%v`, ErrNotifyCommitDisabled)
 	}
-	if !linear && !c.agent.hostConfig.NotifyCommit {
-		c.agent.log.Warningf(ErrNotifyCommitDisabled)
-	}
+	return c.propose(ctx, replica, cmd, linear)
+}
+
+func (c *client) propose(ctx context.Context, replica Replica, cmd []byte, linear bool) (value uint64, data []byte, err error) {
 	var res *internal.Response
 	if replica.HostID == c.agent.GetHostID() {
-		res, err = c.grpcServer.Propose(ctx, &internal.Request{
-			ShardID: replica.ShardID,
+		res, err = c.agent.grpcServer.Propose(ctx, &internal.Request{
+			ShardId: replica.ShardID,
 			Linear:  linear,
 			Data:    cmd,
 		})
 	} else {
-		conn, err := c.agent.grpcClient.get(replica.Host.ApiAddress)
-		if err != nil {
-			return
-		}
-		res, err = conn.Propose(ctx, &internal.Request{
-			ShardID: replica.ShardID,
+		res, err = c.agent.grpcClientPool.get(replica.Host.ApiAddress).Propose(ctx, &internal.Request{
+			ShardId: replica.ShardID,
 			Linear:  linear,
 			Data:    cmd,
 		})
@@ -78,37 +64,25 @@ func (c *client) Propose(ctx context.Context, replicaID uint64, cmd []byte, line
 	return
 }
 
-func (c *client) Query(ctx context.Context, replicaID uint64, query []byte, linear bool) (value uint64, data []byte, err error) {
-	replica, err := c.agent.FindReplica(replicaID)
-	if err != nil {
-		return
-	}
-	if replica == nil {
-		err = ErrReplicaNotFound
-		return
-	}
+func (c *client) Query(ctx context.Context, replica Replica, query []byte, linear bool) (value uint64, data []byte, err error) {
 	if replica.ShardID < 1 {
 		err = ErrReplicaNotAllowed
 		return
 	}
-	if replica.Status != ReplicaStatus_Active {
-		err = ErrReplicaNotActive
-		return
-	}
+	return c.query(ctx, replica, query, linear)
+}
+
+func (c *client) query(ctx context.Context, replica Replica, query []byte, linear bool) (value uint64, data []byte, err error) {
 	var res *internal.Response
 	if replica.HostID == c.agent.GetHostID() {
-		res, err = c.grpcServer.Query(ctx, &internal.Request{
-			ShardID: replica.ShardID,
+		res, err = c.agent.grpcServer.Query(ctx, &internal.Request{
+			ShardId: replica.ShardID,
 			Linear:  linear,
 			Data:    query,
 		})
 	} else {
-		conn, err := c.agent.grpcClient.get(replica.Host.ApiAddress)
-		if err != nil {
-			return
-		}
-		res, err = conn.Query(ctx, &internal.Request{
-			ShardID: replica.ShardID,
+		res, err = c.agent.grpcClientPool.get(replica.Host.ApiAddress).Query(ctx, &internal.Request{
+			ShardId: replica.ShardID,
 			Linear:  linear,
 			Data:    query,
 		})

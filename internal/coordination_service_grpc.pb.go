@@ -22,6 +22,8 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ZongziClient interface {
+	// Ping is a noop for timing purposes
+	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
 	// Probe returns Gossip.AdvertiseAddress
 	// Used by new hosts to start dragonboat
 	Probe(ctx context.Context, in *ProbeRequest, opts ...grpc.CallOption) (*ProbeResponse, error)
@@ -46,6 +48,15 @@ type zongziClient struct {
 
 func NewZongziClient(cc grpc.ClientConnInterface) ZongziClient {
 	return &zongziClient{cc}
+}
+
+func (c *zongziClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error) {
+	out := new(PingResponse)
+	err := c.cc.Invoke(ctx, "/Zongzi/Ping", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *zongziClient) Probe(ctx context.Context, in *ProbeRequest, opts ...grpc.CallOption) (*ProbeResponse, error) {
@@ -106,6 +117,8 @@ func (c *zongziClient) Query(ctx context.Context, in *Request, opts ...grpc.Call
 // All implementations must embed UnimplementedZongziServer
 // for forward compatibility
 type ZongziServer interface {
+	// Ping is a noop for timing purposes
+	Ping(context.Context, *PingRequest) (*PingResponse, error)
 	// Probe returns Gossip.AdvertiseAddress
 	// Used by new hosts to start dragonboat
 	Probe(context.Context, *ProbeRequest) (*ProbeResponse, error)
@@ -129,6 +142,9 @@ type ZongziServer interface {
 type UnimplementedZongziServer struct {
 }
 
+func (UnimplementedZongziServer) Ping(context.Context, *PingRequest) (*PingResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
+}
 func (UnimplementedZongziServer) Probe(context.Context, *ProbeRequest) (*ProbeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Probe not implemented")
 }
@@ -158,6 +174,24 @@ type UnsafeZongziServer interface {
 
 func RegisterZongziServer(s grpc.ServiceRegistrar, srv ZongziServer) {
 	s.RegisterService(&Zongzi_ServiceDesc, srv)
+}
+
+func _Zongzi_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZongziServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Zongzi/Ping",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZongziServer).Ping(ctx, req.(*PingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _Zongzi_Probe_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -275,6 +309,10 @@ var Zongzi_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "Zongzi",
 	HandlerType: (*ZongziServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Ping",
+			Handler:    _Zongzi_Ping_Handler,
+		},
 		{
 			MethodName: "Probe",
 			Handler:    _Zongzi_Probe_Handler,

@@ -10,15 +10,14 @@ import (
 )
 
 type controller struct {
-	agent     *agent
-	cancel    context.CancelFunc
-	mutex     sync.RWMutex
-	leader    bool
-	index     uint64
-	logReader LogReader
+	agent  *Agent
+	cancel context.CancelFunc
+	mutex  sync.RWMutex
+	leader bool
+	index  uint64
 }
 
-func newController(a *agent) *controller {
+func newController(a *Agent) *controller {
 	return &controller{
 		agent: a,
 	}
@@ -29,10 +28,6 @@ func (c *controller) Start() (err error) {
 	defer c.mutex.Unlock()
 	var ctx context.Context
 	ctx, c.cancel = context.WithCancel(context.Background())
-	c.logReader, err = c.agent.host.GetLogReader(c.agent.primeConfig.ShardID)
-	if err != nil {
-		return
-	}
 	go func() {
 		t := time.NewTicker(time.Second)
 		defer t.Stop()
@@ -51,87 +46,84 @@ func (c *controller) Start() (err error) {
 	return
 }
 
+type controllerStartReplicaParams struct {
+	shardMembers map[uint64]string
+	shardType    string
+	shardID      uint64
+	replicaID    uint64
+	index        uint64
+}
+
 func (c *controller) tick() (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	// Short-circuit reconciliation if no new changes to cluster state
-	_, index := c.logReader.GetRange()
-	if index <= c.index {
+	if !c.leader {
 		return
 	}
 	var (
-		snapshot *Snapshot
-		host     *Host
-
-		shards   = map[uint64]*Shard{}
-		replicas = map[uint64]*Replica{}
-		found    = map[uint64]bool{}
-		nhid     = c.agent.host.ID()
+		found   = map[uint64]bool{}
+		nhid    = c.agent.host.ID()
+		toStart = []controllerStartReplicaParams{}
 	)
-	snapshot, err = c.agent.GetSnapshot(index)
-	if err != nil {
-		return
-	}
-	for _, h := range snapshot.Hosts {
-		if h.ID == nhid {
-			host = h
-			break
+	hostInfo := c.agent.host.GetNodeHostInfo(dragonboat.NodeHostInfoOption{})
+	c.agent.Read(func(state *State) {
+		host, ok := state.Hosts.Get(nhid)
+		if !ok {
+			return
 		}
-	}
-	if host == nil {
-		err = fmt.Errorf("Host not found")
-		return
-	}
-	for _, r := range snapshot.Replicas {
-		if _, ok := host.Replicas[r.ID]; ok {
-			replicas[r.ID] = r
+		if host.Updated <= c.index {
+			return
+		}
+		for _, r := range host.Replicas {
 			found[r.ID] = false
 		}
-	}
-	for _, s := range snapshot.Shards {
-		shards[s.ID] = s
-	}
-	hostInfo := c.agent.host.GetNodeHostInfo(dragonboat.NodeHostInfoOption{})
-	for _, info := range hostInfo.ShardInfoList {
-		if r, ok := replicas[info.ReplicaID]; ok {
-			found[r.ID] = true
-			if r.Status == ReplicaStatus_Done {
-				// Remove replica
+		for _, info := range hostInfo.ShardInfoList {
+			if replica, ok := state.Replicas.Get(info.ReplicaID); ok {
+				found[replica.ID] = true
+				if replica.Status == ReplicaStatus_Closed {
+					// Remove replica
+				}
+				if info.IsNonVoting && !replica.IsNonVoting {
+					// Promote to Voting
+				}
+				if !info.IsNonVoting && replica.IsNonVoting {
+					// Demote to NonVoting
+				}
+			} else {
+				// Remove raftNode
 			}
-			if info.IsNonVoting && !r.IsNonVoting {
-				// Promote to Voting
-			}
-			if !info.IsNonVoting && r.IsNonVoting {
-				// Demote to NonVoting
-			}
-		} else {
-			// Remove raftNode
 		}
-	}
-	for id, ok := range found {
-		if ok {
-			continue
-		}
-		r := replicas[id]
-		shard := shards[r.ShardID]
-		if r.Status == ReplicaStatus_New {
-			item, ok := c.agent.shardTypes[shard.Type]
-			if !ok {
-				err = fmt.Errorf("Shard name not found in registry %s (%#v)", shard.Type, r)
-				break
+		for id, ok := range found {
+			if ok {
+				continue
 			}
-			item.Config.ShardID = r.ShardID
-			item.Config.ReplicaID = r.ID
-			err = c.agent.host.StartReplica(shard.Replicas, false, item.Factory, item.Config)
-			if err != nil {
-				err = fmt.Errorf("Failed to start replica: %w", err)
-				break
+			replica, _ := state.Replicas.Get(id)
+			if replica.Status == ReplicaStatus_New {
+				toStart = append(toStart, controllerStartReplicaParams{
+					index:        host.Updated,
+					replicaID:    replica.ID,
+					shardMembers: replica.Shard.Members(),
+					shardID:      replica.Shard.ID,
+					shardType:    replica.Shard.Type,
+				})
 			}
-			// newCmdSetReplicaStatus(id, ReplicaStatus_Active)
 		}
-	}
-	if err == nil {
-		c.index = index
+	})
+	for _, params := range toStart {
+		item, ok := c.agent.shardTypes[params.shardType]
+		if !ok {
+			err = fmt.Errorf("Shard name not found in registry %s", params.shardType)
+			break
+		}
+		item.Config.ShardID = params.shardID
+		item.Config.ReplicaID = params.replicaID
+		err = c.agent.host.StartOnDiskReplica(params.shardMembers, false, stateMachineFactoryShim(item.Factory), item.Config)
+		if err != nil {
+			err = fmt.Errorf("Failed to start replica: %w", err)
+			break
+		}
+		// newCmdSetReplicaStatus(id, ReplicaStatus_Active)
+		c.index = params.index
 	}
 	return
 }
@@ -146,7 +138,7 @@ func (c *controller) Stop() {
 
 func (c *controller) LeaderUpdated(info LeaderInfo) {
 	switch info.ShardID {
-	case c.agent.primeConfig.ShardID:
+	case c.agent.configPrime.ShardID:
 		c.mutex.Lock()
 		defer c.mutex.Unlock()
 		if info.LeaderID == info.ReplicaID {

@@ -14,7 +14,7 @@ func TestStateMachineShim(t *testing.T) {
 	}
 	t.Run(`Open`, func(t *testing.T) {
 		mock, shim := newShim()
-		mock.Open = func(stopc <-chan struct{}) (index uint64, err error) {
+		mock.mockOpen = func(stopc <-chan struct{}) (index uint64, err error) {
 			return 1, nil
 		}
 		index, err := shim.Open(make(chan struct{}))
@@ -29,7 +29,7 @@ type mockStateMachine struct {
 	mockOpen                func(stopc <-chan struct{}) (index uint64, err error)
 	mockUpdate              func(commands []Entry) []Entry
 	mockLookup              func(query Entry) Entry
-	mockWatch               func(query Entry, resultChan chan<- Result, close <-chan struct{})
+	mockWatch               func(query Entry, result chan<- Result, close <-chan struct{})
 	mockSync                func() error
 	mockPrepareSnapshot     func() (cursor any, err error)
 	mockSaveSnapshot        func(cursor any, w io.Writer, close <-chan struct{}) error
@@ -49,8 +49,8 @@ func (shim *mockStateMachine) Lookup(query Entry) Entry {
 	return shim.mockLookup(query)
 }
 
-func (shim *mockStateMachine) Watch(query Entry, resultChan chan<- Result, close <-chan struct{}) {
-	return shim.mockWatch(ctx, query, resultChan)
+func (shim *mockStateMachine) Watch(query Entry, result chan<- Result, close <-chan struct{}) {
+	shim.mockWatch(query, result, close)
 }
 
 func (shim *mockStateMachine) Sync() error {

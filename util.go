@@ -15,59 +15,40 @@ import (
 )
 
 const (
-	minReplicas = 3
-	raftTimeout = time.Second
-	magicPrefix = "zongzi"
-	joinTimeout = 5 * time.Second
+	minReplicas  = 3
+	raftTimeout  = time.Second
+	joinTimeout  = 5 * time.Second
+	projectName  = "zongzi"
+	shardVersion = "v0.0.1"
+)
+
+type (
+	shardType struct {
+		Config  ReplicaConfig
+		Factory StateMachineFactory
+		Uri     string
+		Version string
+	}
+	watchQuery struct {
+		close  chan struct{}
+		query  Entry
+		result chan Result
+	}
 )
 
 type (
 	LogReader = dragonboat.ReadonlyLogReader
-	ShardView = dragonboat.ShardView
-	ShardInfo = dragonboat.ShardInfo
 
-	GossipConfig  = config.GossipConfig
 	HostConfig    = config.NodeHostConfig
 	ReplicaConfig = config.Config
 
-	ConnectionInfo = raftio.ConnectionInfo
-	EntryInfo      = raftio.EntryInfo
-	LeaderInfo     = raftio.LeaderInfo
-	NodeInfo       = raftio.NodeInfo
-	SnapshotInfo   = raftio.SnapshotInfo
+	LeaderInfo = raftio.LeaderInfo
 
 	Entry  = statemachine.Entry
 	Result = statemachine.Result
-)
 
-type Watch struct {
-	ctx        context.Context
-	query      Entry
-	resultChan chan Result
-}
+	LogLevel = logger.LogLevel
 
-var (
-	ErrAborted       = dragonboat.ErrAborted
-	ErrCanceled      = dragonboat.ErrCanceled
-	ErrRejected      = dragonboat.ErrRejected
-	ErrShardClosed   = dragonboat.ErrShardClosed
-	ErrShardNotReady = dragonboat.ErrShardNotReady
-	ErrTimeout       = dragonboat.ErrTimeout
-)
-
-var (
-	ErrReplicaNotFound   = fmt.Errorf("Replica not found")
-	ErrReplicaNotActive  = fmt.Errorf("Replica not active")
-	ErrReplicaNotAllowed = fmt.Errorf("Replica not allowed")
-
-	ErrAgentNotReady = fmt.Errorf("Agent not ready")
-
-	// ErrNotifyCommitDisabled is logged when non-linearizable writes are requested but disabled.
-	// Set property `NotifyCommit` to `true` in `HostConfig` to add support for non-linearizable writes.
-	ErrNotifyCommitDisabled = fmt.Errorf("Attempting to make non-linearizable write while NotifyCommit is disabled")
-)
-
-type (
 	AgentStatus   string
 	HostStatus    string
 	ShardStatus   string
@@ -75,6 +56,12 @@ type (
 )
 
 const (
+	LogLevelCritical = logger.CRITICAL
+	LogLevelError    = logger.ERROR
+	LogLevelWarning  = logger.WARNING
+	LogLevelInfo     = logger.INFO
+	LogLevelDebug    = logger.DEBUG
+
 	AgentStatus_Active       = AgentStatus("active")
 	AgentStatus_Initializing = AgentStatus("initializing")
 	AgentStatus_Joining      = AgentStatus("joining")
@@ -91,27 +78,60 @@ const (
 	ShardStatus_Active      = ShardStatus("active")
 	ShardStatus_Closed      = ShardStatus("closed")
 	ShardStatus_New         = ShardStatus("new")
-	ShardStatus_Starting    = ShardStatus("starting")
 	ShardStatus_Unavailable = ShardStatus("unavailable")
 
-	ReplicaStatus_Active   = ReplicaStatus("active")
-	ReplicaStatus_Done     = ReplicaStatus("done")
-	ReplicaStatus_Inactive = ReplicaStatus("inactive")
-	ReplicaStatus_New      = ReplicaStatus("new")
+	ReplicaStatus_Active = ReplicaStatus("active")
+	ReplicaStatus_Closed = ReplicaStatus("closed")
+	ReplicaStatus_New    = ReplicaStatus("new")
 )
 
-var DefaultReplicaConfig = ReplicaConfig{
-	ShardID:             0,
-	CheckQuorum:         true,
-	CompactionOverhead:  1000,
-	ElectionRTT:         10,
-	HeartbeatRTT:        2,
-	OrderedConfigChange: true,
-	Quiesce:             false,
-	SnapshotEntries:     10,
-}
+var (
+	DefaultApiAddress    = "127.0.0.1:10801"
+	DefaultGossipAddress = "127.0.0.1:10802"
+	DefaultHostConfig    = HostConfig{
+		NodeHostDir:    "/var/lib/zongzi/raft",
+		RaftAddress:    "127.0.0.1:10803",
+		RTTMillisecond: 100,
+		WALDir:         "/var/lib/zongzi/wal",
+	}
+	DefaultReplicaConfig = ReplicaConfig{
+		CheckQuorum:         true,
+		CompactionOverhead:  1000,
+		ElectionRTT:         10,
+		HeartbeatRTT:        2,
+		OrderedConfigChange: true,
+		Quiesce:             false,
+		SnapshotEntries:     10,
+	}
+)
 
-func MustBase36Decode(name string) uint64 {
+var (
+	ErrAborted       = dragonboat.ErrAborted
+	ErrCanceled      = dragonboat.ErrCanceled
+	ErrRejected      = dragonboat.ErrRejected
+	ErrShardClosed   = dragonboat.ErrShardClosed
+	ErrShardNotReady = dragonboat.ErrShardNotReady
+	ErrTimeout       = dragonboat.ErrTimeout
+
+	ErrHostNotFound      = fmt.Errorf(`Host not found`)
+	ErrIDOutOfRange      = fmt.Errorf(`ID out of range`)
+	ErrReplicaNotActive  = fmt.Errorf("Replica not active")
+	ErrReplicaNotAllowed = fmt.Errorf("Replica not allowed")
+	ErrReplicaNotFound   = fmt.Errorf("Replica not found")
+	ErrShardNotFound     = fmt.Errorf(`Shard not found`)
+
+	// ErrClusterNameInvalid indicates that the clusterName is invalid
+	// Base36 supports only lowercase alphanumeric characters (`^[a-z0-9]{0,12}$`)
+	ErrClusterNameInvalid = fmt.Errorf("Invalid cluster name (base36 maxlen 12)")
+
+	ErrAgentNotReady = fmt.Errorf("Agent not ready")
+
+	// ErrNotifyCommitDisabled is logged when non-linearizable writes are requested but disabled.
+	// Set property `NotifyCommit` to `true` in `HostConfig` to add support for non-linearizable writes.
+	ErrNotifyCommitDisabled = fmt.Errorf("Attempted to make a non-linearizable write while NotifyCommit is disabled")
+)
+
+func mustBase36Decode(name string) uint64 {
 	id, err := base36Decode(name)
 	if err != nil {
 		panic(err)
@@ -136,7 +156,10 @@ func raftCtx(ctxs ...context.Context) (ctx context.Context) {
 	return
 }
 
-func SetLogLevel(level logger.LogLevel) {
+// SetLogLevel sets log level for all zongzi and dragonboat loggers.
+//
+// Recommend [LogLevelWarning] for production.
+func SetLogLevel(level LogLevel) {
 	logger.GetLogger("dragonboat").SetLevel(level)
 	logger.GetLogger("gossip").SetLevel(level)
 	logger.GetLogger("grpc").SetLevel(level)
@@ -147,12 +170,20 @@ func SetLogLevel(level logger.LogLevel) {
 	logger.GetLogger("zongzi").SetLevel(level)
 }
 
+// SetLogLevelDebug sets a debug log level for most loggers
+// but filters out loggers having tons of debug output
 func SetLogLevelDebug() {
 	SetLogLevel(logger.DEBUG)
 	logger.GetLogger("gossip").SetLevel(logger.ERROR)
 	logger.GetLogger("dragonboat").SetLevel(logger.WARNING)
 	logger.GetLogger("raft").SetLevel(logger.WARNING)
 	logger.GetLogger("transport").SetLevel(logger.WARNING)
+}
+
+// SetLogLevelProduction sets a good log level for production
+func SetLogLevelProduction() {
+	SetLogLevel(logger.WARNING)
+	logger.GetLogger("gossip").SetLevel(logger.ERROR)
 }
 
 type compositeRaftEventListener struct {
@@ -191,4 +222,14 @@ func sliceContains[T comparable](slice []T, value T) bool {
 		}
 	}
 	return false
+}
+
+func sliceWithout[T comparable](slice []T, exclude T) []T {
+	var out []T
+	for _, v := range slice {
+		if v != exclude {
+			out = append(out, v)
+		}
+	}
+	return out
 }
