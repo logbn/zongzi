@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"fmt"
 	"os"
 	"os/signal"
 	"strings"
@@ -16,10 +15,10 @@ func main() {
 	var (
 		clusterName = flag.String("n", "test001", "Cluster name (base36 maxlen 12)")
 		dataDir     = flag.String("d", "/var/lib/zongzi", "Base data directory")
-		peers       = flag.String("p", "127.0.0.1:10801", "Peer nodes")
-		listenAddr  = flag.String("l", "127.0.0.1:10801", "Listen address")
-		gossipAddr  = flag.String("g", "127.0.0.1:10802", "Gossip address")
-		raftAddr    = flag.String("r", "127.0.0.1:10803", "Raft address")
+		peers       = flag.String("p", "127.0.0.1:17001", "Peer nodes")
+		listenAddr  = flag.String("l", "127.0.0.1:17001", "Listen address")
+		gossipAddr  = flag.String("g", "127.0.0.1:17002", "Gossip address")
+		raftAddr    = flag.String("r", "127.0.0.1:17003", "Raft address")
 		zone        = flag.String("z", "us-west-1a", "Zone")
 		secret      = flag.String("s", "", "Shared secrets (csv)")
 	)

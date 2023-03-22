@@ -21,11 +21,11 @@ func WithApiAddress(advertiseAddress string, bindAddress ...string) AgentOption 
 
 func WithGossipAddress(advertiseAddress string, bindAddress ...string) AgentOption {
 	return func(a *Agent) error {
-		a.configHost.Gossip.AdvertiseAddress = advertiseAddress
+		a.hostConfig.Gossip.AdvertiseAddress = advertiseAddress
 		if len(bindAddress) > 0 {
-			a.configHost.Gossip.BindAddress = bindAddress[0]
+			a.hostConfig.Gossip.BindAddress = bindAddress[0]
 		} else {
-			a.configHost.Gossip.BindAddress = fmt.Sprintf("0.0.0.0:%s", strings.Split(advertiseAddress, ":")[1])
+			a.hostConfig.Gossip.BindAddress = fmt.Sprintf("0.0.0.0:%s", strings.Split(advertiseAddress, ":")[1])
 		}
 		return nil
 	}
@@ -33,30 +33,37 @@ func WithGossipAddress(advertiseAddress string, bindAddress ...string) AgentOpti
 
 func WithHostConfig(cfg HostConfig) AgentOption {
 	return func(a *Agent) error {
-		if len(cfg.Gossip.AdvertiseAddress) == 0 && len(a.configHost.Gossip.AdvertiseAddress) > 0 {
-			cfg.Gossip.AdvertiseAddress = a.configHost.Gossip.AdvertiseAddress
+		if len(cfg.Gossip.AdvertiseAddress) == 0 && len(a.hostConfig.Gossip.AdvertiseAddress) > 0 {
+			cfg.Gossip.AdvertiseAddress = a.hostConfig.Gossip.AdvertiseAddress
 		}
-		if len(cfg.Gossip.BindAddress) == 0 && len(a.configHost.Gossip.BindAddress) > 0 {
-			cfg.Gossip.BindAddress = a.configHost.Gossip.BindAddress
+		if len(cfg.Gossip.BindAddress) == 0 && len(a.hostConfig.Gossip.BindAddress) > 0 {
+			cfg.Gossip.BindAddress = a.hostConfig.Gossip.BindAddress
 		}
-		if len(cfg.Gossip.Meta) == 0 && len(a.configHost.Gossip.Meta) > 0 {
-			cfg.Gossip.Meta = a.configHost.Gossip.Meta
+		if len(cfg.Gossip.Meta) == 0 && len(a.hostConfig.Gossip.Meta) > 0 {
+			cfg.Gossip.Meta = a.hostConfig.Gossip.Meta
 		}
-		a.configHost = cfg
+		a.hostConfig = cfg
 		return nil
 	}
 }
 
 func WithMeta(meta []byte) AgentOption {
 	return func(a *Agent) error {
-		a.configHost.Gossip.Meta = meta
+		a.hostConfig.Gossip.Meta = meta
 		return nil
 	}
 }
 
 func WithReplicaConfig(cfg ReplicaConfig) AgentOption {
 	return func(a *Agent) error {
-		a.configPrime = cfg
+		a.replicaConfig = cfg
+		return nil
+	}
+}
+
+func WithSecrets(secrets []string) AgentOption {
+	return func(a *Agent) error {
+		a.secrets = secrets
 		return nil
 	}
 }

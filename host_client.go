@@ -2,6 +2,8 @@ package zongzi
 
 import (
 	"context"
+
+	"github.com/logbn/zongzi/internal"
 )
 
 type HostClient struct {
@@ -23,6 +25,6 @@ func (c *HostClient) Ping(ctx context.Context) (err error) {
 	if c.hostID == c.agent.GetHostID() {
 		return
 	}
-	_, err = c.agent.grpcClientPool.get(c.hostApiAddress).Ping(ctx, nil)
+	_, err = c.agent.grpcClientPool.get(c.hostApiAddress).Ping(ctx, &internal.PingRequest{})
 	return
 }

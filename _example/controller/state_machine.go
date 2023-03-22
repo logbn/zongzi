@@ -12,7 +12,7 @@ const (
 	StateMachineVersion = "v0.0.1"
 )
 
-func StateMachineFactory() zongzi.SMFactory {
+func StateMachineFactory() zongzi.StateMachineFactory {
 	return zongzi.StateMachineFactory(func(shardID, replicaID uint64) zongzi.StateMachine {
 		return &stateMachine{
 			shardID:   shardID,
@@ -31,18 +31,19 @@ type stateMachine struct {
 func (fsm *stateMachine) Update(entries []zongzi.Entry) []zongzi.Entry {
 	for _, entry := range entries {
 		entry.Result.Value = 1
-		entry.Result.Data = []byte(fmt.Sprintf("%s [%d:%d]", shardType, fsm.shardID, fsm.replicaID))
+		entry.Result.Data = []byte(fmt.Sprintf("%s [%d:%d]", StateMachineUri, fsm.shardID, fsm.replicaID))
 	}
 	return entries
 }
 
-func (fsm *stateMachine) Lookup(e Entry) Entry {
-	e.Result.Value = fmt.Sprintf("%s [%d:%d]", shardType, fsm.shardID, fsm.replicaID)
-	return e
+func (fsm *stateMachine) Lookup(entry zongzi.Entry) zongzi.Entry {
+	entry.Result.Value = 1
+	entry.Result.Data = []byte(fmt.Sprintf("%s [%d:%d]", StateMachineUri, fsm.shardID, fsm.replicaID))
+	return entry
 }
 
 func (fsm *stateMachine) SaveSnapshot(cursor any, w io.Writer, close <-chan struct{}) (err error) {
-	w.Write([]byte(fmt.Sprintf("%s %d", shardType, fsm.shardID)))
+	w.Write([]byte(fmt.Sprintf("%s %d", StateMachineUri, fsm.shardID)))
 	return
 }
 

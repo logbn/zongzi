@@ -20,16 +20,16 @@ type Agent struct {
 	advertiseAddress string
 	bindAddress      string
 	clusterName      string
-	configHost       HostConfig
-	configPrime      ReplicaConfig
 	controller       *controller
 	fsm              *fsm
 	grpcClientPool   *grpcClientPool
 	grpcServer       *grpcServer
 	host             *dragonboat.NodeHost
+	hostConfig       HostConfig
 	log              logger.ILogger
 	members          map[uint64]string
 	peers            []string
+	replicaConfig    ReplicaConfig
 	secrets          []string
 	shardTypes       map[string]shardType
 	status           AgentStatus
@@ -42,8 +42,8 @@ type Agent struct {
 }
 
 func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent, err error) {
-	if !regexp.MustCompile(`^[a-z0-9]{0,12}$`).MatchString(clusterName) {
-		err = fmt.Errorf(`%w: %s`, ErrClusterNameInvalid, clusterName)
+	if !regexp.MustCompile(ClusterNameRegex).MatchString(clusterName) {
+		err = fmt.Errorf(`%v: (%s)`, ErrClusterNameInvalid, clusterName)
 		return
 	}
 	log := logger.GetLogger(projectName)
@@ -67,11 +67,11 @@ func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent
 		}
 	}
 	a.controller = newController(a)
-	a.configPrime.ShardID = 0
-	a.configHost.DeploymentID = mustBase36Decode(clusterName)
-	a.configHost.AddressByNodeHostID = true
-	a.configHost.Gossip.Meta = append(a.configHost.Gossip.Meta, []byte(`|`+a.advertiseAddress)...)
-	a.configHost.RaftEventListener = newCompositeRaftEventListener(a.controller, a.configHost.RaftEventListener)
+	a.replicaConfig.ShardID = 0
+	a.hostConfig.DeploymentID = mustBase36Decode(clusterName)
+	a.hostConfig.AddressByNodeHostID = true
+	a.hostConfig.Gossip.Meta = append(a.hostConfig.Gossip.Meta, []byte(`|`+a.advertiseAddress)...)
+	a.hostConfig.RaftEventListener = newCompositeRaftEventListener(a.controller, a.hostConfig.RaftEventListener)
 	a.grpcClientPool = newGrpcClientPool(1e4, a.secrets)
 	a.grpcServer = newGrpcServer(a.bindAddress, a.secrets)
 	return a, nil
@@ -100,28 +100,29 @@ func (a *Agent) Start() (err error) {
 			}
 		}
 	}()
-	if a.configHost.Gossip.Seed, err = a.findGossip(); err != nil {
+	if a.hostConfig.Gossip.Seed, err = a.findGossip(); err != nil {
 		return
 	}
-	if a.host, err = dragonboat.NewNodeHost(a.configHost); err != nil {
+	if a.host, err = dragonboat.NewNodeHost(a.hostConfig); err != nil {
 		return
 	}
 	a.log.Infof(`Started host "%s"`, a.GetHostID())
 	nhInfo := a.host.GetNodeHostInfo(dragonboat.NodeHostInfoOption{false})
 	a.log.Debugf(`Get node host info: %+v`, nhInfo)
 	for _, info := range nhInfo.LogInfo {
-		if info.ShardID == a.configPrime.ShardID {
-			a.configPrime.ReplicaID = info.ReplicaID
+		if info.ShardID == a.replicaConfig.ShardID {
+			a.replicaConfig.ReplicaID = info.ReplicaID
 			break
 		}
 	}
-	a.configPrime.IsNonVoting = !sliceContains(a.peers, a.advertiseAddress)
+	a.replicaConfig.IsNonVoting = !sliceContains(a.peers, a.advertiseAddress)
 	a.members, err = a.findMembers()
 	if err != nil {
 		return
 	}
+	a.log.Debugf(`Members: %+v`, a.members)
 	// Start voting prime shard replica
-	if !a.configPrime.IsNonVoting {
+	if !a.replicaConfig.IsNonVoting {
 		err = a.startReplica(a.members)
 		return
 	}
@@ -150,11 +151,11 @@ func (a *Agent) Start() (err error) {
 		var res string
 		var args []string
 		var index uint64
-		if a.configPrime.ReplicaID == 0 {
+		if a.replicaConfig.ReplicaID == 0 {
 			for {
-				shardView, _ := reg.GetShardInfo(a.configPrime.ShardID)
+				shardView, _ := reg.GetShardInfo(a.replicaConfig.ShardID)
 				for _, nhid := range shardView.Nodes {
-					sv, _ := reg.GetShardInfo(a.configPrime.ShardID)
+					sv, _ := reg.GetShardInfo(a.replicaConfig.ShardID)
 					index = sv.ConfigChangeIndex
 					_, apiAddr, err = a.parseMeta(nhid)
 					if err != nil {
@@ -174,7 +175,7 @@ func (a *Agent) Start() (err error) {
 						err = fmt.Errorf("Join request refused: %s", res.Error)
 						return
 					}
-					a.configPrime.ReplicaID = res.Value
+					a.replicaConfig.ReplicaID = res.Value
 					break
 				}
 				a.log.Warningf("Unable to add replica: %v", err)
@@ -184,9 +185,9 @@ func (a *Agent) Start() (err error) {
 				case <-t.C:
 				}
 			}
-			a.configPrime.ReplicaID = index
+			a.replicaConfig.ReplicaID = index
 		}
-		err = a.host.StartOnDiskReplica(nil, true, fsmFactory(a), a.configPrime)
+		err = a.host.StartReplica(nil, true, fsmFactory(a), a.replicaConfig)
 		return
 	*/
 }
@@ -291,7 +292,7 @@ func (a *Agent) GetHostClient(hostID string) (c *HostClient) {
 func (a *Agent) Stop() {
 	a.ctxCancel()
 	a.wg.Wait()
-	a.stopReplica(a.configPrime)
+	a.stopReplica(a.replicaConfig)
 	a.grpcClientPool.Close()
 	a.log.Infof("Agent stopped.")
 }
@@ -319,14 +320,14 @@ func (a *Agent) findGossip() (gossip []string, err error) {
 		gossip = gossip[:0]
 		for _, peerApiAddr := range a.peers {
 			if peerApiAddr == a.advertiseAddress {
-				gossip = append(gossip, a.configHost.Gossip.AdvertiseAddress)
+				gossip = append(gossip, a.hostConfig.Gossip.AdvertiseAddress)
 				continue
 			}
-			res, err := a.grpcClientPool.get(peerApiAddr).Probe(raftCtx(), nil)
+			res, err := a.grpcClientPool.get(peerApiAddr).Probe(raftCtx(), &internal.ProbeRequest{})
 			if err == nil && res != nil {
 				gossip = append(gossip, res.GossipAdvertiseAddress)
 			} else {
-				a.log.Warningf("No probe response for %s %s %+v %v", peerApiAddr, res, err)
+				a.log.Warningf("No probe response for %s %+v %v", peerApiAddr, res, err)
 			}
 		}
 		a.log.Infof("Found %d of %d peers %+v", len(gossip), len(a.peers), gossip)
@@ -355,14 +356,17 @@ func (a *Agent) findMembers() (members map[uint64]string, err error) {
 			var info *internal.InfoResponse
 			if apiAddr == a.advertiseAddress && a.GetHostID() != "" {
 				info = &internal.InfoResponse{
-					ReplicaId: a.configPrime.ReplicaID,
+					ReplicaId: a.replicaConfig.ReplicaID,
 					HostId:    a.GetHostID(),
 				}
 			} else {
-				info, err = a.grpcClientPool.get(apiAddr).Info(raftCtx(), nil)
+				info, err = a.grpcClientPool.get(apiAddr).Info(raftCtx(), &internal.InfoRequest{})
 				if err != nil {
 					return
 				}
+			}
+			if len(info.HostId) == 0 {
+				continue
 			}
 			if info.ReplicaId == 0 {
 				uninitialized[apiAddr] = info.HostId
@@ -381,34 +385,36 @@ func (a *Agent) findMembers() (members map[uint64]string, err error) {
 				replicaID := uint64(i + 1)
 				members[replicaID] = uninitialized[apiAddr]
 				if apiAddr == a.advertiseAddress {
-					a.configPrime.ReplicaID = replicaID
+					a.replicaConfig.ReplicaID = replicaID
 				}
 			}
-			if a.configPrime.ReplicaID > 0 {
+			if a.replicaConfig.ReplicaID > 0 {
 				break
 			}
 		}
-		// Some peers initialized. Retrieve replica ID.
+		// Some peers initialized. Retrieve member list from initialized host.
 		if len(members)+len(uninitialized) == len(a.peers) {
 			for _, apiAddr := range a.peers {
 				if apiAddr == a.advertiseAddress {
 					continue
 				}
 				if _, ok := uninitialized[apiAddr]; !ok {
-					res, err := a.grpcClientPool.get(apiAddr).Members(raftCtx(), nil)
+					res, err := a.grpcClientPool.get(apiAddr).Members(raftCtx(), &internal.MembersRequest{})
 					if err != nil {
 						return nil, err
 					}
+					a.log.Debugf("Get Members: %+v", *res)
 					for replicaID, hostID := range res.Members {
+						members[replicaID] = hostID
 						if hostID == a.host.ID() {
-							a.configPrime.ReplicaID = replicaID
+							a.replicaConfig.ReplicaID = replicaID
 							break
 						}
 					}
 					break
 				}
 			}
-			if a.configPrime.ReplicaID > 0 {
+			if a.replicaConfig.ReplicaID > 0 && len(members) == len(a.peers) {
 				break
 			}
 		}
@@ -419,7 +425,7 @@ func (a *Agent) findMembers() (members map[uint64]string, err error) {
 
 func (a *Agent) startReplica(members map[uint64]string) (err error) {
 	a.log.Debugf("Starting Replica %+v", members)
-	err = a.host.StartOnDiskReplica(members, false, fsmFactory(a), a.configPrime)
+	err = a.host.StartReplica(members, false, fsmFactory(a), a.replicaConfig)
 	if err == dragonboat.ErrShardAlreadyExist {
 		err = nil
 	}
@@ -448,7 +454,7 @@ func (a *Agent) startReplica(members map[uint64]string) (err error) {
 func (a *Agent) readIndex() (err error) {
 	var rs *dragonboat.RequestState
 	for {
-		rs, err = a.host.ReadIndex(a.configPrime.ShardID, raftTimeout)
+		rs, err = a.host.ReadIndex(a.replicaConfig.ShardID, raftTimeout)
 		if err != nil || rs == nil {
 			a.log.Warningf(`Error reading prime shard index: %v`, err)
 			a.clock.Sleep(time.Second)
@@ -469,7 +475,7 @@ func (a *Agent) readIndex() (err error) {
 }
 
 func (a *Agent) addReplica(nhid string) (replicaID uint64, err error) {
-	host, err := a.host.SyncRead(raftCtx(), a.configPrime.ShardID, newQueryHostGet(nhid))
+	host, err := a.host.SyncRead(raftCtx(), a.replicaConfig.ShardID, newQueryHostGet(nhid))
 	if err != nil {
 		return
 	}
@@ -480,7 +486,7 @@ func (a *Agent) addReplica(nhid string) (replicaID uint64, err error) {
 		}
 	}
 	for id, r := range host.(Host).Replicas {
-		if r.ShardID == a.configPrime.ShardID {
+		if r.ShardID == a.replicaConfig.ShardID {
 			replicaID = uint64(id)
 			break
 		}
@@ -490,11 +496,11 @@ func (a *Agent) addReplica(nhid string) (replicaID uint64, err error) {
 			return
 		}
 	}
-	m, err := a.host.SyncGetShardMembership(raftCtx(), a.configPrime.ShardID)
+	m, err := a.host.SyncGetShardMembership(raftCtx(), a.replicaConfig.ShardID)
 	if err != nil {
 		return
 	}
-	err = a.host.SyncRequestAddReplica(raftCtx(), a.configPrime.ShardID, replicaID, nhid, m.ConfigChangeID)
+	err = a.host.SyncRequestAddReplica(raftCtx(), a.replicaConfig.ShardID, replicaID, nhid, m.ConfigChangeID)
 	if err != nil {
 		return
 	}
@@ -513,18 +519,18 @@ func (a *Agent) parseMeta(nhid string) (meta []byte, apiAddr string, err error) 
 		return
 	}
 	i := bytes.LastIndexByte(meta, '|')
-	meta = meta[:i]
 	apiAddr = string(meta[i+1:])
+	meta = meta[:i]
 	return
 }
 
 func (a *Agent) primePropose(cmd []byte) (Result, error) {
-	return a.host.SyncPropose(raftCtx(), a.host.GetNoOPSession(a.configPrime.ShardID), cmd)
+	return a.host.SyncPropose(raftCtx(), a.host.GetNoOPSession(a.replicaConfig.ShardID), cmd)
 }
 
 // primeInit proposes addition of initial cluster state to prime shard
 func (a *Agent) primeInit(members map[uint64]string) (err error) {
-	_, err = a.primePropose(newCmdShardPut(a.configPrime.ShardID, projectName))
+	_, err = a.primePropose(newCmdShardPut(a.replicaConfig.ShardID, projectName))
 	if err != nil {
 		return
 	}
@@ -552,7 +558,7 @@ func (a *Agent) primeAddHost(nhid string) (err error) {
 
 // primeAddReplica proposes addition of replica metadata to the prime shard state
 func (a *Agent) primeAddReplica(nhid string, replicaID uint64) (id uint64, err error) {
-	res, err := a.primePropose(newCmdReplicaPut(nhid, a.configPrime.ShardID, replicaID, false))
+	res, err := a.primePropose(newCmdReplicaPut(nhid, a.replicaConfig.ShardID, replicaID, false))
 	if err == nil {
 		id = res.Value
 	}

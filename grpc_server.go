@@ -27,14 +27,14 @@ func newGrpcServer(listenAddr string, secrets []string) *grpcServer {
 
 func (s *grpcServer) Probe(ctx context.Context, req *internal.ProbeRequest) (res *internal.ProbeResponse, err error) {
 	return &internal.ProbeResponse{
-		GossipAdvertiseAddress: s.agent.configHost.Gossip.AdvertiseAddress,
+		GossipAdvertiseAddress: s.agent.hostConfig.Gossip.AdvertiseAddress,
 	}, nil
 }
 
 func (s *grpcServer) Info(ctx context.Context, req *internal.InfoRequest) (res *internal.InfoResponse, err error) {
 	return &internal.InfoResponse{
 		HostId:    s.agent.GetHostID(),
-		ReplicaId: s.agent.configPrime.ReplicaID,
+		ReplicaId: s.agent.replicaConfig.ReplicaID,
 	}, nil
 }
 
@@ -47,9 +47,9 @@ func (s *grpcServer) Members(ctx context.Context, req *internal.MembersRequest) 
 func (s *grpcServer) Join(ctx context.Context, req *internal.JoinRequest) (res *internal.JoinResponse, err error) {
 	h := s.agent.host
 	if !req.IsNonVoting {
-		err = h.SyncRequestAddReplica(raftCtx(), s.agent.configPrime.ShardID, req.ReplicaId, req.HostId, req.Index)
+		err = h.SyncRequestAddReplica(raftCtx(), s.agent.replicaConfig.ShardID, req.ReplicaId, req.HostId, req.Index)
 	} else {
-		err = h.SyncRequestAddNonVoting(raftCtx(), s.agent.configPrime.ShardID, req.ReplicaId, req.HostId, req.Index)
+		err = h.SyncRequestAddNonVoting(raftCtx(), s.agent.replicaConfig.ShardID, req.ReplicaId, req.HostId, req.Index)
 	}
 	res = &internal.JoinResponse{}
 	if err == nil {

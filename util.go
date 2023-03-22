@@ -21,6 +21,26 @@ const (
 	shardVersion = "v0.0.1"
 )
 
+var (
+	DefaultApiAddress    = "127.0.0.1:17001"
+	DefaultGossipAddress = "127.0.0.1:17002"
+	DefaultHostConfig    = HostConfig{
+		NodeHostDir:    "/var/lib/zongzi/raft",
+		RaftAddress:    "127.0.0.1:17003",
+		RTTMillisecond: 100,
+		WALDir:         "/var/lib/zongzi/wal",
+	}
+	DefaultReplicaConfig = ReplicaConfig{
+		CheckQuorum:         true,
+		CompactionOverhead:  1000,
+		ElectionRTT:         10,
+		HeartbeatRTT:        2,
+		OrderedConfigChange: true,
+		Quiesce:             false,
+		SnapshotEntries:     10,
+	}
+)
+
 type (
 	shardType struct {
 		Config  ReplicaConfig
@@ -83,26 +103,6 @@ const (
 )
 
 var (
-	DefaultApiAddress    = "127.0.0.1:10801"
-	DefaultGossipAddress = "127.0.0.1:10802"
-	DefaultHostConfig    = HostConfig{
-		NodeHostDir:    "/var/lib/zongzi/raft",
-		RaftAddress:    "127.0.0.1:10803",
-		RTTMillisecond: 100,
-		WALDir:         "/var/lib/zongzi/wal",
-	}
-	DefaultReplicaConfig = ReplicaConfig{
-		CheckQuorum:         true,
-		CompactionOverhead:  1000,
-		ElectionRTT:         10,
-		HeartbeatRTT:        2,
-		OrderedConfigChange: true,
-		Quiesce:             false,
-		SnapshotEntries:     10,
-	}
-)
-
-var (
 	ErrAborted       = dragonboat.ErrAborted
 	ErrCanceled      = dragonboat.ErrCanceled
 	ErrRejected      = dragonboat.ErrRejected
@@ -118,8 +118,9 @@ var (
 	ErrShardNotFound     = fmt.Errorf(`Shard not found`)
 
 	// ErrClusterNameInvalid indicates that the clusterName is invalid
-	// Base36 supports only lowercase alphanumeric characters (`^[a-z0-9]{0,12}$`)
+	// Base36 supports only lowercase alphanumeric characters
 	ErrClusterNameInvalid = fmt.Errorf("Invalid cluster name (base36 maxlen 12)")
+	ClusterNameRegex      = `^[a-z0-9]{1,12}$`
 
 	ErrAgentNotReady = fmt.Errorf("Agent not ready")
 

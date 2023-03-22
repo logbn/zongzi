@@ -74,6 +74,8 @@ func (c *controller) tick() (err error) {
 		if host.Updated <= c.index {
 			return
 		}
+		b, _ := state.MarshalJSON()
+		c.agent.log.Errorf("controller: snapshot: %s", string(b))
 		for _, r := range host.Replicas {
 			found[r.ID] = false
 		}
@@ -108,6 +110,9 @@ func (c *controller) tick() (err error) {
 				})
 			}
 		}
+		if len(toStart) == 0 {
+			c.index = state.Index
+		}
 	})
 	for _, params := range toStart {
 		item, ok := c.agent.shardTypes[params.shardType]
@@ -138,7 +143,7 @@ func (c *controller) Stop() {
 
 func (c *controller) LeaderUpdated(info LeaderInfo) {
 	switch info.ShardID {
-	case c.agent.configPrime.ShardID:
+	case c.agent.replicaConfig.ShardID:
 		c.mutex.Lock()
 		defer c.mutex.Unlock()
 		if info.LeaderID == info.ReplicaID {

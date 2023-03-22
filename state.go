@@ -26,17 +26,21 @@ func newState() *State {
 	}
 }
 
-func (s *State) MarshalJson() ([]byte, error) {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return json.Marshal(Snapshot{
+func (s *State) GetSnapshot() *Snapshot {
+	return &Snapshot{
 		Hosts:        s.hostList(),
 		Index:        s.Index,
 		ReplicaIndex: s.ReplicaIndex,
 		Replicas:     s.replicaList(),
 		ShardIndex:   s.ShardIndex,
 		Shards:       s.shardList(),
-	})
+	}
+}
+
+func (s *State) MarshalJSON() ([]byte, error) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return json.Marshal(s.GetSnapshot())
 }
 
 func (s *State) UnmarshalJSON(data []byte) (err error) {

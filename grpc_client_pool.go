@@ -3,6 +3,7 @@ package zongzi
 import (
 	"github.com/hashicorp/golang-lru/v2"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/logbn/zongzi/internal"
 )
@@ -31,12 +32,13 @@ func newGrpcClientPool(size int, secrets []string) *grpcClientPool {
 
 func (c *grpcClientPool) get(addr string) (client internal.ZongziClient) {
 	e, ok := c.clients.Get(addr)
-	if !ok {
+	if ok {
 		return e.client
 	}
 	var opts []grpc.DialOption
 	// https://github.com/grpc/grpc-go/tree/master/examples/features/authentication
 	// opts = append(opts, grpc.WithPerRPCCredentials(perRPC))
+	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	conn, err := grpc.Dial(addr, opts...)
 	if err != nil {
 		return &grpcClientErr{err}

@@ -23,7 +23,7 @@ func newReplicaClient(replica *Replica, a *Agent) *ReplicaClient {
 }
 
 func (c *ReplicaClient) Propose(ctx context.Context, cmd []byte, linear bool) (value uint64, data []byte, err error) {
-	if !linear && !c.agent.configHost.NotifyCommit {
+	if !linear && !c.agent.hostConfig.NotifyCommit {
 		c.agent.log.Warningf(`%v`, ErrNotifyCommitDisabled)
 	}
 	var res *internal.Response

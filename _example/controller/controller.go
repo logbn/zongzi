@@ -20,7 +20,7 @@ func newController() *controller {
 }
 
 type controller struct {
-	agent  zongzi.Agent
+	agent  *zongzi.Agent
 	cancel context.CancelFunc
 	clock  clock.Clock
 	leader bool
@@ -48,24 +48,23 @@ func (c *controller) start() {
 			select {
 			case <-t.C:
 				replicas := map[uint64]*zongzi.Replica{}
-				snapshot, err = c.agent.GetSnapshot(index)
-				if err != nil {
-					log.Println(`Error: %v`, err)
-				}
-				if snapshot == nil {
+				c.agent.Read(func(s *zongzi.State) {
+					snapshot = s.GetSnapshot()
+				})
+				if snapshot.Index == 0 || snapshot.Index == index {
 					break
 				}
 				if shard == nil {
 					// Find shard (this controller supports only one shard of its type per cluster)
 					for _, s := range snapshot.Shards {
-						if s.Type == shardType && s.Status != zongzi.ShardStatus_Closed {
-							shard = s
+						if s.Type == StateMachineUri && s.Status != zongzi.ShardStatus_Closed {
+							shard = &s
 							break
 						}
 					}
 					// Shard does not yet exist. Create it.
 					if shard == nil {
-						shard, err = c.agent.CreateShard(shardType)
+						shard, err = c.agent.CreateShard(StateMachineUri)
 						if err != nil {
 							break
 						}
@@ -73,7 +72,7 @@ func (c *controller) start() {
 				}
 				for _, r := range snapshot.Replicas {
 					if r.ShardID == shard.ID {
-						replicas[r.ID] = r
+						replicas[r.ID] = &r
 					}
 				}
 				// Add replicas to new hosts and remove replicas for missing hosts
@@ -85,9 +84,9 @@ func (c *controller) start() {
 						break
 					}
 					var hasReplica bool
-					for replicaID, shardID := range h.Replicas {
-						if shardID == shard.ID {
-							if !replicas[replicaID].IsNonVoting {
+					for _, replica := range h.Replicas {
+						if replica.ShardID == shard.ID {
+							if !replica.IsNonVoting {
 								zones[meta["zone"].(string)] = true
 							}
 							hasReplica = true
@@ -111,8 +110,9 @@ func (c *controller) start() {
 					}
 				}
 				index = snapshot.Index
-				c.agent.Read(func(s *zongzi.ClusterState) {
-					log.Println(string(s.MarshalJSON()))
+				c.agent.Read(func(s *zongzi.State) {
+					b, _ := s.MarshalJSON()
+					log.Println(string(b))
 				})
 			case <-ctx.Done():
 				c.mutex.Lock()

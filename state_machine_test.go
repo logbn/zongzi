@@ -18,7 +18,7 @@ func TestStateMachineShim(t *testing.T) {
 			return 1, nil
 		}
 		index, err := shim.Open(make(chan struct{}))
-		assert.Equal(t, 1, index)
+		assert.Equal(t, uint64(1), index)
 		assert.Nil(t, err)
 	})
 }

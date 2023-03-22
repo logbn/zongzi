@@ -20,6 +20,6 @@ func TestGrpcClientPool(t *testing.T) {
 		c := p.get("test|__)Q(@101::::''2")
 		require.NotNil(t, c)
 		_, ok := c.(*grpcClientErr)
-		assert.True(t, ok)
+		assert.False(t, ok)
 	})
 }
