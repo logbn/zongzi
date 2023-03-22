@@ -11,7 +11,6 @@ import (
 	"github.com/lni/dragonboat/v4/logger"
 	"github.com/lni/dragonboat/v4/raftio"
 	"github.com/lni/dragonboat/v4/statemachine"
-	"github.com/martinlindhe/base36"
 )
 
 const (
@@ -142,7 +141,7 @@ func base36Decode(name string) (uint64, error) {
 }
 
 func base36Encode(id uint64) string {
-	return base36.Encode(id)
+	return strconv.FormatUint(id, 36)
 }
 
 func raftCtx(ctxs ...context.Context) (ctx context.Context) {

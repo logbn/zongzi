@@ -7,7 +7,6 @@ require (
 	github.com/elliotchance/orderedmap/v2 v2.2.0
 	github.com/hashicorp/golang-lru/v2 v2.0.2
 	github.com/lni/dragonboat/v4 v4.0.0-20230202152124-023bafb8e648
-	github.com/martinlindhe/base36 v1.1.1
 	github.com/stretchr/testify v1.7.1
 	google.golang.org/grpc v1.38.0
 	google.golang.org/protobuf v1.26.0
