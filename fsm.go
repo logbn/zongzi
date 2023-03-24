@@ -206,8 +206,6 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 
 // func (fsm *fsm) SaveSnapshot(cursor any, w io.Writer, close <-chan struct{}) (err error) {
 func (fsm *fsm) SaveSnapshot(w io.Writer, _ statemachine.ISnapshotFileCollection, _ <-chan struct{}) error {
-	fsm.state.mutex.RLock()
-	defer fsm.state.mutex.RUnlock()
 	b, err := fsm.state.MarshalJSON()
 	if err == nil {
 		_, err = io.Copy(w, bytes.NewReader(b))
@@ -217,8 +215,6 @@ func (fsm *fsm) SaveSnapshot(w io.Writer, _ statemachine.ISnapshotFileCollection
 
 // func (fsm *fsm) RecoverFromSnapshot(r io.Reader, close <-chan struct{}) (err error) {
 func (fsm *fsm) RecoverFromSnapshot(r io.Reader, _ []statemachine.SnapshotFile, _ <-chan struct{}) error {
-	fsm.state.mutex.Lock()
-	defer fsm.state.mutex.Unlock()
 	b, err := io.ReadAll(r)
 	if err != nil {
 		return nil

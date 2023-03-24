@@ -77,6 +77,9 @@ func (c *controller) tick() (err error) {
 		b, _ := state.MarshalJSON()
 		c.agent.log.Errorf("controller: snapshot: %s", string(b))
 		for _, r := range host.Replicas {
+			if r.ID == 0 {
+				continue
+			}
 			found[r.ID] = false
 		}
 		for _, info := range hostInfo.ShardInfoList {
@@ -117,7 +120,7 @@ func (c *controller) tick() (err error) {
 	for _, params := range toStart {
 		item, ok := c.agent.shardTypes[params.shardType]
 		if !ok {
-			err = fmt.Errorf("Shard name not found in registry %s", params.shardType)
+			err = fmt.Errorf("Shard name not found in registry: %s", params.shardType)
 			break
 		}
 		item.Config.ShardID = params.shardID

@@ -56,10 +56,8 @@ message MembersResponse {
 }
 
 message JoinRequest {
-	uint64 index = 1;
-	uint64 replica_id = 2;
-	string host_id = 3;
-	bool is_non_voting = 4;
+	string host_id = 1;
+	bool is_non_voting = 2;
 }
 message JoinResponse {
     uint64 value = 1;

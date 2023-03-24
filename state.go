@@ -70,7 +70,7 @@ func (s *State) UnmarshalJSON(data []byte) (err error) {
 }
 
 func (s *State) hostList() []Host {
-	var list = make([]Host, s.Hosts.Len())
+	var list = make([]Host, 0, s.Hosts.Len())
 	for el := s.Hosts.Front(); el != nil; el = el.Next() {
 		list = append(list, *el.Value)
 	}
@@ -78,7 +78,7 @@ func (s *State) hostList() []Host {
 }
 
 func (s *State) shardList() []Shard {
-	var list = make([]Shard, s.Shards.Len())
+	var list = make([]Shard, 0, s.Shards.Len())
 	for el := s.Shards.Front(); el != nil; el = el.Next() {
 		list = append(list, *el.Value)
 	}
@@ -86,7 +86,7 @@ func (s *State) shardList() []Shard {
 }
 
 func (s *State) replicaList() []Replica {
-	var list = make([]Replica, s.Replicas.Len())
+	var list = make([]Replica, 0, s.Replicas.Len())
 	for el := s.Replicas.Front(); el != nil; el = el.Next() {
 		list = append(list, *el.Value)
 	}

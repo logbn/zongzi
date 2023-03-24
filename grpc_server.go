@@ -45,19 +45,8 @@ func (s *grpcServer) Members(ctx context.Context, req *internal.MembersRequest) 
 }
 
 func (s *grpcServer) Join(ctx context.Context, req *internal.JoinRequest) (res *internal.JoinResponse, err error) {
-	h := s.agent.host
-	if !req.IsNonVoting {
-		err = h.SyncRequestAddReplica(raftCtx(), s.agent.replicaConfig.ShardID, req.ReplicaId, req.HostId, req.Index)
-	} else {
-		err = h.SyncRequestAddNonVoting(raftCtx(), s.agent.replicaConfig.ShardID, req.ReplicaId, req.HostId, req.Index)
-	}
 	res = &internal.JoinResponse{}
-	if err == nil {
-		res.Value = 1
-	} else {
-		res.Error = err.Error()
-	}
-
+	res.Value, err = s.agent.addReplica(req.HostId, req.IsNonVoting)
 	return
 }
 
