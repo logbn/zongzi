@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	StateMachineUri     = "zongzi://github.com/logbn/zongzi-examples/controller/default"
+	StateMachineUri     = "github.com/logbn/zongzi-examples/controller"
 	StateMachineVersion = "v0.0.1"
 )
 

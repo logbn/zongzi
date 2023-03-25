@@ -124,25 +124,27 @@ func newCmdHostDel(nhid string) (b []byte) {
 	return
 }
 
-func newCmdShardPost(shardType string) (b []byte) {
+func newCmdShardPost(shardType, shardVersion string) (b []byte) {
 	b, _ = json.Marshal(commandShard{command{
 		Action: command_action_post,
 		Type:   command_type_shard,
 	}, Shard{
-		Status: ShardStatus_New,
-		Type:   shardType,
+		Status:  ShardStatus_New,
+		Type:    shardType,
+		Version: shardVersion,
 	}})
 	return
 }
 
-func newCmdShardPut(shardID uint64, shardType string) (b []byte) {
+func newCmdShardPut(shardID uint64, shardType, shardVersion string) (b []byte) {
 	b, _ = json.Marshal(commandShard{command{
 		Action: command_action_put,
 		Type:   command_type_shard,
 	}, Shard{
-		ID:     shardID,
-		Status: ShardStatus_New,
-		Type:   shardType,
+		ID:      shardID,
+		Status:  ShardStatus_New,
+		Type:    shardType,
+		Version: shardVersion,
 	}})
 	return
 }

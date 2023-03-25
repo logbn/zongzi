@@ -36,6 +36,7 @@ var (
 		WALDir:         "/var/lib/zongzi/wal",
 	}
 	DefaultReplicaConfig = ReplicaConfig{
+		PreVote:             true,
 		CheckQuorum:         true,
 		CompactionOverhead:  1000,
 		ElectionRTT:         100,

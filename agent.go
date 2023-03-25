@@ -205,16 +205,17 @@ func (a *Agent) Read(fn func(*State), linear ...bool) (err error) {
 }
 
 // CreateShard creates a new shard
-func (a *Agent) CreateShard(uri string) (shard *Shard, err error) {
-	a.log.Infof("Create shard %s", uri)
-	res, err := a.primePropose(newCmdShardPost(uri))
+func (a *Agent) CreateShard(uri, version string) (shard *Shard, err error) {
+	a.log.Infof("Create shard %s@%s", uri, version)
+	res, err := a.primePropose(newCmdShardPost(uri, version))
 	if err != nil {
 		return
 	}
 	return &Shard{
-		ID:     res.Value,
-		Type:   uri,
-		Status: ShardStatus_New,
+		ID:      res.Value,
+		Type:    uri,
+		Version: version,
+		Status:  ShardStatus_New,
 	}, nil
 }
 
@@ -507,7 +508,7 @@ func (a *Agent) addReplica(nhid string, isNonVoting bool) (replicaID uint64, err
 		}
 	}
 	if replicaID == 0 {
-		if replicaID, err = a.primeAddReplica(nhid); err != nil {
+		if replicaID, err = a.primeAddReplica(nhid, isNonVoting); err != nil {
 			return
 		}
 	}
@@ -549,7 +550,7 @@ func (a *Agent) primePropose(cmd []byte) (Result, error) {
 
 // primeInit proposes addition of initial cluster state to prime shard
 func (a *Agent) primeInit(members map[uint64]string) (err error) {
-	_, err = a.primePropose(newCmdShardPut(a.replicaConfig.ShardID, projectName))
+	_, err = a.primePropose(newCmdShardPut(a.replicaConfig.ShardID, shardUri, shardVersion))
 	if err != nil {
 		return
 	}
@@ -562,7 +563,7 @@ func (a *Agent) primeInit(members map[uint64]string) (err error) {
 		toAdd[replicaID-1] = nhid
 	}
 	for _, nhid := range toAdd {
-		if _, err = a.primeAddReplica(nhid); err != nil {
+		if _, err = a.primeAddReplica(nhid, false); err != nil {
 			return
 		}
 	}
@@ -590,8 +591,8 @@ func (a *Agent) primeAddHost(nhid string) (host Host, err error) {
 }
 
 // primeAddReplica proposes addition of replica metadata to the prime shard state
-func (a *Agent) primeAddReplica(nhid string) (id uint64, err error) {
-	res, err := a.primePropose(newCmdReplicaPut(nhid, a.replicaConfig.ShardID, 0, false))
+func (a *Agent) primeAddReplica(nhid string, isNonVoting bool) (id uint64, err error) {
+	res, err := a.primePropose(newCmdReplicaPut(nhid, a.replicaConfig.ShardID, 0, isNonVoting))
 	if err == nil {
 		id = res.Value
 	}

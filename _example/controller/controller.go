@@ -64,7 +64,7 @@ func (c *controller) start() {
 					}
 					// Shard does not yet exist. Create it.
 					if shard == nil {
-						shard, err = c.agent.CreateShard(StateMachineUri)
+						shard, err = c.agent.CreateShard(StateMachineUri, StateMachineVersion)
 						if err != nil {
 							break
 						}

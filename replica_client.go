@@ -22,6 +22,19 @@ func newReplicaClient(replica *Replica, a *Agent) *ReplicaClient {
 	}
 }
 
+// Propose a command to a specific replica.
+//
+// # cmd
+//
+// The command to run.
+//
+// # linear
+//
+// Indicates whether to return early after command is committed rather than waiting for it to be applied.
+// NotifyCommit must be set to true in HostConfig in order for non-linear writes to work.
+//
+//	false - if you want blind high-volume writes. Returned value and data will always be empty.
+//	true  - if you need a response.
 func (c *ReplicaClient) Propose(ctx context.Context, cmd []byte, linear bool) (value uint64, data []byte, err error) {
 	if !linear && !c.agent.hostConfig.NotifyCommit {
 		c.agent.log.Warningf(`%v`, ErrNotifyCommitDisabled)
@@ -48,6 +61,18 @@ func (c *ReplicaClient) Propose(ctx context.Context, cmd []byte, linear bool) (v
 	return
 }
 
+// Query a specific replica.
+//
+// # query
+//
+// The query forwarded to the Lookup method of the replica's state machine.
+//
+// # linear
+//
+// Indicates whether to read index before performing the query.
+//
+//	false - if you want low latency reads with eventual consistency.
+//	true  - if you are willing to pay the extra latency for a highly consistent read.
 func (c *ReplicaClient) Query(ctx context.Context, query []byte, linear bool) (value uint64, data []byte, err error) {
 	var res *internal.Response
 	if c.hostID == c.agent.GetHostID() {

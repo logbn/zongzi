@@ -53,13 +53,16 @@ func (s *State) UnmarshalJSON(data []byte) (err error) {
 	s.Index = snapshot.Index
 	s.ShardIndex = snapshot.ShardIndex
 	s.ReplicaIndex = snapshot.ReplicaIndex
-	for _, host := range snapshot.Hosts {
+	for i := range snapshot.Hosts {
+		var host = snapshot.Hosts[i]
 		s.Hosts.Set(host.ID, &host)
 	}
-	for _, shard := range snapshot.Shards {
+	for i := range snapshot.Shards {
+		var shard = snapshot.Shards[i]
 		s.Shards.Set(shard.ID, &shard)
 	}
-	for _, replica := range snapshot.Replicas {
+	for i := range snapshot.Replicas {
+		var replica = snapshot.Replicas[i]
 		replica.Host, _ = s.Hosts.Get(replica.HostID)
 		replica.Host.Replicas = append(replica.Host.Replicas, &replica)
 		replica.Shard, _ = s.Shards.Get(replica.ShardID)
