@@ -57,9 +57,6 @@ type controllerStartReplicaParams struct {
 func (c *controller) tick() (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	if !c.leader {
-		return
-	}
 	var (
 		found   = map[uint64]bool{}
 		nhid    = c.agent.host.ID()
@@ -75,11 +72,12 @@ func (c *controller) tick() (err error) {
 			return
 		}
 		b, _ := state.MarshalJSON()
-		c.agent.log.Errorf("controller: snapshot: %s", string(b))
+		c.agent.log.Errorf("controller: before: %s", string(b))
+		defer func() {
+			b, _ := state.MarshalJSON()
+			c.agent.log.Errorf("controller: after: %s", string(b))
+		}()
 		for _, r := range host.Replicas {
-			if r.ID == 0 {
-				continue
-			}
 			found[r.ID] = false
 		}
 		for _, info := range hostInfo.ShardInfoList {
@@ -104,6 +102,9 @@ func (c *controller) tick() (err error) {
 			}
 			replica, _ := state.Replicas.Get(id)
 			if replica.Status == ReplicaStatus_New {
+				if replica.ShardID == 0 {
+					continue
+				}
 				toStart = append(toStart, controllerStartReplicaParams{
 					index:        host.Updated,
 					replicaID:    replica.ID,

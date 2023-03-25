@@ -453,15 +453,13 @@ func (a *Agent) joinPrimeShard() (replicaID uint64, err error) {
 
 // updateHost adds host info to prime shard
 func (a *Agent) updateHost() (err error) {
+	meta, addr, err := a.parseMeta(a.GetHostID())
+	if err != nil {
+		return
+	}
 	shardTypes := keys(a.shardTypes)
 	sort.Strings(shardTypes)
-	cmd := newCmdHostPut(
-		a.GetHostID(),
-		a.advertiseAddress,
-		a.hostConfig.Gossip.Meta,
-		HostStatus_Active,
-		shardTypes,
-	)
+	cmd := newCmdHostPut(a.GetHostID(), addr, meta, HostStatus_Active, shardTypes)
 	a.log.Debugf("Updating host: %s", string(cmd))
 	_, err = a.primePropose(cmd)
 	return

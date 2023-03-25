@@ -18,22 +18,27 @@ const (
 	raftTimeout  = time.Second
 	joinTimeout  = 5 * time.Second
 	projectName  = "zongzi"
+	shardUri     = "github.com/logbn/zongzi/prime"
 	shardVersion = "v0.0.1"
 )
 
-var (
+const (
 	DefaultApiAddress    = "127.0.0.1:17001"
 	DefaultGossipAddress = "127.0.0.1:17002"
-	DefaultHostConfig    = HostConfig{
+	DefaultRaftAddress   = "127.0.0.1:17003"
+)
+
+var (
+	DefaultHostConfig = HostConfig{
 		NodeHostDir:    "/var/lib/zongzi/raft",
-		RaftAddress:    "127.0.0.1:17003",
-		RTTMillisecond: 100,
+		RaftAddress:    DefaultRaftAddress,
+		RTTMillisecond: 10,
 		WALDir:         "/var/lib/zongzi/wal",
 	}
 	DefaultReplicaConfig = ReplicaConfig{
 		CheckQuorum:         true,
 		CompactionOverhead:  1000,
-		ElectionRTT:         10,
+		ElectionRTT:         100,
 		HeartbeatRTT:        2,
 		OrderedConfigChange: true,
 		Quiesce:             false,
@@ -78,7 +83,9 @@ const (
 	LogLevelWarning  = logger.WARNING
 	LogLevelInfo     = logger.INFO
 	LogLevelDebug    = logger.DEBUG
+)
 
+const (
 	AgentStatus_Active       = AgentStatus("active")
 	AgentStatus_Initializing = AgentStatus("initializing")
 	AgentStatus_Joining      = AgentStatus("joining")

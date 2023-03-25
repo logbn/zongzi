@@ -138,7 +138,7 @@ func (c *controller) stop() {
 
 func (c *controller) LeaderUpdated(info zongzi.LeaderInfo) {
 	switch info.ShardID {
-	case 1:
+	case 0:
 		log.Printf("[RAFT EVENT] LeaderUpdated: %#v", info)
 		if info.LeaderID == info.ReplicaID {
 			c.start()
