@@ -32,18 +32,19 @@ var (
 	DefaultHostConfig = HostConfig{
 		NodeHostDir:    "/var/lib/zongzi/raft",
 		RaftAddress:    DefaultRaftAddress,
-		RTTMillisecond: 10,
+		RTTMillisecond: 100,
 		WALDir:         "/var/lib/zongzi/wal",
 	}
 	DefaultReplicaConfig = ReplicaConfig{
-		PreVote:             true,
-		CheckQuorum:         true,
-		CompactionOverhead:  1000,
-		ElectionRTT:         100,
-		HeartbeatRTT:        2,
-		OrderedConfigChange: true,
-		Quiesce:             false,
-		SnapshotEntries:     10,
+		PreVote:                 true,
+		CheckQuorum:             true,
+		CompactionOverhead:      1000,
+		ElectionRTT:             20,
+		HeartbeatRTT:            2,
+		OrderedConfigChange:     true,
+		Quiesce:                 false,
+		SnapshotCompressionType: config.Snappy,
+		SnapshotEntries:         10,
 	}
 )
 
