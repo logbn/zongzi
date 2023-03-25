@@ -51,17 +51,10 @@ operations like [(*NodeHost).StopShard](https://pkg.go.dev/github.com/lni/dragon
 assumes no more than one active replica per shard per host. A replica can never be reactivated after being marked
 sinactive.
 
-4. Although Dragonboat supports multiple types of statemachines (
-[IStateMachine](https://pkg.go.dev/github.com/lni/dragonboat/v4@v4.0.0-20230202152124-023bafb8e648/statemachine#IStateMachine),
-[IConcurrentStateMachine](https://pkg.go.dev/github.com/lni/dragonboat/v4@v4.0.0-20230202152124-023bafb8e648/statemachine#IConcurrentStateMachine),
-[IOnDiskStateMachine](https://pkg.go.dev/github.com/lni/dragonboat/v4@v4.0.0-20230202152124-023bafb8e648/statemachine#IOnDiskStateMachine)),
-they can all be considered subsets of `IOnDiskStateMachine`. To keep things simple, only one type of state machine and
-state machine factory is supported with no support for `IExtended`.
-
-5. Dragonboat sessions are not supported (they didn't work with on disk state machines anyways). Proposal deduplication
+4. Dragonboat sessions are not supported (they didn't work with on disk state machines anyways). Proposal deduplication
 is delegated to the developer. See [ADR: Raft Sessions](/docs/adr/raft_sessions.md)
 
-6. Initializing a Zongzi cluster requires at least 3 peer agents. Single host clusters are not supported.
+5. Initializing a Zongzi cluster requires at least 3 peer agents. Single host clusters are not supported.
 
 # Setup
 
