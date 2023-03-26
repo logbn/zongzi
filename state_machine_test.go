@@ -1,74 +1,66 @@
 package zongzi
 
 import (
+	"context"
 	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestStateMachineShim(t *testing.T) {
-	var newShim = func() (*mockStateMachine, *stateMachineShim) {
-		mock := &mockStateMachine{}
-		return mock, &stateMachineShim{sm: mock}
+func TestStateMachineConcurrentShim(t *testing.T) {
+	var newShim = func() (*mockStateMachineConcurrent, *stateMachineConcurrentShim) {
+		mock := &mockStateMachineConcurrent{}
+		return mock, &stateMachineConcurrentShim{sm: mock}
 	}
-	t.Run(`Open`, func(t *testing.T) {
+	t.Run(`Update`, func(t *testing.T) {
 		mock, shim := newShim()
-		mock.mockOpen = func(stopc <-chan struct{}) (index uint64, err error) {
-			return 1, nil
+		mock.mockUpdate = func(e []Entry) []Entry {
+			e[0].Result.Value = e[0].Index
+			return e
 		}
-		index, err := shim.Open(make(chan struct{}))
-		assert.Equal(t, uint64(1), index)
+		res, err := shim.Update([]Entry{{Index: 2, Cmd: []byte(``)}})
+		assert.Equal(t, uint64(2), res[0].Result.Value)
 		assert.Nil(t, err)
 	})
 }
 
-var _ StateMachine = (*mockStateMachine)(nil)
+var _ StateMachine = (*mockStateMachineConcurrent)(nil)
 
-type mockStateMachine struct {
-	mockOpen                func(stopc <-chan struct{}) (index uint64, err error)
+type mockStateMachineConcurrent struct {
 	mockUpdate              func(commands []Entry) []Entry
-	mockLookup              func(query Entry) Entry
-	mockWatch               func(query Entry, result chan<- Result, close <-chan struct{})
-	mockSync                func() error
+	mockLookup              func(ctx context.Context, query []byte) *Result
+	mockWatch               func(ctx context.Context, query []byte, result chan<- *Result)
 	mockPrepareSnapshot     func() (cursor any, err error)
-	mockSaveSnapshot        func(cursor any, w io.Writer, close <-chan struct{}) error
-	mockRecoverFromSnapshot func(r io.Reader, close <-chan struct{}) error
+	mockSaveSnapshot        func(cursor any, w io.Writer, c SnapshotFileCollection, close <-chan struct{}) error
+	mockRecoverFromSnapshot func(r io.Reader, f []SnapshotFile, close <-chan struct{}) error
 	mockClose               func() error
 }
 
-func (shim *mockStateMachine) Open(stopc <-chan struct{}) (index uint64, err error) {
-	return shim.mockOpen(stopc)
-}
-
-func (shim *mockStateMachine) Update(commands []Entry) []Entry {
+func (shim *mockStateMachineConcurrent) Update(commands []Entry) []Entry {
 	return shim.mockUpdate(commands)
 }
 
-func (shim *mockStateMachine) Lookup(query Entry) Entry {
-	return shim.mockLookup(query)
+func (shim *mockStateMachineConcurrent) Lookup(ctx context.Context, query []byte) *Result {
+	return shim.mockLookup(ctx, query)
 }
 
-func (shim *mockStateMachine) Watch(query Entry, result chan<- Result, close <-chan struct{}) {
-	shim.mockWatch(query, result, close)
+func (shim *mockStateMachineConcurrent) Watch(ctx context.Context, query []byte, result chan<- *Result) {
+	shim.mockWatch(ctx, query, result)
 }
 
-func (shim *mockStateMachine) Sync() error {
-	return shim.mockSync()
-}
-
-func (shim *mockStateMachine) PrepareSnapshot() (cursor any, err error) {
+func (shim *mockStateMachineConcurrent) PrepareSnapshot() (cursor any, err error) {
 	return shim.mockPrepareSnapshot()
 }
 
-func (shim *mockStateMachine) SaveSnapshot(cursor any, w io.Writer, close <-chan struct{}) error {
-	return shim.mockSaveSnapshot(cursor, w, close)
+func (shim *mockStateMachineConcurrent) SaveSnapshot(cursor any, w io.Writer, c SnapshotFileCollection, close <-chan struct{}) error {
+	return shim.mockSaveSnapshot(cursor, w, c, close)
 }
 
-func (shim *mockStateMachine) RecoverFromSnapshot(r io.Reader, close <-chan struct{}) error {
-	return shim.mockRecoverFromSnapshot(r, close)
+func (shim *mockStateMachineConcurrent) RecoverFromSnapshot(r io.Reader, f []SnapshotFile, close <-chan struct{}) error {
+	return shim.mockRecoverFromSnapshot(r, f, close)
 }
 
-func (shim *mockStateMachine) Close() error {
+func (shim *mockStateMachineConcurrent) Close() error {
 	return shim.mockClose()
 }

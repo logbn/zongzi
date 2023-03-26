@@ -126,12 +126,22 @@ func (c *controller) tick() (err error) {
 		}
 		item.Config.ShardID = params.shardID
 		item.Config.ReplicaID = params.replicaID
-		err = c.agent.host.StartOnDiskReplica(params.shardMembers, false, stateMachineFactoryShim(item.Factory), item.Config)
+		if item.StateMachineFactory != nil {
+			shim := stateMachineFactoryShim(item.StateMachineFactory)
+			err = c.agent.host.StartConcurrentReplica(params.shardMembers, false, shim, item.Config)
+		} else {
+			shim := persistentStateMachineFactoryShim(item.PersistentStateMachineFactory)
+			err = c.agent.host.StartOnDiskReplica(params.shardMembers, false, shim, item.Config)
+		}
 		if err != nil {
 			err = fmt.Errorf("Failed to start replica: %w", err)
 			break
 		}
-		// newCmdSetReplicaStatus(id, ReplicaStatus_Active)
+		_, err := c.agent.primePropose(newCmdReplicaUpdateStatus(params.replicaID, ReplicaStatus_Active))
+		if err != nil {
+			err = fmt.Errorf("Failed to update replica status: %w", err)
+			break
+		}
 		c.index = params.index
 	}
 	return

@@ -151,6 +151,14 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 	case commandReplica:
 		var cmd = cmd.(commandReplica)
 		switch cmd.Action {
+		case command_action_status_update:
+			replica, ok := fsm.state.Replicas.Get(cmd.Replica.ID)
+			if !ok {
+				fsm.log.Warningf("%v: %#v", ErrReplicaNotFound, cmd)
+				break
+			}
+			replica.Status = cmd.Replica.Status
+			entry.Result.Value = 1
 		// Put
 		case command_action_put:
 			host, ok := fsm.state.Hosts.Get(cmd.Replica.HostID)

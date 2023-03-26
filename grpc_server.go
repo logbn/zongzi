@@ -46,7 +46,7 @@ func (s *grpcServer) Members(ctx context.Context, req *internal.MembersRequest) 
 
 func (s *grpcServer) Join(ctx context.Context, req *internal.JoinRequest) (res *internal.JoinResponse, err error) {
 	res = &internal.JoinResponse{}
-	res.Value, err = s.agent.addReplica(req.HostId, req.IsNonVoting)
+	res.Value, err = s.agent.addReplica(req.HostId, s.agent.replicaConfig.ShardID, req.IsNonVoting)
 	return
 }
 
@@ -107,9 +107,15 @@ func (s *grpcServer) Propose(ctx context.Context, req *internal.Request) (res *i
 func (s *grpcServer) Query(ctx context.Context, req *internal.Request) (res *internal.Response, err error) {
 	var r any
 	if req.Linear {
-		r, err = s.agent.host.SyncRead(raftCtx(), req.ShardId, req.Data)
+		r, err = s.agent.host.SyncRead(raftCtx(), req.ShardId, lookupQuery{
+			ctx:  ctx,
+			data: req.Data,
+		})
 	} else {
-		r, err = s.agent.host.StaleRead(req.ShardId, req.Data)
+		r, err = s.agent.host.StaleRead(req.ShardId, lookupQuery{
+			ctx:  ctx,
+			data: req.Data,
+		})
 	}
 	if r != nil {
 		res = r.(*internal.Response)

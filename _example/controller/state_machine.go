@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -36,23 +37,23 @@ func (fsm *stateMachine) Update(entries []zongzi.Entry) []zongzi.Entry {
 	return entries
 }
 
-func (fsm *stateMachine) Lookup(entry zongzi.Entry) zongzi.Entry {
-	entry.Result.Value = 1
-	entry.Result.Data = []byte(fmt.Sprintf("%s [%d:%d]", StateMachineUri, fsm.shardID, fsm.replicaID))
-	return entry
+func (fsm *stateMachine) Lookup(ctx context.Context, query []byte) *zongzi.Result {
+	result := zongzi.GetResult()
+	result.Value = 1
+	result.Data = []byte(fmt.Sprintf("%s [%d:%d]", StateMachineUri, fsm.shardID, fsm.replicaID))
+	return result
 }
 
-func (fsm *stateMachine) SaveSnapshot(cursor any, w io.Writer, close <-chan struct{}) (err error) {
+func (fsm *stateMachine) PrepareSnapshot() (cursor any, err error) { return }
+
+func (fsm *stateMachine) SaveSnapshot(cursor any, w io.Writer, c zongzi.SnapshotFileCollection, close <-chan struct{}) (err error) {
 	w.Write([]byte(fmt.Sprintf("%s %d", StateMachineUri, fsm.shardID)))
 	return
 }
 
-func (fsm *stateMachine) RecoverFromSnapshot(r io.Reader, close <-chan struct{}) (err error) {
+func (fsm *stateMachine) RecoverFromSnapshot(r io.Reader, f []zongzi.SnapshotFile, close <-chan struct{}) (err error) {
 	_, err = io.ReadAll(r)
 	return
 }
 
-func (fsm *stateMachine) Close() (err error)                               { return }
-func (fsm *stateMachine) Open(stopc <-chan struct{}) (i uint64, err error) { return }
-func (fsm *stateMachine) PrepareSnapshot() (cursor any, err error)         { return }
-func (fsm *stateMachine) Sync() (err error)                                { return }
+func (fsm *stateMachine) Close() (err error) { return }

@@ -11,11 +11,10 @@ const (
 	command_type_shard    = "shard"
 	command_type_snapshot = "snapshot"
 
-	command_action_del  = "del"
-	command_action_put  = "put"
-	command_action_post = "post"
-
-	query_action_get = "get"
+	command_action_del           = "del"
+	command_action_put           = "put"
+	command_action_post          = "post"
+	command_action_status_update = "status-update"
 )
 
 type Snapshot struct {
@@ -33,9 +32,9 @@ type Host struct {
 	ID      string `json:"id"`
 	Created uint64 `json:"created"`
 	Updated uint64 `json:"updated"`
+	Meta    []byte `json:"meta"`
 
 	ApiAddress string     `json:"apiAddress"`
-	Meta       []byte     `json:"meta"`
 	ShardTypes []string   `json:"shardTypes"`
 	Status     HostStatus `json:"status"`
 
@@ -46,6 +45,7 @@ type Shard struct {
 	ID      uint64 `json:"id"`
 	Created uint64 `json:"created"`
 	Updated uint64 `json:"updated"`
+	Meta    []byte `json:"meta"`
 
 	Status  ShardStatus `json:"status"`
 	Type    string      `json:"type"`
@@ -69,6 +69,7 @@ type Replica struct {
 	ID      uint64 `json:"id"`
 	Created uint64 `json:"created"`
 	Updated uint64 `json:"updated"`
+	Meta    []byte `json:"meta"`
 
 	HostID      string        `json:"hostID"`
 	IsNonVoting bool          `json:"isNonVoting"`
@@ -183,46 +184,13 @@ func newCmdReplicaDel(replicaID uint64) (b []byte) {
 	return
 }
 
-type query struct {
-	Type   string `json:"type"`
-	Action string `json:"action"`
-}
-
-type queryHost struct {
-	query
-	Host Host `json:"host"`
-}
-
-type queryReplica struct {
-	query
-	Replica Replica `json:"replica"`
-}
-
-type querySnapshot struct {
-	query
-}
-
-func newQueryHostGet(nhid string) queryHost {
-	return queryHost{query{
-		Type:   command_type_host,
-		Action: query_action_get,
-	}, Host{
-		ID: nhid,
-	}}
-}
-
-func newQuerySnapshotGet() querySnapshot {
-	return querySnapshot{query{
-		Type:   command_type_snapshot,
-		Action: query_action_get,
-	}}
-}
-
-func newQueryReplicaGet(id uint64) queryReplica {
-	return queryReplica{query{
+func newCmdReplicaUpdateStatus(replicaID uint64, status ReplicaStatus) (b []byte) {
+	b, _ = json.Marshal(commandReplica{command{
+		Action: command_action_status_update,
 		Type:   command_type_replica,
-		Action: query_action_get,
 	}, Replica{
-		ID: id,
-	}}
+		ID:     replicaID,
+		Status: status,
+	}})
+	return
 }

@@ -26,6 +26,8 @@ const (
 	DefaultApiAddress    = "127.0.0.1:17001"
 	DefaultGossipAddress = "127.0.0.1:17002"
 	DefaultRaftAddress   = "127.0.0.1:17003"
+
+	ZongziShardID = 0
 )
 
 var (
@@ -50,15 +52,20 @@ var (
 
 type (
 	shardType struct {
-		Config  ReplicaConfig
-		Factory StateMachineFactory
-		Uri     string
-		Version string
+		Config                        ReplicaConfig
+		StateMachineFactory           StateMachineFactory
+		PersistentStateMachineFactory PersistentStateMachineFactory
+		Uri                           string
+		Version                       string
+	}
+	lookupQuery struct {
+		ctx  context.Context
+		data []byte
 	}
 	watchQuery struct {
-		close  chan struct{}
-		query  Entry
-		result chan Result
+		ctx    context.Context
+		data   []byte
+		result chan *Result
 	}
 )
 
@@ -68,8 +75,10 @@ type (
 
 	LeaderInfo = raftio.LeaderInfo
 
-	Entry  = statemachine.Entry
-	Result = statemachine.Result
+	Entry                  = statemachine.Entry
+	Result                 = statemachine.Result
+	SnapshotFile           = statemachine.SnapshotFile
+	SnapshotFileCollection = statemachine.ISnapshotFileCollection
 
 	LogLevel = logger.LogLevel
 
@@ -125,6 +134,7 @@ var (
 	ErrReplicaNotAllowed = fmt.Errorf("Replica not allowed")
 	ErrReplicaNotFound   = fmt.Errorf("Replica not found")
 	ErrShardNotFound     = fmt.Errorf(`Shard not found`)
+	ErrInvalidFactory    = fmt.Errorf(`Invalid Factory`)
 
 	// ErrClusterNameInvalid indicates that the clusterName is invalid
 	// Base36 supports only lowercase alphanumeric characters
@@ -161,6 +171,14 @@ func raftCtx(ctxs ...context.Context) (ctx context.Context) {
 	}
 	ctx, _ = context.WithTimeout(ctx, raftTimeout)
 	return
+}
+
+// GetResult can be used to efficiently retrieve an empty Result from a global pool. It is recommended to use this
+// method to instantiate Result objects returned by Lookup or sent over Watch channels as they will be automatically
+// returned to the pool to reduce allocation overhead.
+func GetResult() *Result {
+	// TODO - Implement resultPool
+	return &Result{}
 }
 
 // SetLogLevel sets log level for all zongzi and dragonboat loggers.

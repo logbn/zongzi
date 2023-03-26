@@ -68,7 +68,7 @@ func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent
 		}
 	}
 	a.controller = newController(a)
-	a.replicaConfig.ShardID = 0
+	a.replicaConfig.ShardID = ZongziShardID
 	a.hostConfig.DeploymentID = mustBase36Decode(clusterName)
 	a.hostConfig.AddressByNodeHostID = true
 	a.hostConfig.Gossip.Meta = append(a.hostConfig.Gossip.Meta, []byte(`|`+a.advertiseAddress)...)
@@ -166,6 +166,10 @@ func (a *Agent) Start() (err error) {
 	if err != nil {
 		return
 	}
+	err = a.updateReplica()
+	if err != nil {
+		return
+	}
 	// Start non-prime shards
 	return
 }
@@ -228,17 +232,31 @@ func (a *Agent) CreateReplica(shardID uint64, nodeHostID string, isNonVoting boo
 	return
 }
 
-// RegisterStateMachine registers a shard type. Call before Start.
+// RegisterStateMachine registers a non-persistent shard type. Call before Starting agent.
 func (a *Agent) RegisterStateMachine(uri, version string, factory StateMachineFactory, config ...ReplicaConfig) {
 	cfg := DefaultReplicaConfig
 	if len(config) > 0 {
 		cfg = config[0]
 	}
 	a.shardTypes[uri] = shardType{
-		Config:  cfg,
-		Factory: factory,
-		Uri:     uri,
-		Version: version,
+		Config:              cfg,
+		StateMachineFactory: factory,
+		Uri:                 uri,
+		Version:             version,
+	}
+}
+
+// RegisterPersistentStateMachine registers a persistent shard type. Call before Starting agent.
+func (a *Agent) RegisterPersistentStateMachine(uri, version string, factory PersistentStateMachineFactory, config ...ReplicaConfig) {
+	cfg := DefaultReplicaConfig
+	if len(config) > 0 {
+		cfg = config[0]
+	}
+	a.shardTypes[uri] = shardType{
+		Config:                        cfg,
+		PersistentStateMachineFactory: factory,
+		Uri:                           uri,
+		Version:                       version,
 	}
 }
 
@@ -466,6 +484,15 @@ func (a *Agent) updateHost() (err error) {
 	return
 }
 
+// updateReplica sets prime shard replica to active
+func (a *Agent) updateReplica() (err error) {
+	_, err = a.primePropose(newCmdReplicaUpdateStatus(a.replicaConfig.ReplicaID, ReplicaStatus_Active))
+	if err != nil {
+		err = fmt.Errorf("Failed to update replica status: %w", err)
+	}
+	return
+}
+
 // readIndex blocks until it can read from the prime shard, indicating that the local replica is up to date.
 func (a *Agent) readIndex() (err error) {
 	var rs *dragonboat.RequestState
@@ -490,36 +517,40 @@ func (a *Agent) readIndex() (err error) {
 	return
 }
 
-func (a *Agent) addReplica(nhid string, isNonVoting bool) (replicaID uint64, err error) {
-	host, err := a.host.SyncRead(raftCtx(), a.replicaConfig.ShardID, newQueryHostGet(nhid))
-	if err != nil {
-		return
-	}
-	if host == nil {
-		host, err = a.primeAddHost(nhid)
+func (a *Agent) addReplica(hostID string, shardID uint64, isNonVoting bool) (replicaID uint64, err error) {
+	var host Host
+	a.Read(func(s *State) {
+		h, ok := s.Hosts.Get(hostID)
+		if !ok {
+			return
+		}
+		host = *h
+	})
+	if host.ID == "" {
+		host, err = a.primeAddHost(hostID)
 		if err != nil {
 			return
 		}
 	}
-	for id, r := range host.(Host).Replicas {
-		if r.ShardID == a.replicaConfig.ShardID {
+	for id, r := range host.Replicas {
+		if r.ShardID == shardID {
 			replicaID = uint64(id)
 			break
 		}
 	}
 	if replicaID == 0 {
-		if replicaID, err = a.primeAddReplica(nhid, isNonVoting); err != nil {
+		if replicaID, err = a.primeAddReplica(hostID, isNonVoting); err != nil {
 			return
 		}
 	}
-	m, err := a.host.SyncGetShardMembership(raftCtx(), a.replicaConfig.ShardID)
+	m, err := a.host.SyncGetShardMembership(raftCtx(), shardID)
 	if err != nil {
 		return
 	}
 	if isNonVoting {
-		err = a.host.SyncRequestAddNonVoting(raftCtx(), a.replicaConfig.ShardID, replicaID, nhid, m.ConfigChangeID)
+		err = a.host.SyncRequestAddNonVoting(raftCtx(), shardID, replicaID, hostID, m.ConfigChangeID)
 	} else {
-		err = a.host.SyncRequestAddReplica(raftCtx(), a.replicaConfig.ShardID, replicaID, nhid, m.ConfigChangeID)
+		err = a.host.SyncRequestAddReplica(raftCtx(), shardID, replicaID, hostID, m.ConfigChangeID)
 	}
 	if err != nil {
 		return
