@@ -90,7 +90,7 @@ Additional nodes added with duplicate zone should be added as non voting.
             "isNonVoting": false,
             "isWitness": false,
             "shardID": 0,
-            "status": "new"
+            "status": "active"
         },
         {
             "id": 2,
@@ -100,7 +100,7 @@ Additional nodes added with duplicate zone should be added as non voting.
             "isNonVoting": false,
             "isWitness": false,
             "shardID": 0,
-            "status": "new"
+            "status": "active"
         },
         {
             "id": 3,
@@ -110,7 +110,7 @@ Additional nodes added with duplicate zone should be added as non voting.
             "isNonVoting": false,
             "isWitness": false,
             "shardID": 0,
-            "status": "new"
+            "status": "active"
         },
         {
             "id": 4,
@@ -120,7 +120,7 @@ Additional nodes added with duplicate zone should be added as non voting.
             "isNonVoting": false,
             "isWitness": false,
             "shardID": 1,
-            "status": "new"
+            "status": "active"
         },
         {
             "id": 5,
@@ -130,7 +130,7 @@ Additional nodes added with duplicate zone should be added as non voting.
             "isNonVoting": false,
             "isWitness": false,
             "shardID": 1,
-            "status": "new"
+            "status": "active"
         },
         {
             "id": 6,
@@ -140,7 +140,7 @@ Additional nodes added with duplicate zone should be added as non voting.
             "isNonVoting": false,
             "isWitness": false,
             "shardID": 1,
-            "status": "new"
+            "status": "active"
         },
         {
             "id": 7,
@@ -150,7 +150,7 @@ Additional nodes added with duplicate zone should be added as non voting.
             "isNonVoting": true,
             "isWitness": false,
             "shardID": 0,
-            "status": "new"
+            "status": "active"
         },
         {
             "id": 8,
@@ -160,7 +160,7 @@ Additional nodes added with duplicate zone should be added as non voting.
             "isNonVoting": true,
             "isWitness": false,
             "shardID": 1,
-            "status": "new"
+            "status": "active"
         }
     ],
     "ShardIndex": 1,

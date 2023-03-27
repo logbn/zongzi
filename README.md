@@ -51,10 +51,9 @@ cluster makes it simple and efficient to derefence a replicaID to the correct ho
 alone because its cluster state is decentralized.
 
 3. Any host may have at most one active replica of any shard. No host may ever have more than one active replica of
-any shard. A host may have any number of inactive replicas for any shard. This aligns with many Dragonboat host
-operations like [(*NodeHost).StopShard](https://pkg.go.dev/github.com/lni/dragonboat/v4#NodeHost.StopShard) which
-assumes no more than one active replica per shard per host. A replica can never be reactivated after being marked
-sinactive.
+any shard. This aligns with many Dragonboat host operations like
+[(*NodeHost).StopShard](https://pkg.go.dev/github.com/lni/dragonboat/v4#NodeHost.StopShard) which assumes no more than
+one active replica per shard per host.
 
 4. Dragonboat sessions are not supported (they didn't work with on disk state machines anyways). Proposal deduplication
 is delegated to the developer. See [ADR: Raft Sessions](/docs/adr/raft_sessions.md)
