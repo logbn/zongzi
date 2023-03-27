@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"fmt"
 	"os"
 	"os/signal"
 	"strings"
@@ -12,42 +11,46 @@ import (
 	"github.com/logbn/zongzi"
 )
 
-var (
-	name       = flag.String("n", "test001", "Cluster name (base36 maxlen 12)")
-	dataDir    = flag.String("d", "/var/lib/zongzi/node", "Base data directory")
-	raftDir    = flag.String("r", "127.0.0.1:10801", "Raft address")
-	gossipAddr = flag.String("g", "127.0.0.1:10802", "Gossip address")
-	discovery  = flag.String("u", "239.108.0.1:10801", "UDP multicast discovery addresses (csv)")
-	zone       = flag.String("z", "us-west-1a", "Zone")
-	shardType  = "banana"
-)
-
 func main() {
+	var (
+		clusterName = flag.String("n", "test001", "Cluster name (base36 maxlen 12)")
+		dataDir     = flag.String("d", "/var/lib/zongzi", "Base data directory")
+		peers       = flag.String("p", "127.0.0.1:17001", "Peer nodes")
+		listenAddr  = flag.String("l", "127.0.0.1:17001", "Listen address")
+		gossipAddr  = flag.String("g", "127.0.0.1:17002", "Gossip address")
+		raftAddr    = flag.String("r", "127.0.0.1:17003", "Raft address")
+		zone        = flag.String("z", "us-west-1a", "Zone")
+		secret      = flag.String("s", "", "Shared secrets (csv)")
+	)
 	flag.Parse()
 	zongzi.SetLogLevelDebug()
-	meta, _ := json.Marshal(map[string]string{"zone": *zone})
-	c := &controller{}
-	agent, err := zongzi.NewAgent(zongzi.AgentConfig{
-		Multicast: strings.Split(*discovery, ","),
-		NodeHostConfig: zongzi.NodeHostConfig{
-			RTTMillisecond: 10,
-			DeploymentID:   zongzi.MustBase36Decode(*name),
-			WALDir:         *dataDir + "/wal",
-			NodeHostDir:    *dataDir + "/raft",
-			RaftAddress:    *raftDir,
-			Gossip: zongzi.GossipConfig{
-				BindAddress:      fmt.Sprintf("0.0.0.0:%s", strings.Split(*gossipAddr, ":")[1]),
-				AdvertiseAddress: *gossipAddr,
-				Meta:             meta,
-			},
-			RaftEventListener: c,
-		},
-	})
+	ctrl := newController()
+	meta, _ := json.Marshal(map[string]any{"zone": *zone})
+	agent, err := zongzi.NewAgent(
+		*clusterName,
+		strings.Split(*peers, ","),
+		zongzi.WithApiAddress(*listenAddr),
+		zongzi.WithGossipAddress(*gossipAddr),
+		zongzi.WithHostConfig(zongzi.HostConfig{
+			NodeHostDir:       *dataDir + "/raft",
+			NotifyCommit:      true,
+			RaftAddress:       *raftAddr,
+			RaftEventListener: ctrl,
+			RTTMillisecond:    100,
+			WALDir:            *dataDir + "/wal",
+		}),
+		zongzi.WithMeta(meta),
+		zongzi.WithSecrets(strings.Split(*secret, ",")),
+	)
 	if err != nil {
 		panic(err)
 	}
-	agent.RegisterShardType(shardType, raftNodeFactory(), nil)
-	c.agent = agent
+	agent.RegisterStateMachine(
+		StateMachineUri,
+		StateMachineVersion,
+		StateMachineFactory(),
+	)
+	ctrl.agent = agent
 	if err = agent.Start(); err != nil {
 		panic(err)
 	}

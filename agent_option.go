@@ -1,0 +1,69 @@
+package zongzi
+
+import (
+	"fmt"
+	"strings"
+)
+
+type AgentOption func(*Agent) error
+
+func WithApiAddress(advertiseAddress string, bindAddress ...string) AgentOption {
+	return func(a *Agent) error {
+		a.advertiseAddress = advertiseAddress
+		if len(bindAddress) > 0 {
+			a.bindAddress = bindAddress[0]
+		} else {
+			a.bindAddress = fmt.Sprintf("0.0.0.0:%s", strings.Split(advertiseAddress, ":")[1])
+		}
+		return nil
+	}
+}
+
+func WithGossipAddress(advertiseAddress string, bindAddress ...string) AgentOption {
+	return func(a *Agent) error {
+		a.hostConfig.Gossip.AdvertiseAddress = advertiseAddress
+		if len(bindAddress) > 0 {
+			a.hostConfig.Gossip.BindAddress = bindAddress[0]
+		} else {
+			a.hostConfig.Gossip.BindAddress = fmt.Sprintf("0.0.0.0:%s", strings.Split(advertiseAddress, ":")[1])
+		}
+		return nil
+	}
+}
+
+func WithHostConfig(cfg HostConfig) AgentOption {
+	return func(a *Agent) error {
+		if len(cfg.Gossip.AdvertiseAddress) == 0 && len(a.hostConfig.Gossip.AdvertiseAddress) > 0 {
+			cfg.Gossip.AdvertiseAddress = a.hostConfig.Gossip.AdvertiseAddress
+		}
+		if len(cfg.Gossip.BindAddress) == 0 && len(a.hostConfig.Gossip.BindAddress) > 0 {
+			cfg.Gossip.BindAddress = a.hostConfig.Gossip.BindAddress
+		}
+		if len(cfg.Gossip.Meta) == 0 && len(a.hostConfig.Gossip.Meta) > 0 {
+			cfg.Gossip.Meta = a.hostConfig.Gossip.Meta
+		}
+		a.hostConfig = cfg
+		return nil
+	}
+}
+
+func WithMeta(meta []byte) AgentOption {
+	return func(a *Agent) error {
+		a.hostConfig.Gossip.Meta = meta
+		return nil
+	}
+}
+
+func WithReplicaConfig(cfg ReplicaConfig) AgentOption {
+	return func(a *Agent) error {
+		a.replicaConfig = cfg
+		return nil
+	}
+}
+
+func WithSecrets(secrets []string) AgentOption {
+	return func(a *Agent) error {
+		a.secrets = secrets
+		return nil
+	}
+}

@@ -2,18 +2,29 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"sync"
 	"time"
 
+	"github.com/benbjohnson/clock"
+
 	"github.com/logbn/zongzi"
 )
 
+func newController() *controller {
+	return &controller{
+		clock: clock.New(),
+	}
+}
+
 type controller struct {
-	agent  zongzi.Agent
+	agent  *zongzi.Agent
 	cancel context.CancelFunc
-	mutex  sync.RWMutex
+	clock  clock.Clock
 	leader bool
+	mutex  sync.RWMutex
 }
 
 func (c *controller) start() {
@@ -22,36 +33,38 @@ func (c *controller) start() {
 	if c.leader {
 		return
 	}
-	var ctx context.Context
-	var last string
+	var (
+		ctx      context.Context
+		err      error
+		index    uint64
+		shard    *zongzi.Shard
+		snapshot *zongzi.Snapshot
+	)
 	ctx, c.cancel = context.WithCancel(context.Background())
 	go func() {
-		t := time.NewTicker(time.Second)
-		var err error
+		t := c.clock.Ticker(time.Second)
+		defer t.Stop()
 		for {
 			select {
 			case <-t.C:
-				var (
-					snapshot zongzi.Snapshot
-					shard    *zongzi.Shard
-
-					replicas = map[uint64]*zongzi.Replica{}
-				)
-				snapshot, err = c.agent.GetSnapshot()
-				if err != nil {
+				replicas := map[uint64]*zongzi.Replica{}
+				c.agent.Read(func(s *zongzi.State) {
+					snapshot = s.GetSnapshot()
+				})
+				if snapshot.Index == 0 || snapshot.Index == index {
 					break
 				}
 				if shard == nil {
-					// Find shard (does not support multiple shards of the same type)
+					// Find shard (this controller supports only one shard of its type per cluster)
 					for _, s := range snapshot.Shards {
-						if s.Type == shardType {
-							shard = s
+						if s.Type == StateMachineUri && s.Status != zongzi.ShardStatus_Closed {
+							shard = &s
 							break
 						}
 					}
 					// Shard does not yet exist. Create it.
 					if shard == nil {
-						shard, err = c.agent.CreateShard(shardType)
+						shard, err = c.agent.CreateShard(StateMachineUri, StateMachineVersion)
 						if err != nil {
 							break
 						}
@@ -59,17 +72,22 @@ func (c *controller) start() {
 				}
 				for _, r := range snapshot.Replicas {
 					if r.ShardID == shard.ID {
-						replicas[r.ID] = r
+						replicas[r.ID] = &r
 					}
 				}
 				// Add replicas to new hosts and remove replicas for missing hosts
 				var zones = map[string]bool{}
 				for _, h := range snapshot.Hosts {
+					var meta map[string]any
+					if err = json.Unmarshal(h.Meta, &meta); err != nil {
+						err = fmt.Errorf("Bad meta: %w", err)
+						break
+					}
 					var hasReplica bool
-					for replicaID, shardID := range h.Replicas {
-						if shardID == shard.ID {
-							if !replicas[replicaID].IsNonVoting {
-								zones[h.Meta["zone"].(string)] = true
+					for _, replica := range h.Replicas {
+						if replica.ShardID == shard.ID {
+							if !replica.IsNonVoting {
+								zones[meta["zone"].(string)] = true
 							}
 							hasReplica = true
 							break
@@ -80,8 +98,8 @@ func (c *controller) start() {
 					}
 					// Not strictly correct.
 					// Need to evaulate all hosts to ensure no members already exist in this zone.
-					if _, ok := zones[h.Meta["zone"].(string)]; !ok {
-						zones[h.Meta["zone"].(string)] = true
+					if _, ok := zones[meta["zone"].(string)]; !ok {
+						zones[meta["zone"].(string)] = true
 						if _, err = c.agent.CreateReplica(shard.ID, h.ID, false); err != nil {
 							return
 						}
@@ -91,15 +109,15 @@ func (c *controller) start() {
 						}
 					}
 				}
-				b, _ := c.agent.GetSnapshotJson()
-				if last != string(b) {
-					log.Printf("%v\n", string(b))
-					last = string(b)
-				}
+				index = snapshot.Index
+				c.agent.Read(func(s *zongzi.State) {
+					b, _ := s.MarshalJSON()
+					log.Println(string(b))
+				})
 			case <-ctx.Done():
 				c.mutex.Lock()
-				defer c.mutex.Unlock()
 				c.leader = false
+				c.mutex.Unlock()
 				return
 			}
 			if err != nil {
@@ -120,7 +138,7 @@ func (c *controller) stop() {
 
 func (c *controller) LeaderUpdated(info zongzi.LeaderInfo) {
 	switch info.ShardID {
-	case 1:
+	case 0:
 		log.Printf("[RAFT EVENT] LeaderUpdated: %#v", info)
 		if info.LeaderID == info.ReplicaID {
 			c.start()

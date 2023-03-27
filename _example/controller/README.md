@@ -2,11 +2,6 @@
 
 This example can be used to instantiate and initialize a 3 node cluster and add 3 more nodes as nonvoting.
 
-## Work in progress
-
-Note that this example represents a very crude proof of concept.  
-Expect all aspects of this API to change.
-
 ## Startup
 
 Run this command each time you want to start a new cluster (clears existing data):
@@ -26,11 +21,6 @@ make test-node-2
 make test-node-3
 ```
 
-Then in a fourth terminal, run:
-```
-make init-1
-```
-
 If performed correctly, you should see a snapshot dumped to stdout on whichever is voted the leader.
 
 This snapshot should include 3 replicas of the prime shard (`zongzi`) and 3 replicas of the guest shard (`banana`).
@@ -45,138 +35,151 @@ Additional nodes added with duplicate zone should be added as non voting.
 {
     "Hosts": [
         {
-            "ID": "49e45c6a-ef2d-4a06-a1fe-a19f9f265b02",
-            "Replicas": {
-                "1": 1,
-                "14": 13
-            },
-            "Meta": {
-                "zone": "us-west-1a"
-            },
-            "Status": "new"
+            "id": "a74bf4be-df70-4c7a-9682-1458015d8c44",
+            "created": 5,
+            "updated": 16,
+            "apiAddress": "127.0.0.1:17031",
+            "meta": "eyJ6b25lIjoidXMtd2VzdC0xYyJ9",
+            "shardTypes": [
+                "github.com/logbn/zongzi-examples/controller"
+            ],
+            "status": "active"
         },
         {
-            "ID": "4c3e9c67-fdbe-47d3-a262-dc955f98bf86",
-            "Replicas": {
-                "15": 13,
-                "2": 1
-            },
-            "Meta": {
-                "zone": "us-west-1b"
-            },
-            "Status": "new"
+            "id": "1fced3d3-91e9-44f3-830e-5a95b65a2287",
+            "created": 6,
+            "updated": 17,
+            "apiAddress": "127.0.0.1:17021",
+            "meta": "eyJ6b25lIjoidXMtd2VzdC0xYiJ9",
+            "shardTypes": [
+                "github.com/logbn/zongzi-examples/controller"
+            ],
+            "status": "active"
         },
         {
-            "ID": "0733a542-5460-4ae8-a6dc-badb118d2696",
-            "Replicas": {
-                "16": 13,
-                "3": 1
-            },
-            "Meta": {
-                "zone": "us-west-1c"
-            },
-            "Status": "new"
+            "id": "96567b03-7269-4c1e-94fd-653ef54e3544",
+            "created": 8,
+            "updated": 18,
+            "apiAddress": "127.0.0.1:17011",
+            "meta": "eyJ6b25lIjoidXMtd2VzdC0xYSJ9",
+            "shardTypes": [
+                "github.com/logbn/zongzi-examples/controller"
+            ],
+            "status": "active"
         },
         {
-            "ID": "2329637b-9016-4baf-a17f-88d9e67cf0c1",
-            "Replicas": {
-                "19": 1,
-                "21": 13
-            },
-            "Meta": {
-                "zone": "us-west-1a"
-            },
-            "Status": "new"
+            "id": "3de4eee9-d0d6-490e-a024-61108959b753",
+            "created": 19,
+            "updated": 24,
+            "apiAddress": "127.0.0.1:17041",
+            "meta": "eyJ6b25lIjoidXMtd2VzdC0xYSJ9",
+            "shardTypes": [
+                "github.com/logbn/zongzi-examples/controller"
+            ],
+            "status": "active"
         }
     ],
-    "Shards": [
-        {
-            "ID": 1,
-            "Replicas": {
-                "1": "49e45c6a-ef2d-4a06-a1fe-a19f9f265b02",
-                "19": "2329637b-9016-4baf-a17f-88d9e67cf0c1",
-                "2": "4c3e9c67-fdbe-47d3-a262-dc955f98bf86",
-                "3": "0733a542-5460-4ae8-a6dc-badb118d2696"
-            },
-            "Type": "zongzi",
-            "Status": "new"
-        },
-        {
-            "ID": 13,
-            "Replicas": {
-                "14": "49e45c6a-ef2d-4a06-a1fe-a19f9f265b02",
-                "15": "4c3e9c67-fdbe-47d3-a262-dc955f98bf86",
-                "16": "0733a542-5460-4ae8-a6dc-badb118d2696",
-                "21": "2329637b-9016-4baf-a17f-88d9e67cf0c1"
-            },
-            "Type": "banana",
-            "Status": "new"
-        }
-    ],
+    "Index": 24,
+    "ReplicaIndex": 8,
     "Replicas": [
         {
-            "ID": 1,
-            "ShardID": 1,
-            "HostID": "49e45c6a-ef2d-4a06-a1fe-a19f9f265b02",
-            "Status": "new",
-            "IsNonVoting": false,
-            "IsWitness": false
+            "id": 1,
+            "created": 11,
+            "updated": 11,
+            "hostID": "96567b03-7269-4c1e-94fd-653ef54e3544",
+            "isNonVoting": false,
+            "isWitness": false,
+            "shardID": 0,
+            "status": "new"
         },
         {
-            "ID": 2,
-            "ShardID": 1,
-            "HostID": "4c3e9c67-fdbe-47d3-a262-dc955f98bf86",
-            "Status": "new",
-            "IsNonVoting": false,
-            "IsWitness": false
+            "id": 2,
+            "created": 12,
+            "updated": 12,
+            "hostID": "1fced3d3-91e9-44f3-830e-5a95b65a2287",
+            "isNonVoting": false,
+            "isWitness": false,
+            "shardID": 0,
+            "status": "new"
         },
         {
-            "ID": 3,
-            "ShardID": 1,
-            "HostID": "0733a542-5460-4ae8-a6dc-badb118d2696",
-            "Status": "new",
-            "IsNonVoting": false,
-            "IsWitness": false
+            "id": 3,
+            "created": 13,
+            "updated": 13,
+            "hostID": "a74bf4be-df70-4c7a-9682-1458015d8c44",
+            "isNonVoting": false,
+            "isWitness": false,
+            "shardID": 0,
+            "status": "new"
         },
         {
-            "ID": 14,
-            "ShardID": 13,
-            "HostID": "49e45c6a-ef2d-4a06-a1fe-a19f9f265b02",
-            "Status": "new",
-            "IsNonVoting": false,
-            "IsWitness": false
+            "id": 4,
+            "created": 16,
+            "updated": 16,
+            "hostID": "a74bf4be-df70-4c7a-9682-1458015d8c44",
+            "isNonVoting": false,
+            "isWitness": false,
+            "shardID": 1,
+            "status": "new"
         },
         {
-            "ID": 15,
-            "ShardID": 13,
-            "HostID": "4c3e9c67-fdbe-47d3-a262-dc955f98bf86",
-            "Status": "new",
-            "IsNonVoting": false,
-            "IsWitness": false
+            "id": 5,
+            "created": 17,
+            "updated": 17,
+            "hostID": "1fced3d3-91e9-44f3-830e-5a95b65a2287",
+            "isNonVoting": false,
+            "isWitness": false,
+            "shardID": 1,
+            "status": "new"
         },
         {
-            "ID": 16,
-            "ShardID": 13,
-            "HostID": "0733a542-5460-4ae8-a6dc-badb118d2696",
-            "Status": "new",
-            "IsNonVoting": false,
-            "IsWitness": false
+            "id": 6,
+            "created": 18,
+            "updated": 18,
+            "hostID": "96567b03-7269-4c1e-94fd-653ef54e3544",
+            "isNonVoting": false,
+            "isWitness": false,
+            "shardID": 1,
+            "status": "new"
         },
         {
-            "ID": 19,
-            "ShardID": 1,
-            "HostID": "2329637b-9016-4baf-a17f-88d9e67cf0c1",
-            "Status": "new",
-            "IsNonVoting": false,
-            "IsWitness": false
+            "id": 7,
+            "created": 20,
+            "updated": 20,
+            "hostID": "3de4eee9-d0d6-490e-a024-61108959b753",
+            "isNonVoting": true,
+            "isWitness": false,
+            "shardID": 0,
+            "status": "new"
         },
         {
-            "ID": 21,
-            "ShardID": 13,
-            "HostID": "2329637b-9016-4baf-a17f-88d9e67cf0c1",
-            "Status": "new",
-            "IsNonVoting": true,
-            "IsWitness": false
+            "id": 8,
+            "created": 22,
+            "updated": 22,
+            "hostID": "3de4eee9-d0d6-490e-a024-61108959b753",
+            "isNonVoting": true,
+            "isWitness": false,
+            "shardID": 1,
+            "status": "new"
+        }
+    ],
+    "ShardIndex": 1,
+    "Shards": [
+        {
+            "id": 0,
+            "created": 7,
+            "updated": 20,
+            "status": "new",
+            "type": "github.com/logbn/zongzi/prime",
+            "version": "v0.0.1"
+        },
+        {
+            "id": 1,
+            "created": 15,
+            "updated": 22,
+            "status": "new",
+            "type": "github.com/logbn/zongzi-examples/controller",
+            "version": "v0.0.1"
         }
     ]
 }

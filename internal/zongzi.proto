@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+option go_package = "github.com/logbn/zongzi/internal";
+
+// Zongzi provides a gRPC api for internal host communication
+service Zongzi {
+	// Ping is a noop for timing purposes
+	rpc Ping(PingRequest) returns (PingResponse) {}
+
+	// Probe returns Gossip.AdvertiseAddress
+	// Used by new hosts to start dragonboat
+	rpc Probe(ProbeRequest) returns (ProbeResponse) {}
+
+	// Info returns prime replicaID and hostID
+	// Used by new hosts to discover prime shard replicas
+	rpc Info(InfoRequest) returns (InfoResponse) {}
+
+	// Members returns json marshaled map of member prime replicaID to hostID
+	// Used by new hosts joining a bootstrapped prime shard
+	rpc Members(MembersRequest) returns (MembersResponse) {}
+
+	// Join takes a replica ID and host ID and returns success
+	// Used by joining hosts to request their own addition to the prime shard
+	rpc Join(JoinRequest) returns (JoinResponse) {}
+
+	// Propose provides unary request/response command forwarding
+	rpc Propose(Request) returns (Response) {}
+
+	// Query provides unary request/response query forwarding
+	rpc Query(Request) returns (Response) {}
+
+	// Stream provides streaming proposal forwarding
+	// rpc Stream(stream Request) returns (stream Response) {}
+
+	// Watch provides streaming query response forwarding
+	// rpc Watch(Request) returns (stream Response) {}
+}
+
+message PingRequest {}
+message PingResponse {}
+
+message ProbeRequest {}
+message ProbeResponse {
+    string gossip_advertise_address = 1;
+}
+
+message InfoRequest {}
+message InfoResponse {
+    string host_id = 1;
+    uint64 replica_id = 2;
+}
+
+message MembersRequest {}
+message MembersResponse {
+    map<uint64, string> members = 1;
+}
+
+message JoinRequest {
+	string host_id = 1;
+	bool is_non_voting = 2;
+}
+message JoinResponse {
+    uint64 value = 1;
+    string error = 2;
+}
+
+message Request {
+    uint64 shard_id = 1;
+	bool linear = 2;
+    bytes data = 15;
+}
+message Response {
+    uint64 value = 1;
+    bytes data = 15;
+}
