@@ -12,9 +12,9 @@ import (
 type PersistentStateMachineFactory = func(shardID uint64, replicaID uint64) PersistentStateMachine
 
 func persistentStateMachineFactoryShim(fn PersistentStateMachineFactory) statemachine.CreateOnDiskStateMachineFunc {
-	return statemachine.CreateOnDiskStateMachineFunc(func(shardID uint64, replicaID uint64) statemachine.IOnDiskStateMachine {
+	return func(shardID uint64, replicaID uint64) statemachine.IOnDiskStateMachine {
 		return &persistentStateMachineShim{fn(shardID, replicaID)}
-	})
+	}
 }
 
 // PersistentStateMachine is a StateMachine where the state is persisted to a medium (such as disk) that can survive
@@ -23,7 +23,7 @@ func persistentStateMachineFactoryShim(fn PersistentStateMachineFactory) statema
 type PersistentStateMachine interface {
 	Open(stopc <-chan struct{}) (index uint64, err error)
 	Update(entries []Entry) []Entry
-	Lookup(ctx context.Context, query []byte) *Result
+	Query(ctx context.Context, query []byte) *Result
 	Watch(ctx context.Context, query []byte, result chan<- *Result)
 	PrepareSnapshot() (cursor any, err error)
 	SaveSnapshot(cursor any, w io.Writer, close <-chan struct{}) error
@@ -53,11 +53,11 @@ func (shim *persistentStateMachineShim) Update(entries []Entry) (responses []Ent
 }
 
 func (shim *persistentStateMachineShim) Lookup(query any) (res any, err error) {
-	if q, ok := query.(lookupQuery); ok {
-		res = shim.sm.Lookup(q.ctx, q.data)
+	if q, ok := query.(*lookupQuery); ok {
+		res = shim.sm.Query(q.ctx, q.data)
 		return
 	}
-	if q, ok := query.(watchQuery); ok {
+	if q, ok := query.(*watchQuery); ok {
 		shim.sm.Watch(q.ctx, q.data, q.result)
 		return
 	}

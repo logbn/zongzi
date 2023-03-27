@@ -69,9 +69,30 @@ type (
 	}
 )
 
+func getLookupQuery() *lookupQuery {
+	// TODO - implement lookupQuery pool
+	return &lookupQuery{}
+}
+
+func newLookupQuery(ctx context.Context, data []byte) *lookupQuery {
+	// TODO - implement lookupQuery pool
+	return &lookupQuery{ctx, data}
+}
+
+func getWatchQuery() *watchQuery {
+	// TODO - implement watchQuery pool
+	return &watchQuery{}
+}
+
+func newWatchQuery(ctx context.Context, data []byte, result chan *Result) *watchQuery {
+	// TODO - implement watchQuery pool
+	return &watchQuery{ctx, data, result}
+}
+
 type (
 	HostConfig    = config.NodeHostConfig
 	ReplicaConfig = config.Config
+	GossipConfig  = config.GossipConfig
 
 	LeaderInfo = raftio.LeaderInfo
 

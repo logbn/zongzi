@@ -63,9 +63,7 @@ func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent
 		WithHostConfig(DefaultHostConfig),
 		WithReplicaConfig(DefaultReplicaConfig),
 	}, opts...) {
-		if err = opt(a); err != nil {
-			return
-		}
+		opt(a)
 	}
 	a.controller = newController(a)
 	a.replicaConfig.ShardID = ZongziShardID
@@ -354,6 +352,7 @@ func (a *Agent) resolvePrimeMembership() (members map[uint64]string, init bool, 
 	for {
 		members = map[uint64]string{}
 		var uninitialized = map[string]string{}
+		// Get host info from all peers to determine which are initialized.
 		for _, apiAddr := range a.peers {
 			var info *internal.InfoResponse
 			if apiAddr == a.advertiseAddress && a.GetHostID() != "" {
@@ -377,11 +376,11 @@ func (a *Agent) resolvePrimeMembership() (members map[uint64]string, init bool, 
 			}
 		}
 		a.log.Infof("Found %d of %d peers (%d uninitialized)", len(members), len(a.peers), len(uninitialized))
-		// All peers resolved. Start.
+		// All peers resolved. Start agent.
 		if len(members) == len(a.peers) {
 			break
 		}
-		// All peers unintialized. Init.
+		// All peers uninitialized. Initialize cluster.
 		if len(uninitialized) == len(a.peers) {
 			for i, apiAddr := range a.peers {
 				replicaID := uint64(i + 1)

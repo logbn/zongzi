@@ -37,7 +37,7 @@ func (fsm *stateMachine) Update(entries []zongzi.Entry) []zongzi.Entry {
 	return entries
 }
 
-func (fsm *stateMachine) Lookup(ctx context.Context, query []byte) *zongzi.Result {
+func (fsm *stateMachine) Query(ctx context.Context, query []byte) *zongzi.Result {
 	result := zongzi.GetResult()
 	result.Value = 1
 	result.Data = []byte(fmt.Sprintf("%s [%d:%d]", StateMachineUri, fsm.shardID, fsm.replicaID))

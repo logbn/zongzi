@@ -107,15 +107,9 @@ func (s *grpcServer) Propose(ctx context.Context, req *internal.Request) (res *i
 func (s *grpcServer) Query(ctx context.Context, req *internal.Request) (res *internal.Response, err error) {
 	var r any
 	if req.Linear {
-		r, err = s.agent.host.SyncRead(raftCtx(), req.ShardId, lookupQuery{
-			ctx:  ctx,
-			data: req.Data,
-		})
+		r, err = s.agent.host.SyncRead(raftCtx(), req.ShardId, newLookupQuery(ctx, req.Data))
 	} else {
-		r, err = s.agent.host.StaleRead(req.ShardId, lookupQuery{
-			ctx:  ctx,
-			data: req.Data,
-		})
+		r, err = s.agent.host.StaleRead(req.ShardId, newLookupQuery(ctx, req.Data))
 	}
 	if r != nil {
 		res = r.(*internal.Response)
@@ -148,5 +142,7 @@ func (s *grpcServer) Start(a *Agent) error {
 }
 
 func (s *grpcServer) Stop() {
-	s.server.GracefulStop()
+	if s.server != nil {
+		s.server.GracefulStop()
+	}
 }
