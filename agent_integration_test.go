@@ -14,14 +14,14 @@ import (
 
 func TestAgent(t *testing.T) {
 	basedir := `/tmp/zongzi-test`
-	t.Run(`ready`, func(t *testing.T) {
+	agents := make([]*Agent, 3)
+	t.Run(`start`, func(t *testing.T) {
 		os.RemoveAll(basedir)
 		var (
 			apiAddr    = []string{`127.0.0.1:17101`, `127.0.0.1:17111`, `127.0.0.1:17121`}
 			gossipAddr = []string{`127.0.0.1:17102`, `127.0.0.1:17112`, `127.0.0.1:17122`}
 			raftAddr   = []string{`127.0.0.1:17103`, `127.0.0.1:17113`, `127.0.0.1:17123`}
 		)
-		agents := make([]*Agent, 3)
 		for i := range agents {
 			a, err := NewAgent(`test001`, apiAddr,
 				WithApiAddress(apiAddr[i]),
@@ -41,6 +41,7 @@ func TestAgent(t *testing.T) {
 			agents[i] = a
 		}
 		var good bool
+		// 10 seconds to start the cluster.
 		for i := 0; i < 100; i++ {
 			good = true
 			for j := range agents {
@@ -52,6 +53,7 @@ func TestAgent(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 		}
 		assert.True(t, good, `%v %v %v`, agents[0].GetStatus(), agents[1].GetStatus(), agents[2].GetStatus())
+		// 10 seconds for all host controllers to complete their first run.
 		for i := 0; i < 100; i++ {
 			good = true
 			for j := range agents {
