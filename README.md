@@ -57,3 +57,15 @@ is delegated to the developer. See [ADR: Raft Sessions](/docs/adr/raft_sessions.
 
 1. Install [protoc](https://grpc.io/docs/protoc-installation/)
 2. Install [protoc-gen-go](https://grpc.io/docs/languages/go/quickstart/)
+
+# Notes
+
+## Refactor Merge
+
+- [ ] Refactor `(*Agent).Read()` and fsm state to use MVCC ([memdb](https://pkg.go.dev/github.com/hashicorp/go-memdb))
+- [ ] Refactor fsm snapshots to JSONLines for streaming snapshots
+- [ ] Add missing sync.Pools (see TODOs)
+- [ ] Make existing example more useful (kv store?)
+- [ ] Add persistent state machine example
+- [ ] Add integration tests for non-voting members
+- [ ] Add integration tests for user shards and replicas

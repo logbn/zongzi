@@ -4,6 +4,7 @@ package zongzi
 
 import (
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -12,7 +13,9 @@ import (
 )
 
 func TestAgent(t *testing.T) {
+	basedir := `/tmp/zongzi-test`
 	t.Run(`ready`, func(t *testing.T) {
+		os.RemoveAll(basedir)
 		peers := []string{
 			`127.0.0.1:17101`,
 			`127.0.0.1:17111`,
@@ -24,8 +27,8 @@ func TestAgent(t *testing.T) {
 				WithApiAddress(fmt.Sprintf(`127.0.0.1:171%d1`, i)),
 				WithGossipAddress(fmt.Sprintf(`127.0.0.1:171%d2`, i)),
 				WithHostConfig(HostConfig{
-					WALDir:         fmt.Sprintf("/var/lib/zongzi/agent-%d/wal", i),
-					NodeHostDir:    fmt.Sprintf("/var/lib/zongzi/agent-%d/raft", i),
+					WALDir:         fmt.Sprintf(basedir+`/agent-%d/wal`, i),
+					NodeHostDir:    fmt.Sprintf(basedir+`/agent-%d/raft`, i),
 					RaftAddress:    fmt.Sprintf(`127.0.0.1:171%d3`, i),
 					RTTMillisecond: 100,
 				}))
