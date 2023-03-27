@@ -3,7 +3,7 @@
 A cluster coordinator for Dragonboat.
 
 [![Go Reference](https://godoc.org/github.com/logbn/zongzi?status.svg)](https://godoc.org/github.com/logbn/zongzi)
-[![Go Report Card](https://goreportcard.com/badge/github.com/logbn/zongzi?1)](https://goreportcard.com/report/github.com/logbn/zongzi)
+[![Go Report Card](https://goreportcard.com/badge/github.com/logbn/zongzi?4)](https://goreportcard.com/report/github.com/logbn/zongzi)
 [![Go Coverage](https://github.com/logbn/zongzi/wiki/coverage.svg)](https://raw.githack.com/wiki/logbn/zongzi/coverage.html)
 
 The primary goal of this package is to completely wrap Dragonboat behind a facade that presents a simpler interface.
