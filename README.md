@@ -9,19 +9,29 @@ A cluster coordinator for Dragonboat.
 The primary goal of this package is to completely wrap Dragonboat behind a facade that presents a simpler interface.
 
 - Cluster State Registry
+  - Prime shard (shardID: 0)
+  - Stores desired state of all hosts, shards and replicas in the cluster
 - Host Controller
+  - Creates missing shards
+  - Starts and deletes replicas
+  - Responds automatically to changes in registry state
 - Message Bus
+  - Internal gPRC
+  - Facilitates cluster boostrap
+  - Forwards proposals and queries
 
-In order to add a replica to a shard using Dragonboat, you must:
-
-1. Call `dragonboat.(*NodeHost).SyncRequestAddReplica` from a host that is already a member of the shard
-2. Call `dragonboat.(*NodeHost).StartReplica` from the host that wishes to join the shard
-
-The zongzi Agent simplifies this sort of multi-host operation using an internal API that automatically coordinates the
+The zongzi Agent simplifies multi-host operations using an internal API that automatically coordinates the
 necessary multi-host actions required to achieve the desired cluster state.
 
-1. Call `zongzi.(*Agent).CreateReplica` from any host in the cluster and the replica will be added and started on the
-desired host.
+1. Call `zongzi.(*Agent).CreateReplica` from any host in the cluster
+2. The desired replica state will be stored in the registry
+3. The responsible host controller will start the replica on the desired host
+
+The cluster state registry is replicated to every host in the cluster so every host always has an eventually consistent
+snapshot of the cluster topology for command/query forwarding. Changes to the cluster can be proposed via internal API
+so cluster changes are as simple as writing to the registry and the host controllers will reconcile the difference.
+
+There is no need to import the dragonboat package or interact with the dragonboat host directly.
 
 ## Architectural Constraints
 
@@ -58,14 +68,27 @@ is delegated to the developer. See [ADR: Raft Sessions](/docs/adr/raft_sessions.
 1. Install [protoc](https://grpc.io/docs/protoc-installation/)
 2. Install [protoc-gen-go](https://grpc.io/docs/languages/go/quickstart/)
 
-# Notes
+# Roadmap
 
-## Refactor Merge
+## v0.1.0
 
 - [ ] Refactor `(*Agent).Read()` and fsm state to use MVCC ([memdb](https://pkg.go.dev/github.com/hashicorp/go-memdb))
 - [ ] Refactor fsm snapshots to JSONLines for streaming snapshots
 - [ ] Add missing sync.Pools (see TODOs)
-- [ ] Make existing example more useful (kv store?)
+- [ ] Make existing example more useful (see [optimistic-write-lock](https://github.com/lni/dragonboat-example/tree/25d608db03747515d1abb07b95afdb2d5e1cd5ea/optimistic-write-lock))
 - [ ] Add persistent state machine example
 - [ ] Add integration tests for non-voting members
 - [ ] Add integration tests for user shards and replicas
+
+## v0.2.0
+
+- [ ] Add host failure notifications
+- [ ] Add ping-based shard proposal router
+- [ ] Improved audit logging and change data capture
+- [ ] Expose prometheus metrics
+
+## v0.3.0
+
+- [ ] 100% test coverage
+- [ ] Comprehensive integration testing (w/ chaos engineering)
+- [ ] Comprehensive documentation
