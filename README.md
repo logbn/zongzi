@@ -84,6 +84,7 @@ is delegated to the developer. See [ADR: Raft Sessions](/docs/adr/raft_sessions.
 - [ ] Add host failure notifications
 - [ ] Add ping-based shard proposal router
 - [ ] Improved audit logging and change data capture
+- [ ] Add security options (mTLS)
 - [ ] Expose prometheus metrics
 
 ## v0.3.0
