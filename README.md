@@ -6,16 +6,11 @@ A cluster coordinator for Dragonboat.
 [![Go Report Card](https://goreportcard.com/badge/github.com/logbn/zongzi?1)](https://goreportcard.com/report/github.com/logbn/zongzi)
 [![Go Coverage](https://github.com/logbn/zongzi/wiki/coverage.svg)](https://raw.githack.com/wiki/logbn/zongzi/coverage.html)
 
-The primary goal of this package is to completely wrap Dragonboat behind a facade that presents a simpler interface
-with a lot of the complex tasks handled automatically using centralized cluster state management, host controllers
-and an internal gRPC API.
+The primary goal of this package is to completely wrap Dragonboat behind a facade that presents a simpler interface.
 
-- Initialize cluster
-- Auto-join new hosts
-- Store desired cluster state
-- Replicate cluster state to all hosts
-- Reconcile desired and actual cluster state
-- Provide cluster-wide gRPC message bus
+- Cluster State Registry
+- Host Controller
+- Message Bus
 
 In order to add a replica to a shard using Dragonboat, you must:
 
@@ -25,8 +20,8 @@ In order to add a replica to a shard using Dragonboat, you must:
 The zongzi Agent simplifies this sort of multi-host operation using an internal API that automatically coordinates the
 necessary multi-host actions required to achieve the desired cluster state.
 
-1. Call `zongzi.Agent.CreateReplica` from any host in the cluster and the replica will eventually be added and started
-on the desired host
+1. Call `zongzi.(*Agent).CreateReplica` from any host in the cluster and the replica will be added and started on the
+desired host.
 
 ## Architectural Constraints
 
