@@ -16,20 +16,20 @@ func TestAgent(t *testing.T) {
 	basedir := `/tmp/zongzi-test`
 	t.Run(`ready`, func(t *testing.T) {
 		os.RemoveAll(basedir)
-		peers := []string{
-			`127.0.0.1:17101`,
-			`127.0.0.1:17111`,
-			`127.0.0.1:17121`,
-		}
+		var (
+			apiAddr    = []string{`127.0.0.1:17101`, `127.0.0.1:17111`, `127.0.0.1:17121`}
+			gossipAddr = []string{`127.0.0.1:17102`, `127.0.0.1:17112`, `127.0.0.1:17122`}
+			raftAddr   = []string{`127.0.0.1:17103`, `127.0.0.1:17113`, `127.0.0.1:17123`}
+		)
 		agents := make([]*Agent, 3)
 		for i := range agents {
-			a, err := NewAgent(`test001`, peers,
-				WithApiAddress(fmt.Sprintf(`127.0.0.1:171%d1`, i)),
-				WithGossipAddress(fmt.Sprintf(`127.0.0.1:171%d2`, i)),
+			a, err := NewAgent(`test001`, apiAddr,
+				WithApiAddress(apiAddr[i]),
+				WithGossipAddress(gossipAddr[i]),
 				WithHostConfig(HostConfig{
 					WALDir:         fmt.Sprintf(basedir+`/agent-%d/wal`, i),
 					NodeHostDir:    fmt.Sprintf(basedir+`/agent-%d/raft`, i),
-					RaftAddress:    fmt.Sprintf(`127.0.0.1:171%d3`, i),
+					RaftAddress:    raftAddr[i],
 					RTTMillisecond: 100,
 				}))
 			require.Nil(t, err)
