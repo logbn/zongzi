@@ -5,6 +5,7 @@ go 1.19
 require (
 	github.com/benbjohnson/clock v1.3.0
 	github.com/elliotchance/orderedmap/v2 v2.2.0
+	github.com/hashicorp/go-memdb v1.3.4
 	github.com/hashicorp/golang-lru/v2 v2.0.2
 	github.com/lni/dragonboat/v4 v4.0.0-20230202152124-023bafb8e648
 	github.com/stretchr/testify v1.7.1
@@ -30,11 +31,11 @@ require (
 	github.com/google/btree v1.0.0 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
-	github.com/hashicorp/go-immutable-radix v1.0.0 // indirect
+	github.com/hashicorp/go-immutable-radix v1.3.0 // indirect
 	github.com/hashicorp/go-msgpack v0.5.3 // indirect
 	github.com/hashicorp/go-multierror v1.0.0 // indirect
 	github.com/hashicorp/go-sockaddr v1.0.0 // indirect
-	github.com/hashicorp/golang-lru v0.5.1 // indirect
+	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/hashicorp/memberlist v0.3.1 // indirect
 	github.com/klauspost/compress v1.11.13 // indirect
 	github.com/kr/pretty v0.3.0 // indirect

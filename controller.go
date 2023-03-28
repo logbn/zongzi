@@ -63,25 +63,20 @@ func (c *controller) tick() (err error) {
 		toStart = []controllerStartReplicaParams{}
 	)
 	hostInfo := c.agent.host.GetNodeHostInfo(dragonboat.NodeHostInfoOption{})
-	c.agent.Read(func(state *State) {
-		host, ok := state.Hosts.Get(nhid)
+	c.agent.Read(func(state State) {
+		host, ok := state.HostGet(nhid)
 		if !ok {
 			return
 		}
 		if host.Updated <= c.index {
 			return
 		}
-		b, _ := state.MarshalJSON()
-		c.agent.log.Errorf("controller: before: %s", string(b))
-		defer func() {
-			b, _ := state.MarshalJSON()
-			c.agent.log.Errorf("controller: after: %s", string(b))
-		}()
-		for _, r := range host.Replicas {
+		state.ReplicaIterateByHostID(host.ID, func(r Replica) bool {
 			found[r.ID] = false
-		}
+			return true
+		})
 		for _, info := range hostInfo.ShardInfoList {
-			if replica, ok := state.Replicas.Get(info.ReplicaID); ok {
+			if replica, ok := state.ReplicaGet(info.ReplicaID); ok {
 				found[replica.ID] = true
 				if replica.Status == ReplicaStatus_Closed {
 					// Remove replica
@@ -100,22 +95,33 @@ func (c *controller) tick() (err error) {
 			if ok {
 				continue
 			}
-			replica, _ := state.Replicas.Get(id)
+			replica, _ := state.ReplicaGet(id)
 			if replica.Status == ReplicaStatus_New {
 				if replica.ShardID == 0 {
 					continue
 				}
+				shard, ok := state.ShardGet(replica.ShardID)
+				if !ok {
+					continue
+				}
+				members := map[uint64]string{}
+				state.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
+					if !r.IsNonVoting && !r.IsWitness {
+						members[r.ID] = r.HostID
+					}
+					return true
+				})
 				toStart = append(toStart, controllerStartReplicaParams{
 					index:        host.Updated,
 					replicaID:    replica.ID,
-					shardMembers: replica.Shard.Members(),
-					shardID:      replica.Shard.ID,
-					shardType:    replica.Shard.Type,
+					shardID:      shard.ID,
+					shardType:    shard.Type,
+					shardMembers: members,
 				})
 			}
 		}
 		if len(toStart) == 0 {
-			c.index = state.Index
+			c.index = state.Index()
 		}
 	})
 	for _, params := range toStart {
@@ -137,8 +143,8 @@ func (c *controller) tick() (err error) {
 			err = fmt.Errorf("Failed to start replica: %w", err)
 			break
 		}
-		_, err := c.agent.primePropose(newCmdReplicaUpdateStatus(params.replicaID, ReplicaStatus_Active))
-		if err != nil {
+		res, err := c.agent.primePropose(newCmdReplicaUpdateStatus(params.replicaID, ReplicaStatus_Active))
+		if err != nil || res.Value != 1 {
 			err = fmt.Errorf("Failed to update replica status: %w", err)
 			break
 		}

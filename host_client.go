@@ -13,7 +13,7 @@ type HostClient struct {
 	shardID        uint64
 }
 
-func newHostClient(host *Host, a *Agent) *HostClient {
+func newHostClient(host Host, a *Agent) *HostClient {
 	return &HostClient{
 		agent:          a,
 		hostApiAddress: host.ApiAddress,

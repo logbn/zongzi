@@ -182,38 +182,32 @@ func (a *Agent) GetStatus() AgentStatus {
 // Read executes a callback function passing a reference to the state machine's internal cluster state.
 //
 //	err := agent.Read(func(s *State) error {
-//	    log.Println(s.Index)
+//	    log.Println(s.Index())
 //	    return nil
 //	})
-//
-// Callback function MAY NOT write to ANY fields of *[State]. Doing so WILL corrupt the state machine.
-//
-// Callback function WILL block writes to the state machine.
 //
 // Linear reads are supported to achieve "Read Your Writes" consistency following a proposal.
 //
 // Read is thread safe.
-func (a *Agent) Read(fn func(*State), linear ...bool) (err error) {
+func (a *Agent) Read(fn func(State), linear ...bool) (err error) {
 	if len(linear) > 0 && linear[0] {
 		err = a.readIndex()
 		if err != nil {
 			return
 		}
 	}
-	a.fsm.state.mutex.RLock()
-	defer a.fsm.state.mutex.RUnlock()
-	fn(a.fsm.state)
+	fn(a.fsm.state.withTxn(false))
 	return
 }
 
 // CreateShard creates a new shard
-func (a *Agent) CreateShard(uri, version string) (shard *Shard, err error) {
+func (a *Agent) CreateShard(uri, version string) (shard Shard, err error) {
 	a.log.Infof("Create shard %s@%s", uri, version)
 	res, err := a.primePropose(newCmdShardPost(uri, version))
 	if err != nil {
 		return
 	}
-	return &Shard{
+	return Shard{
 		ID:      res.Value,
 		Type:    uri,
 		Version: version,
@@ -223,7 +217,7 @@ func (a *Agent) CreateShard(uri, version string) (shard *Shard, err error) {
 
 // CreateReplica creates a replica
 func (a *Agent) CreateReplica(shardID uint64, nodeHostID string, isNonVoting bool) (id uint64, err error) {
-	res, err := a.primePropose(newCmdReplicaPut(nodeHostID, shardID, 0, isNonVoting))
+	res, err := a.primePropose(newCmdReplicaPost(nodeHostID, shardID, isNonVoting))
 	if err == nil {
 		id = res.Value
 	}
@@ -260,8 +254,8 @@ func (a *Agent) RegisterPersistentStateMachine(uri, version string, factory Pers
 
 // GetHostClient returns a HostClient for a specific host.
 func (a *Agent) GetHostClient(hostID string) (c *HostClient) {
-	a.Read(func(s *State) {
-		host, ok := s.Hosts.Get(hostID)
+	a.Read(func(s State) {
+		host, ok := s.HostGet(hostID)
 		if ok {
 			c = newHostClient(host, a)
 		}
@@ -279,11 +273,16 @@ func (a *Agent) GetHostID() (id string) {
 
 // GetReplicaClient returns a ReplicaClient for a specific host.
 func (a *Agent) GetReplicaClient(replicaID uint64) (c *ReplicaClient) {
-	a.Read(func(s *State) {
-		replica, ok := s.Replicas.Get(replicaID)
-		if ok && replica.ShardID > 0 {
-			c = newReplicaClient(replica, a)
+	a.Read(func(s State) {
+		replica, ok := s.ReplicaGet(replicaID)
+		if !ok || replica.ShardID == 0 {
+			return
 		}
+		host, ok := s.HostGet(replica.HostID)
+		if !ok {
+			return
+		}
+		c = newReplicaClient(replica, host, a)
 	})
 	return
 }
@@ -517,26 +516,31 @@ func (a *Agent) readIndex() (err error) {
 }
 
 func (a *Agent) addReplica(hostID string, shardID uint64, isNonVoting bool) (replicaID uint64, err error) {
+	var ok bool
 	var host Host
-	a.Read(func(s *State) {
-		h, ok := s.Hosts.Get(hostID)
+	var written bool
+	a.Read(func(s State) {
+		host, ok = s.HostGet(hostID)
 		if !ok {
 			return
 		}
-		host = *h
 	})
 	if host.ID == "" {
 		host, err = a.primeAddHost(hostID)
 		if err != nil {
 			return
 		}
+		written = true
 	}
-	for id, r := range host.Replicas {
-		if r.ShardID == shardID {
-			replicaID = uint64(id)
-			break
-		}
-	}
+	a.Read(func(s State) {
+		s.ReplicaIterateByHostID(host.ID, func(r Replica) bool {
+			if r.ShardID == shardID {
+				replicaID = r.ID
+				return false
+			}
+			return true
+		})
+	}, written)
 	if replicaID == 0 {
 		if replicaID, err = a.primeAddReplica(hostID, isNonVoting); err != nil {
 			return
@@ -622,7 +626,7 @@ func (a *Agent) primeAddHost(nhid string) (host Host, err error) {
 
 // primeAddReplica proposes addition of replica metadata to the prime shard state
 func (a *Agent) primeAddReplica(nhid string, isNonVoting bool) (id uint64, err error) {
-	res, err := a.primePropose(newCmdReplicaPut(nhid, a.replicaConfig.ShardID, 0, isNonVoting))
+	res, err := a.primePropose(newCmdReplicaPost(nhid, a.replicaConfig.ShardID, isNonVoting))
 	if err == nil {
 		id = res.Value
 	}

@@ -1,9 +1,7 @@
 package zongzi
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 
 	"github.com/lni/dragonboat/v4/logger"
@@ -16,7 +14,7 @@ func fsmFactory(agent *Agent) statemachine.CreateStateMachineFunc {
 			log:       agent.log,
 			replicaID: replicaID,
 			shardID:   shardID,
-			state:     newState(),
+			state:     newFsmStateRadix(),
 		}
 		agent.fsm = node
 		return node
@@ -29,7 +27,7 @@ type fsm struct {
 	log       logger.ILogger
 	replicaID uint64
 	shardID   uint64
-	state     *State
+	state     State
 }
 
 func (fsm *fsm) Update(entry Entry) (Result, error) {
@@ -68,8 +66,8 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 	default:
 		fsm.log.Errorf("Unrecognized cmd type %s", cmdBase.Type, cmdBase)
 	}
-	fsm.state.mutex.Lock()
-	defer fsm.state.mutex.Unlock()
+	state := fsm.state.withTxn(true)
+	defer state.commit()
 	switch cmd.(type) {
 	// Host
 	case commandHost:
@@ -77,31 +75,30 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 		switch cmd.Action {
 		// Put
 		case command_action_put:
-			if old, ok := fsm.state.Hosts.Get(cmd.Host.ID); ok {
-				cmd.Host.Replicas = old.Replicas
+			if old, ok := state.HostGet(cmd.Host.ID); ok {
 				cmd.Host.Created = old.Created
 			} else {
 				cmd.Host.Created = entry.Index
 			}
 			cmd.Host.Updated = entry.Index
-			fsm.state.Hosts.Set(cmd.Host.ID, &cmd.Host)
+			state.hostPut(cmd.Host)
 			entry.Result.Value = 1
 		// Delete
 		case command_action_del:
-			host, ok := fsm.state.Hosts.Get(cmd.Host.ID)
+			host, ok := state.HostGet(cmd.Host.ID)
 			if !ok {
+				fsm.log.Warningf("%v: %#v", ErrHostNotFound, cmd)
 				break
 			}
-			for _, replica := range host.Replicas {
-				shard, _ := fsm.state.Hosts.Get(replica.HostID)
-				shard.Replicas = sliceWithout(shard.Replicas, replica)
-				shard.Updated = entry.Index
-				fsm.state.Replicas.Delete(replica.ID)
-			}
-			fsm.state.Hosts.Delete(host.ID)
+			state.ReplicaIterateByHostID(host.ID, func(r Replica) bool {
+				state.replicaDelete(r)
+				state.shardTouch(r.ShardID, entry.Index)
+				return true
+			})
+			state.hostDelete(host)
 			entry.Result.Value = 1
 		default:
-			err = fmt.Errorf("Unrecognized host action %s", cmd.Action)
+			fsm.log.Errorf("Unrecognized host action: %s - %#v", cmd.Action, cmd)
 		}
 	// Shard
 	case commandShard:
@@ -109,50 +106,55 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 		switch cmd.Action {
 		// Post
 		case command_action_post:
-			fsm.state.ShardIndex++
-			cmd.Shard.ID = fsm.state.ShardIndex
+			cmd.Shard.ID = state.shardIncr()
 			cmd.Shard.Created = entry.Index
 			cmd.Shard.Updated = entry.Index
-			fsm.state.Shards.Set(cmd.Shard.ID, &cmd.Shard)
+			state.shardPut(cmd.Shard)
 			entry.Result.Value = cmd.Shard.ID
 		// Put
 		case command_action_put:
-			if cmd.Shard.ID > fsm.state.ShardIndex {
-				fsm.log.Warningf("%v: %#v", ErrIDOutOfRange, cmd)
+			if old, ok := state.ShardGet(cmd.Shard.ID); ok {
+				cmd.Shard.Created = old.Created
+			} else if cmd.Shard.ID == 0 && state.metaGet(`shardIndex`) == 0 {
+				cmd.Shard.Created = entry.Index
+			} else {
+				fsm.log.Errorf("%s: %s - %#v", ErrShardNotFound, cmd.Action, cmd)
 				break
 			}
-			if old, ok := fsm.state.Shards.Get(cmd.Shard.ID); ok {
-				cmd.Shard.Replicas = old.Replicas
-				cmd.Shard.Created = old.Created
-			} else {
-				cmd.Shard.Created = entry.Index
-			}
 			cmd.Shard.Updated = entry.Index
-			fsm.state.Shards.Set(cmd.Shard.ID, &cmd.Shard)
+			state.shardPut(cmd.Shard)
 			entry.Result.Value = 1
 		// Delete
 		case command_action_del:
-			shard, ok := fsm.state.Shards.Get(cmd.Shard.ID)
+			shard, ok := state.ShardGet(cmd.Shard.ID)
 			if !ok {
+				fsm.log.Warningf("%v: %#v", ErrShardNotFound, cmd)
 				break
 			}
-			for _, replica := range shard.Replicas {
-				host, _ := fsm.state.Hosts.Get(replica.HostID)
-				host.Replicas = sliceWithout(host.Replicas, replica)
-				host.Updated = entry.Index
-				fsm.state.Replicas.Delete(replica.ID)
-			}
-			fsm.state.Shards.Delete(shard.ID)
+			state.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
+				state.replicaDelete(r)
+				state.hostTouch(r.HostID, entry.Index)
+				return true
+			})
+			state.shardDelete(shard)
 			entry.Result.Value = 1
 		default:
-			err = fmt.Errorf("Unrecognized shard action %s", cmd.Action)
+			fsm.log.Errorf("Unrecognized shard action: %s - %#v", cmd.Action, cmd)
 		}
 	// Replica
 	case commandReplica:
 		var cmd = cmd.(commandReplica)
 		switch cmd.Action {
+		// Post
+		case command_action_post:
+			cmd.Replica.ID = state.replicaIncr()
+			cmd.Replica.Created = entry.Index
+			cmd.Replica.Updated = entry.Index
+			state.replicaPut(cmd.Replica)
+			entry.Result.Value = cmd.Replica.ID
+		// Status Update
 		case command_action_status_update:
-			replica, ok := fsm.state.Replicas.Get(cmd.Replica.ID)
+			replica, ok := state.ReplicaGet(cmd.Replica.ID)
 			if !ok {
 				fsm.log.Warningf("%v: %#v", ErrReplicaNotFound, cmd)
 				break
@@ -161,73 +163,43 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			entry.Result.Value = 1
 		// Put
 		case command_action_put:
-			host, ok := fsm.state.Hosts.Get(cmd.Replica.HostID)
-			if !ok {
-				fsm.log.Warningf("%v: %#v", ErrHostNotFound, cmd)
-				break
-			}
-			shard, ok := fsm.state.Shards.Get(cmd.Replica.ShardID)
-			if !ok {
-				fsm.log.Warningf("%v: %#v", ErrShardNotFound, cmd)
+			if old, ok := state.ReplicaGet(cmd.Replica.ID); ok {
+				cmd.Replica.Created = old.Created
+			} else {
+				fsm.log.Errorf("%s: %s - %#v", ErrReplicaNotFound, cmd.Action, cmd)
 				break
 			}
 			cmd.Replica.Updated = entry.Index
-			if cmd.Replica.ID == 0 {
-				fsm.state.ReplicaIndex++
-				cmd.Replica.ID = fsm.state.ReplicaIndex
-				cmd.Replica.Created = entry.Index
-				cmd.Replica.Host = host
-				cmd.Replica.Shard = shard
-				host.Replicas = append(host.Replicas, &cmd.Replica)
-				host.Updated = entry.Index
-				shard.Replicas = append(shard.Replicas, &cmd.Replica)
-				shard.Updated = entry.Index
-			} else if cmd.Replica.ID > fsm.state.ReplicaIndex {
-				fsm.log.Warningf("%v: %#v", ErrIDOutOfRange, cmd)
-				break
-			}
-			fsm.state.Replicas.Set(cmd.Replica.ID, &cmd.Replica)
-			entry.Result.Value = cmd.Replica.ID
+			state.replicaPut(cmd.Replica)
+			entry.Result.Value = 1
 		// Delete
 		case command_action_del:
-			replica, ok := fsm.state.Replicas.Get(cmd.Replica.ID)
+			replica, ok := state.ReplicaGet(cmd.Replica.ID)
 			if !ok {
 				fsm.log.Warningf("%v: %#v", ErrReplicaNotFound, cmd)
 				break
 			}
-			host, _ := fsm.state.Hosts.Get(replica.HostID)
-			host.Replicas = sliceWithout(host.Replicas, replica)
-			host.Updated = entry.Index
-			shard, _ := fsm.state.Shards.Get(replica.ShardID)
-			shard.Replicas = sliceWithout(shard.Replicas, replica)
-			shard.Updated = entry.Index
-			fsm.state.Replicas.Delete(cmd.Replica.ID)
+			state.hostTouch(replica.HostID, entry.Index)
+			state.shardTouch(replica.ShardID, entry.Index)
+			state.replicaDelete(replica)
 			entry.Result.Value = 1
 		default:
 			fsm.log.Errorf("Unrecognized replica action: %s - %#v", cmd.Action, cmd)
 		}
 	}
-	fsm.state.Index = entry.Index
+	state.metaSetIndex(entry.Index)
 
 	return entry.Result, nil
 }
 
 // func (fsm *fsm) SaveSnapshot(cursor any, w io.Writer, close <-chan struct{}) (err error) {
 func (fsm *fsm) SaveSnapshot(w io.Writer, _ statemachine.ISnapshotFileCollection, _ <-chan struct{}) error {
-	b, err := fsm.state.MarshalJSON()
-	if err == nil {
-		_, err = io.Copy(w, bytes.NewReader(b))
-	}
-	return nil
+	return fsm.state.Save(w)
 }
 
 // func (fsm *fsm) RecoverFromSnapshot(r io.Reader, close <-chan struct{}) (err error) {
 func (fsm *fsm) RecoverFromSnapshot(r io.Reader, _ []statemachine.SnapshotFile, _ <-chan struct{}) error {
-	b, err := io.ReadAll(r)
-	if err != nil {
-		return nil
-	}
-	return fsm.state.UnmarshalJSON(b)
+	return fsm.state.recover(r)
 }
 
 func (fsm *fsm) Lookup(interface{}) (res interface{}, err error) { return }
