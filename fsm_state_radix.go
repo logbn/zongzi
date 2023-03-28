@@ -210,9 +210,9 @@ func (fsm *fsmStateRadix) shardTouch(id, index uint64) {
 }
 
 func (fsm *fsmStateRadix) shardIncr() uint64 {
-	val := fsm.metaGet(`indexShard`)
+	val := fsm.metaGet(`shardID`)
 	val++
-	fsm.txn.Insert(`meta`, metaValue{`indexShard`, val})
+	fsm.txn.Insert(`meta`, metaValue{`shardID`, val})
 	return val
 }
 
@@ -254,9 +254,9 @@ func (fsm *fsmStateRadix) replicaTouch(id, index uint64) {
 }
 
 func (fsm *fsmStateRadix) replicaIncr() uint64 {
-	val := fsm.metaGet(`indexReplica`)
+	val := fsm.metaGet(`replicaID`)
 	val++
-	fsm.txn.Insert(`meta`, metaValue{`indexReplica`, val})
+	fsm.txn.Insert(`meta`, metaValue{`replicaID`, val})
 	return val
 }
 
@@ -300,40 +300,35 @@ func (fsm *fsmStateRadix) ReplicaIterateByHostID(hostID string, fn func(r Replic
 }
 
 type fsmStateMetaHeader struct {
-	Index        uint64 `json:"index"`
-	IndexShard   uint64 `json:"indexShard"`
-	IndexReplica uint64 `json:"indexReplica"`
-	CountHost    uint64 `json:"countHost"`
-	CountShard   uint64 `json:"countShard"`
-	CountReplica uint64 `json:"countReplica"`
+	Index     uint64 `json:"index"`
+	ShardID   uint64 `json:"shardID"`
+	ReplicaID uint64 `json:"replicaID"`
+	Hosts     uint64 `json:"hosts"`
+	Shards    uint64 `json:"shards"`
+	Replicas  uint64 `json:"replicas"`
 }
 
 func (f *fsmStateRadix) Save(w io.Writer) error {
 	fsm := f.withTxn(false)
 	// TODO - Maintain counts in meta so we don't have to recompute on every snapshot
-	var hostCount uint64
+	header := fsmStateMetaHeader{
+		Index:     fsm.metaGet(`index`),
+		ShardID:   fsm.metaGet(`shardID`),
+		ReplicaID: fsm.metaGet(`replicaID`),
+	}
 	fsm.HostIterate(func(Host) bool {
-		hostCount++
+		header.Hosts++
 		return true
 	})
-	var shardCount uint64
 	fsm.ShardIterate(func(Shard) bool {
-		shardCount++
+		header.Shards++
 		return true
 	})
-	var replicaCount uint64
 	fsm.ReplicaIterate(func(Replica) bool {
-		replicaCount++
+		header.Replicas++
 		return true
 	})
-	b, _ := json.Marshal(fsmStateMetaHeader{
-		Index:        fsm.metaGet(`index`),
-		IndexShard:   fsm.metaGet(`indexShard`),
-		IndexReplica: fsm.metaGet(`indexReplica`),
-		CountHost:    hostCount,
-		CountShard:   shardCount,
-		CountReplica: replicaCount,
-	})
+	b, _ := json.Marshal(header)
 	w.Write(append(b, '\n'))
 	fsm.HostIterate(func(h Host) bool {
 		b, _ := json.Marshal(h)
@@ -368,24 +363,24 @@ func (f *fsmStateRadix) recover(r io.Reader) (err error) {
 		return err
 	}
 	fsm.metaSet(`index`, header.Index)
-	fsm.metaSet(`indexShard`, header.IndexShard)
-	fsm.metaSet(`indexReplica`, header.IndexReplica)
+	fsm.metaSet(`shardID`, header.ShardID)
+	fsm.metaSet(`replicaID`, header.ReplicaID)
 	var i uint64
-	for i = 0; i < header.CountHost; i++ {
+	for i = 0; i < header.Hosts; i++ {
 		var h Host
 		if err = decoder.Decode(&h); err != nil {
 			return fmt.Errorf("parse host: %w", err)
 		}
 		fsm.hostPut(h)
 	}
-	for i = 0; i < header.CountShard; i++ {
+	for i = 0; i < header.Shards; i++ {
 		var s Shard
 		if err = decoder.Decode(&s); err != nil {
 			return fmt.Errorf("parse shard: %w", err)
 		}
 		fsm.shardPut(s)
 	}
-	for i = 0; i < header.CountReplica; i++ {
+	for i = 0; i < header.Replicas; i++ {
 		var r Replica
 		if err = decoder.Decode(&r); err != nil {
 			return fmt.Errorf("parse replica: %w", err)
