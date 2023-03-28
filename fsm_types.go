@@ -2,7 +2,6 @@ package zongzi
 
 import (
 	"encoding/json"
-	"sync"
 )
 
 const (
@@ -17,17 +16,6 @@ const (
 	command_action_status_update = "status-update"
 )
 
-type Snapshot struct {
-	Hosts        []Host
-	Index        uint64
-	ReplicaIndex uint64
-	Replicas     []Replica
-	ShardIndex   uint64
-	Shards       []Shard
-
-	mu sync.RWMutex
-}
-
 type Host struct {
 	ID      string `json:"id"`
 	Created uint64 `json:"created"`
@@ -37,8 +25,6 @@ type Host struct {
 	ApiAddress string     `json:"apiAddress"`
 	ShardTypes []string   `json:"shardTypes"`
 	Status     HostStatus `json:"status"`
-
-	Replicas []*Replica `json:"-"`
 }
 
 type Shard struct {
@@ -50,19 +36,6 @@ type Shard struct {
 	Status  ShardStatus `json:"status"`
 	Type    string      `json:"type"`
 	Version string      `json:"version"`
-
-	Replicas []*Replica `json:"-"`
-}
-
-func (s *Shard) Members() (res map[uint64]string) {
-	res = map[uint64]string{}
-	for _, replica := range s.Replicas {
-		if replica.IsNonVoting || replica.IsWitness {
-			continue
-		}
-		res[replica.ID] = replica.HostID
-	}
-	return
 }
 
 type Replica struct {
@@ -76,9 +49,6 @@ type Replica struct {
 	IsWitness   bool          `json:"isWitness"`
 	ShardID     uint64        `json:"shardID"`
 	Status      ReplicaStatus `json:"status"`
-
-	Host  *Host  `json:"-"`
-	Shard *Shard `json:"-"`
 }
 
 type command struct {
@@ -160,6 +130,19 @@ func newCmdShardDel(shardID uint64) (b []byte) {
 	return
 }
 
+func newCmdReplicaPost(nhid string, shardID uint64, isNonVoting bool) (b []byte) {
+	b, _ = json.Marshal(commandReplica{command{
+		Action: command_action_post,
+		Type:   command_type_replica,
+	}, Replica{
+		HostID:      nhid,
+		IsNonVoting: isNonVoting,
+		ShardID:     shardID,
+		Status:      ReplicaStatus_New,
+	}})
+	return
+}
+
 func newCmdReplicaPut(nhid string, shardID, replicaID uint64, isNonVoting bool) (b []byte) {
 	b, _ = json.Marshal(commandReplica{command{
 		Action: command_action_put,
@@ -167,9 +150,8 @@ func newCmdReplicaPut(nhid string, shardID, replicaID uint64, isNonVoting bool) 
 	}, Replica{
 		HostID:      nhid,
 		ID:          replicaID,
-		IsNonVoting: isNonVoting,
 		ShardID:     shardID,
-		Status:      ReplicaStatus_New,
+		IsNonVoting: isNonVoting,
 	}})
 	return
 }

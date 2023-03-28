@@ -13,10 +13,10 @@ type ReplicaClient struct {
 	shardID        uint64
 }
 
-func newReplicaClient(replica *Replica, a *Agent) *ReplicaClient {
+func newReplicaClient(replica Replica, host Host, a *Agent) *ReplicaClient {
 	return &ReplicaClient{
 		agent:          a,
-		hostApiAddress: replica.Host.ApiAddress,
+		hostApiAddress: host.ApiAddress,
 		hostID:         replica.HostID,
 		shardID:        replica.ShardID,
 	}

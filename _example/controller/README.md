@@ -23,7 +23,7 @@ make test-node-3
 
 If performed correctly, you should see a snapshot dumped to stdout on whichever is voted the leader.
 
-This snapshot should include 3 replicas of the prime shard (`zongzi`) and 3 replicas of the guest shard (`banana`).
+This snapshot should include 3 replicas of the prime shard and 3 replicas of the guest shard.
 
 ```
 make test-node-4
@@ -32,155 +32,19 @@ make test-node-4
 Additional nodes added with duplicate zone should be added as non voting.
 
 ```json
-{
-    "Hosts": [
-        {
-            "id": "a74bf4be-df70-4c7a-9682-1458015d8c44",
-            "created": 5,
-            "updated": 16,
-            "apiAddress": "127.0.0.1:17031",
-            "meta": "eyJ6b25lIjoidXMtd2VzdC0xYyJ9",
-            "shardTypes": [
-                "github.com/logbn/zongzi-examples/controller"
-            ],
-            "status": "active"
-        },
-        {
-            "id": "1fced3d3-91e9-44f3-830e-5a95b65a2287",
-            "created": 6,
-            "updated": 17,
-            "apiAddress": "127.0.0.1:17021",
-            "meta": "eyJ6b25lIjoidXMtd2VzdC0xYiJ9",
-            "shardTypes": [
-                "github.com/logbn/zongzi-examples/controller"
-            ],
-            "status": "active"
-        },
-        {
-            "id": "96567b03-7269-4c1e-94fd-653ef54e3544",
-            "created": 8,
-            "updated": 18,
-            "apiAddress": "127.0.0.1:17011",
-            "meta": "eyJ6b25lIjoidXMtd2VzdC0xYSJ9",
-            "shardTypes": [
-                "github.com/logbn/zongzi-examples/controller"
-            ],
-            "status": "active"
-        },
-        {
-            "id": "3de4eee9-d0d6-490e-a024-61108959b753",
-            "created": 19,
-            "updated": 24,
-            "apiAddress": "127.0.0.1:17041",
-            "meta": "eyJ6b25lIjoidXMtd2VzdC0xYSJ9",
-            "shardTypes": [
-                "github.com/logbn/zongzi-examples/controller"
-            ],
-            "status": "active"
-        }
-    ],
-    "Index": 24,
-    "ReplicaIndex": 8,
-    "Replicas": [
-        {
-            "id": 1,
-            "created": 11,
-            "updated": 11,
-            "hostID": "96567b03-7269-4c1e-94fd-653ef54e3544",
-            "isNonVoting": false,
-            "isWitness": false,
-            "shardID": 0,
-            "status": "active"
-        },
-        {
-            "id": 2,
-            "created": 12,
-            "updated": 12,
-            "hostID": "1fced3d3-91e9-44f3-830e-5a95b65a2287",
-            "isNonVoting": false,
-            "isWitness": false,
-            "shardID": 0,
-            "status": "active"
-        },
-        {
-            "id": 3,
-            "created": 13,
-            "updated": 13,
-            "hostID": "a74bf4be-df70-4c7a-9682-1458015d8c44",
-            "isNonVoting": false,
-            "isWitness": false,
-            "shardID": 0,
-            "status": "active"
-        },
-        {
-            "id": 4,
-            "created": 16,
-            "updated": 16,
-            "hostID": "a74bf4be-df70-4c7a-9682-1458015d8c44",
-            "isNonVoting": false,
-            "isWitness": false,
-            "shardID": 1,
-            "status": "active"
-        },
-        {
-            "id": 5,
-            "created": 17,
-            "updated": 17,
-            "hostID": "1fced3d3-91e9-44f3-830e-5a95b65a2287",
-            "isNonVoting": false,
-            "isWitness": false,
-            "shardID": 1,
-            "status": "active"
-        },
-        {
-            "id": 6,
-            "created": 18,
-            "updated": 18,
-            "hostID": "96567b03-7269-4c1e-94fd-653ef54e3544",
-            "isNonVoting": false,
-            "isWitness": false,
-            "shardID": 1,
-            "status": "active"
-        },
-        {
-            "id": 7,
-            "created": 20,
-            "updated": 20,
-            "hostID": "3de4eee9-d0d6-490e-a024-61108959b753",
-            "isNonVoting": true,
-            "isWitness": false,
-            "shardID": 0,
-            "status": "active"
-        },
-        {
-            "id": 8,
-            "created": 22,
-            "updated": 22,
-            "hostID": "3de4eee9-d0d6-490e-a024-61108959b753",
-            "isNonVoting": true,
-            "isWitness": false,
-            "shardID": 1,
-            "status": "active"
-        }
-    ],
-    "ShardIndex": 1,
-    "Shards": [
-        {
-            "id": 0,
-            "created": 7,
-            "updated": 20,
-            "status": "new",
-            "type": "github.com/logbn/zongzi/prime",
-            "version": "v0.0.1"
-        },
-        {
-            "id": 1,
-            "created": 15,
-            "updated": 22,
-            "status": "new",
-            "type": "github.com/logbn/zongzi-examples/controller",
-            "version": "v0.0.1"
-        }
-    ]
-}
+{"index":31,"indexShard":1,"indexReplica":8,"countHost":4,"countShard":2,"countReplica":8}
+{"id":"8f9a74ea-b354-4201-920d-ee433a2ce7c0","created":25,"updated":29,"meta":"eyJ6b25lIjoidXMtd2VzdC0xYSJ9","apiAddress":"127.0.0.1:17041","shardTypes":["github.com/logbn/zongzi-examples/controller"],"status":"active"}
+{"id":"aa95f817-4c52-42a8-8634-d61952de186d","created":5,"updated":11,"meta":"eyJ6b25lIjoidXMtd2VzdC0xYiJ9","apiAddress":"127.0.0.1:17021","shardTypes":null,"status":"new"}
+{"id":"bf5f9be4-ede3-4844-97b9-2179b2aae993","created":7,"updated":12,"meta":"eyJ6b25lIjoidXMtd2VzdC0xYyJ9","apiAddress":"127.0.0.1:17031","shardTypes":null,"status":"new"}
+{"id":"d52cf51c-a2d3-4e9a-b1eb-3e566ef5ba26","created":10,"updated":16,"meta":"eyJ6b25lIjoidXMtd2VzdC0xYSJ9","apiAddress":"127.0.0.1:17011","shardTypes":["github.com/logbn/zongzi-examples/controller"],"status":"active"}
+{"id":0,"created":9,"updated":9,"meta":null,"status":"new","type":"github.com/logbn/zongzi/prime","version":"v0.0.1"}
+{"id":1,"created":18,"updated":18,"meta":null,"status":"new","type":"github.com/logbn/zongzi-examples/controller","version":"v0.0.1"}
+{"id":1,"created":13,"updated":13,"meta":null,"hostID":"d52cf51c-a2d3-4e9a-b1eb-3e566ef5ba26","isNonVoting":false,"isWitness":false,"shardID":0,"status":"new"}
+{"id":2,"created":14,"updated":14,"meta":null,"hostID":"aa95f817-4c52-42a8-8634-d61952de186d","isNonVoting":false,"isWitness":false,"shardID":0,"status":"new"}
+{"id":3,"created":15,"updated":15,"meta":null,"hostID":"bf5f9be4-ede3-4844-97b9-2179b2aae993","isNonVoting":false,"isWitness":false,"shardID":0,"status":"new"}
+{"id":4,"created":19,"updated":19,"meta":null,"hostID":"aa95f817-4c52-42a8-8634-d61952de186d","isNonVoting":false,"isWitness":false,"shardID":1,"status":"new"}
+{"id":5,"created":20,"updated":20,"meta":null,"hostID":"bf5f9be4-ede3-4844-97b9-2179b2aae993","isNonVoting":false,"isWitness":false,"shardID":1,"status":"new"}
+{"id":6,"created":21,"updated":21,"meta":null,"hostID":"d52cf51c-a2d3-4e9a-b1eb-3e566ef5ba26","isNonVoting":false,"isWitness":false,"shardID":1,"status":"new"}
+{"id":7,"created":26,"updated":26,"meta":null,"hostID":"8f9a74ea-b354-4201-920d-ee433a2ce7c0","isNonVoting":true,"isWitness":false,"shardID":0,"status":"new"}
+{"id":8,"created":28,"updated":28,"meta":null,"hostID":"8f9a74ea-b354-4201-920d-ee433a2ce7c0","isNonVoting":false,"isWitness":false,"shardID":1,"status":"new"}
 ```

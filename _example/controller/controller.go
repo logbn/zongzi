@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -34,11 +35,10 @@ func (c *controller) start() {
 		return
 	}
 	var (
-		ctx      context.Context
-		err      error
-		index    uint64
-		shard    *zongzi.Shard
-		snapshot *zongzi.Snapshot
+		ctx   context.Context
+		err   error
+		index uint64
+		shard zongzi.Shard
 	)
 	ctx, c.cancel = context.WithCancel(context.Background())
 	go func() {
@@ -47,73 +47,72 @@ func (c *controller) start() {
 		for {
 			select {
 			case <-t.C:
-				replicas := map[uint64]*zongzi.Replica{}
-				c.agent.Read(func(s *zongzi.State) {
-					snapshot = s.GetSnapshot()
-				})
-				if snapshot.Index == 0 || snapshot.Index == index {
-					break
-				}
-				if shard == nil {
-					// Find shard (this controller supports only one shard of its type per cluster)
-					for _, s := range snapshot.Shards {
-						if s.Type == StateMachineUri && s.Status != zongzi.ShardStatus_Closed {
-							shard = &s
-							break
-						}
+				prevIndex := index
+				c.agent.Read(func(state zongzi.State) {
+					if state.Index() <= index {
+						return
 					}
-					// Shard does not yet exist. Create it.
-					if shard == nil {
-						shard, err = c.agent.CreateShard(StateMachineUri, StateMachineVersion)
-						if err != nil {
-							break
-						}
-					}
-				}
-				for _, r := range snapshot.Replicas {
-					if r.ShardID == shard.ID {
-						replicas[r.ID] = &r
-					}
-				}
-				// Add replicas to new hosts and remove replicas for missing hosts
-				var zones = map[string]bool{}
-				for _, h := range snapshot.Hosts {
-					var meta map[string]any
-					if err = json.Unmarshal(h.Meta, &meta); err != nil {
-						err = fmt.Errorf("Bad meta: %w", err)
-						break
-					}
-					var hasReplica bool
-					for _, replica := range h.Replicas {
-						if replica.ShardID == shard.ID {
-							if !replica.IsNonVoting {
-								zones[meta["zone"].(string)] = true
+					if shard.ID == 0 {
+						state.ShardIterate(func(s zongzi.Shard) bool {
+							if s.Type == StateMachineUri && s.Status != zongzi.ShardStatus_Closed {
+								shard = s
+								return false
 							}
-							hasReplica = true
-							break
+							return true
+						})
+						// Shard does not yet exist. Create it.
+						if shard.ID == 0 {
+							shard, err = c.agent.CreateShard(StateMachineUri, StateMachineVersion)
+							if err != nil {
+								return
+							}
 						}
 					}
-					if hasReplica {
-						continue
-					}
-					// Not strictly correct.
-					// Need to evaulate all hosts to ensure no members already exist in this zone.
-					if _, ok := zones[meta["zone"].(string)]; !ok {
-						zones[meta["zone"].(string)] = true
-						if _, err = c.agent.CreateReplica(shard.ID, h.ID, false); err != nil {
-							return
+					// Add replicas to new hosts and remove replicas for missing hosts
+					var zones = map[string]bool{}
+					state.HostIterate(func(h zongzi.Host) bool {
+						var meta map[string]any
+						if err = json.Unmarshal(h.Meta, &meta); err != nil {
+							err = fmt.Errorf("Bad meta: %w", err)
+							return true
 						}
-					} else {
-						if _, err = c.agent.CreateReplica(shard.ID, h.ID, true); err != nil {
-							return
+						var hasReplica bool
+						state.ReplicaIterateByHostID(h.ID, func(r zongzi.Replica) bool {
+							if r.ShardID == shard.ID {
+								if !r.IsNonVoting {
+									zones[meta["zone"].(string)] = true
+								}
+								hasReplica = true
+								return false
+							}
+							return true
+						})
+						if hasReplica {
+							return true
 						}
-					}
-				}
-				index = snapshot.Index
-				c.agent.Read(func(s *zongzi.State) {
-					b, _ := s.MarshalJSON()
-					log.Println(string(b))
+						// Not strictly correct.
+						// Need to evaulate all hosts to ensure no members already exist in this zone.
+						if _, ok := zones[meta["zone"].(string)]; !ok {
+							zones[meta["zone"].(string)] = true
+							if _, err = c.agent.CreateReplica(shard.ID, h.ID, false); err != nil {
+								return true
+							}
+						} else {
+							if _, err = c.agent.CreateReplica(shard.ID, h.ID, true); err != nil {
+								return true
+							}
+						}
+						return true
+					})
+					index = state.Index()
 				})
+				if index != prevIndex {
+					c.agent.Read(func(state zongzi.State) {
+						buf := bytes.NewBufferString("")
+						state.Save(buf)
+						log.Print(buf.String())
+					})
+				}
 			case <-ctx.Done():
 				c.mutex.Lock()
 				c.leader = false
