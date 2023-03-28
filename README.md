@@ -1,5 +1,7 @@
 # Zongzi
 
+<img alt="chibi style zongzi rice pyramid" src="https://user-images.githubusercontent.com/20638/228140399-d7b5cb5f-b2e4-4452-8de0-3decbe35bb36.png" width="220" align="right"/>
+
 A cluster coordinator for Dragonboat.
 
 [![Go Reference](https://godoc.org/github.com/logbn/zongzi?status.svg)](https://godoc.org/github.com/logbn/zongzi)
