@@ -22,7 +22,7 @@ func newHostClient(host Host, a *Agent) *HostClient {
 }
 
 func (c *HostClient) Ping(ctx context.Context) (err error) {
-	if c.hostID == c.agent.GetHostID() {
+	if c.hostID == c.agent.HostID() {
 		return
 	}
 	_, err = c.agent.grpcClientPool.get(c.hostApiAddress).Ping(ctx, &internal.PingRequest{})

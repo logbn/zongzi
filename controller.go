@@ -62,9 +62,12 @@ func (c *controller) tick() (err error) {
 		nhid    = c.agent.host.ID()
 		toStart = []controllerStartReplicaParams{}
 	)
+	var ok bool
+	var host Host
 	hostInfo := c.agent.host.GetNodeHostInfo(dragonboat.NodeHostInfoOption{})
+	var index uint64
 	c.agent.Read(func(state State) {
-		host, ok := state.HostGet(nhid)
+		host, ok = state.HostGet(nhid)
 		if !ok {
 			return
 		}
@@ -120,10 +123,8 @@ func (c *controller) tick() (err error) {
 				})
 			}
 		}
-		if len(toStart) == 0 {
-			c.index = state.Index()
-		}
-	})
+		index = state.Index()
+	}, true)
 	for _, params := range toStart {
 		item, ok := c.agent.shardTypes[params.shardType]
 		if !ok {
@@ -143,12 +144,15 @@ func (c *controller) tick() (err error) {
 			err = fmt.Errorf("Failed to start replica: %w", err)
 			break
 		}
-		res, err := c.agent.primePropose(newCmdReplicaUpdateStatus(params.replicaID, ReplicaStatus_Active))
+		var res Result
+		res, err = c.agent.primePropose(newCmdReplicaUpdateStatus(params.replicaID, ReplicaStatus_Active))
 		if err != nil || res.Value != 1 {
 			err = fmt.Errorf("Failed to update replica status: %w", err)
 			break
 		}
-		c.index = params.index
+	}
+	if err == nil {
+		c.index = index
 	}
 	return
 }

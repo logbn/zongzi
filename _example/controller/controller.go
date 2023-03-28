@@ -105,13 +105,13 @@ func (c *controller) start() {
 						return true
 					})
 					index = state.Index()
-				})
+				}, true)
 				if index != prevIndex {
 					c.agent.Read(func(state zongzi.State) {
 						buf := bytes.NewBufferString("")
 						state.Save(buf)
 						log.Print(buf.String())
-					})
+					}, true)
 				}
 			case <-ctx.Done():
 				c.mutex.Lock()

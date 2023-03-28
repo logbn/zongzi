@@ -15,7 +15,7 @@ import (
 
 const (
 	minReplicas  = 3
-	raftTimeout  = time.Second
+	raftTimeout  = 3 * time.Second
 	joinTimeout  = 5 * time.Second
 	projectName  = "zongzi"
 	shardUri     = "github.com/logbn/zongzi/prime"

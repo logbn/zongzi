@@ -112,7 +112,7 @@ func (a *Agent) Start() (err error) {
 	if a.host, err = dragonboat.NewNodeHost(a.hostConfig); err != nil {
 		return
 	}
-	a.log.Infof(`Started host "%s"`, a.GetHostID())
+	a.log.Infof(`Started host "%s"`, a.HostID())
 	// Find prime replicaID
 	nhInfo := a.host.GetNodeHostInfo(dragonboat.NodeHostInfoOption{false})
 	a.log.Debugf(`Get node host info: %+v`, nhInfo)
@@ -130,6 +130,7 @@ func (a *Agent) Start() (err error) {
 		return
 	}
 	if a.replicaConfig.ReplicaID == 0 {
+		a.setStatus(AgentStatus_Joining)
 		a.replicaConfig.ReplicaID, err = a.joinPrimeShard()
 		if err != nil {
 			return
@@ -153,6 +154,11 @@ func (a *Agent) Start() (err error) {
 			if err != nil {
 				return
 			}
+		} else {
+			err = a.primeInitAwait()
+			if err != nil {
+				return
+			}
 		}
 	} else {
 		err = a.startPrimeReplica(nil, false)
@@ -172,8 +178,8 @@ func (a *Agent) Start() (err error) {
 	return
 }
 
-// GetStatus returns the agent status
-func (a *Agent) GetStatus() AgentStatus {
+// Status returns the agent status
+func (a *Agent) Status() AgentStatus {
 	a.mutex.RLock()
 	defer a.mutex.RUnlock()
 	return a.status
@@ -263,8 +269,8 @@ func (a *Agent) GetHostClient(hostID string) (c *HostClient) {
 	return
 }
 
-// GetHostID returns host ID if host is initialized, otherwise empty string.
-func (a *Agent) GetHostID() (id string) {
+// HostID returns host ID if host is initialized, otherwise empty string.
+func (a *Agent) HostID() (id string) {
 	if a.host != nil {
 		return a.host.ID()
 	}
@@ -354,10 +360,10 @@ func (a *Agent) resolvePrimeMembership() (members map[uint64]string, init bool, 
 		// Get host info from all peers to determine which are initialized.
 		for _, apiAddr := range a.peers {
 			var info *internal.InfoResponse
-			if apiAddr == a.advertiseAddress && a.GetHostID() != "" {
+			if apiAddr == a.advertiseAddress && a.HostID() != "" {
 				info = &internal.InfoResponse{
 					ReplicaId: a.replicaConfig.ReplicaID,
-					HostId:    a.GetHostID(),
+					HostId:    a.HostID(),
 				}
 			} else {
 				info, err = a.grpcClientPool.get(apiAddr).Info(raftCtx(), &internal.InfoRequest{})
@@ -456,7 +462,7 @@ func (a *Agent) joinPrimeShard() (replicaID uint64, err error) {
 			continue
 		}
 		res, err = a.grpcClientPool.get(peerApiAddr).Join(raftCtx(), &internal.JoinRequest{
-			HostId:      a.GetHostID(),
+			HostId:      a.HostID(),
 			Index:       sv.ConfigChangeIndex,
 			IsNonVoting: a.replicaConfig.IsNonVoting,
 		})
@@ -470,13 +476,13 @@ func (a *Agent) joinPrimeShard() (replicaID uint64, err error) {
 
 // updateHost adds host info to prime shard
 func (a *Agent) updateHost() (err error) {
-	meta, addr, err := a.parseMeta(a.GetHostID())
+	meta, addr, err := a.parseMeta(a.HostID())
 	if err != nil {
 		return
 	}
 	shardTypes := keys(a.shardTypes)
 	sort.Strings(shardTypes)
-	cmd := newCmdHostPut(a.GetHostID(), addr, meta, HostStatus_Active, shardTypes)
+	cmd := newCmdHostPut(a.HostID(), addr, meta, HostStatus_Active, shardTypes)
 	a.log.Debugf("Updating host: %s", string(cmd))
 	_, err = a.primePropose(cmd)
 	return
@@ -502,7 +508,6 @@ func (a *Agent) readIndex() (err error) {
 			continue
 		}
 		res := <-rs.ResultC()
-		a.log.Debugf(`%+v`, res.GetResult())
 		if !res.Completed() {
 			a.log.Infof(`Waiting for other nodes`)
 			rs.Release()
@@ -602,6 +607,24 @@ func (a *Agent) primeInit(members map[uint64]string) (err error) {
 		}
 	}
 
+	return
+}
+
+// primeInitAwait pauses non-initializers until prime shard is initialized
+func (a *Agent) primeInitAwait() (err error) {
+	for {
+		var found bool
+		err = a.Read(func(s State) {
+			s.ReplicaIterateByHostID(a.HostID(), func(r Replica) bool {
+				found = true
+				return false
+			})
+		})
+		if err != nil || found {
+			break
+		}
+		a.clock.Sleep(100 * time.Millisecond)
+	}
 	return
 }
 
