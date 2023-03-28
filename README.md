@@ -71,8 +71,8 @@ is delegated to the developer. See [ADR: Raft Sessions](/docs/adr/raft_sessions.
 
 ## v0.1.0
 
-- [ ] Refactor `(*Agent).Read()` and fsm state to use MVCC ([memdb](https://pkg.go.dev/github.com/hashicorp/go-memdb))
-- [ ] Refactor fsm snapshots to JSONLines for streaming snapshots
+- [X] Refactor `(*Agent).Read()` and fsm state to use MVCC ([memdb](https://pkg.go.dev/github.com/hashicorp/go-memdb))
+- [X] Refactor fsm snapshots to JSONLines for streaming snapshots
 - [ ] Add missing sync.Pools (see TODOs)
 - [ ] Make existing example more useful (see [optimistic-write-lock](https://github.com/lni/dragonboat-example/tree/25d608db03747515d1abb07b95afdb2d5e1cd5ea/optimistic-write-lock))
 - [ ] Add persistent state machine example
