@@ -1,6 +1,9 @@
 test:
 	@go test ./...
 
+unit:
+	@go test ./... -tags unit
+
 cover:
 	@mkdir -p _dist
 	@go test ./... -coverprofile=_dist/coverage.out -tags integration
