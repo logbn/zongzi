@@ -33,7 +33,7 @@ Additional nodes added with duplicate zone should be added as non voting.
 
 ```json
 {"index":31,"shardID":1,"replicaID":8,"hosts":4,"shards":2,"replicas":8}
-{"id":"0ab8a726-b125-493e-a3c3-d69545a633dd","created":5,"updated":8,"meta":"eyJ6b25lIjoidXMtd2VzdC0xYSJ9","apiAddress":"127.0.0.1:17011","shardTypes":null,"status":"new"}
+{"id":"0ab8a726-b125-493e-a3c3-d69545a633dd","created":5,"updated":8,"meta":"eyJ6b25lIjoidXMtd2VzdC0xYSJ9","apiAddress":"127.0.0.1:17011","shardTypes":["github.com/logbn/zongzi-examples/controller"],"status":"new"}
 {"id":"0e12309e-4887-474c-9ec1-03894d84ac3c","created":10,"updated":16,"meta":"eyJ6b25lIjoidXMtd2VzdC0xYyJ9","apiAddress":"127.0.0.1:17031","shardTypes":["github.com/logbn/zongzi-examples/controller"],"status":"active"}
 {"id":"7507a475-7825-4205-b377-77305cfe4f6c","created":25,"updated":29,"meta":"eyJ6b25lIjoidXMtd2VzdC0xYSJ9","apiAddress":"127.0.0.1:17041","shardTypes":["github.com/logbn/zongzi-examples/controller"],"status":"active"}
 {"id":"dfd29e6f-49c4-4f9b-ba46-d9d6c777a497","created":9,"updated":14,"meta":"eyJ6b25lIjoidXMtd2VzdC0xYiJ9","apiAddress":"127.0.0.1:17021","shardTypes":["github.com/logbn/zongzi-examples/controller"],"status":"active"}
