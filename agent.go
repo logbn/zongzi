@@ -182,13 +182,9 @@ func (a *Agent) GetStatus() AgentStatus {
 // Read executes a callback function passing a reference to the state machine's internal cluster state.
 //
 //	err := agent.Read(func(s *State) error {
-//	    log.Println(s.Index)
+//	    log.Println(s.Index())
 //	    return nil
 //	})
-//
-// Callback function MAY NOT write to ANY fields of *[State]. Doing so WILL corrupt the state machine.
-//
-// Callback function WILL block writes to the state machine.
 //
 // Linear reads are supported to achieve "Read Your Writes" consistency following a proposal.
 //
