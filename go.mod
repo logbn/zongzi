@@ -4,7 +4,6 @@ go 1.19
 
 require (
 	github.com/benbjohnson/clock v1.3.0
-	github.com/elliotchance/orderedmap/v2 v2.2.0
 	github.com/hashicorp/go-memdb v1.3.4
 	github.com/hashicorp/golang-lru/v2 v2.0.2
 	github.com/lni/dragonboat/v4 v4.0.0-20230202152124-023bafb8e648
