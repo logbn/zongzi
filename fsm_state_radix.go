@@ -230,7 +230,10 @@ func (fsm *fsmStateRadix) ShardIterate(fn func(s Shard) bool) {
 }
 
 func (fsm *fsmStateRadix) ReplicaGet(id uint64) (r Replica, ok bool) {
-	res, _ := fsm.txn.First(`replica`, `id`, id)
+	res, err := fsm.txn.First(`replica`, `id`, id)
+	if err != nil {
+		panic(err)
+	}
 	if res != nil {
 		r = res.(Replica)
 		ok = true

@@ -33,7 +33,7 @@ func (s *grpcServer) Probe(ctx context.Context, req *internal.ProbeRequest) (res
 
 func (s *grpcServer) Info(ctx context.Context, req *internal.InfoRequest) (res *internal.InfoResponse, err error) {
 	return &internal.InfoResponse{
-		HostId:    s.agent.GetHostID(),
+		HostId:    s.agent.HostID(),
 		ReplicaId: s.agent.replicaConfig.ReplicaID,
 	}, nil
 }
@@ -51,7 +51,7 @@ func (s *grpcServer) Join(ctx context.Context, req *internal.JoinRequest) (res *
 }
 
 func (s *grpcServer) Propose(ctx context.Context, req *internal.Request) (res *internal.Response, err error) {
-	if s.agent.GetStatus() != AgentStatus_Ready {
+	if s.agent.Status() != AgentStatus_Ready {
 		err = ErrAgentNotReady
 		return
 	}

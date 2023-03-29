@@ -40,7 +40,7 @@ func (c *ReplicaClient) Propose(ctx context.Context, cmd []byte, linear bool) (v
 		c.agent.log.Warningf(`%v`, ErrNotifyCommitDisabled)
 	}
 	var res *internal.Response
-	if c.hostID == c.agent.GetHostID() {
+	if c.hostID == c.agent.HostID() {
 		res, err = c.agent.grpcServer.Propose(ctx, &internal.Request{
 			ShardId: c.shardID,
 			Linear:  linear,
@@ -75,7 +75,7 @@ func (c *ReplicaClient) Propose(ctx context.Context, cmd []byte, linear bool) (v
 //	true  - if you are willing to pay the extra latency for a highly consistent read.
 func (c *ReplicaClient) Query(ctx context.Context, query []byte, linear bool) (value uint64, data []byte, err error) {
 	var res *internal.Response
-	if c.hostID == c.agent.GetHostID() {
+	if c.hostID == c.agent.HostID() {
 		res, err = c.agent.grpcServer.Query(ctx, &internal.Request{
 			ShardId: c.shardID,
 			Linear:  linear,

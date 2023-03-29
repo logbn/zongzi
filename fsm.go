@@ -156,10 +156,11 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 		case command_action_status_update:
 			replica, ok := state.ReplicaGet(cmd.Replica.ID)
 			if !ok {
-				fsm.log.Warningf("%v: %#v", ErrReplicaNotFound, cmd)
+				fsm.log.Warningf("%v: %#v %#v", ErrReplicaNotFound, cmd, replica)
 				break
 			}
 			replica.Status = cmd.Replica.Status
+			state.replicaPut(replica)
 			entry.Result.Value = 1
 		// Put
 		case command_action_put:
