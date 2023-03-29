@@ -219,10 +219,10 @@ func TestAgent(t *testing.T) {
 		}
 		require.Equal(t, len(agents), replicaCount, `%#v`, replicas)
 	})
+	require.Nil(t, agents[0].readIndex(shard.ID))
 	t.Run(`update shard`, func(t *testing.T) {
 		var i = 0
 		var nonvoting = 0
-		require.Nil(t, agents[0].readIndex(shard.ID))
 		agents[0].Read(func(s State) {
 			s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
 				if r.IsNonVoting {
@@ -234,6 +234,26 @@ func TestAgent(t *testing.T) {
 				val, _, err := replicaClient.Propose(raftCtx(), bytes.Repeat([]byte("test"), i+1), true)
 				require.Nil(t, err, `%v, %v, %#v`, i, err, replicaClient)
 				assert.Equal(t, uint64((i+1)*4), val)
+				i++
+				return true
+			})
+		})
+		assert.Equal(t, 3, nonvoting)
+	})
+	t.Run(`update shard non-linear`, func(t *testing.T) {
+		var i = 0
+		var nonvoting = 0
+		agents[0].Read(func(s State) {
+			s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
+				if r.IsNonVoting {
+					nonvoting++
+					return true
+				}
+				replicaClient := agents[0].GetReplicaClient(r.ID)
+				require.NotNil(t, replicaClient)
+				val, _, err := replicaClient.Propose(raftCtx(), bytes.Repeat([]byte("test"), i+1), false)
+				require.Nil(t, err, `%v, %v, %#v`, i, err, replicaClient)
+				assert.Equal(t, uint64(0), val)
 				i++
 				return true
 			})
@@ -277,10 +297,10 @@ func TestAgent(t *testing.T) {
 		}
 		require.Equal(t, len(agents), replicaCount, `%#v`, replicas)
 	})
+	require.Nil(t, agents[3].readIndex(shard.ID))
 	t.Run(`update persistent shard`, func(t *testing.T) {
 		var i = 0
 		var nonvoting = 0
-		require.Nil(t, agents[3].readIndex(shard.ID))
 		agents[0].Read(func(s State) {
 			s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
 				if r.IsNonVoting {
@@ -301,7 +321,6 @@ func TestAgent(t *testing.T) {
 	t.Run(`update persistent shard non-linear`, func(t *testing.T) {
 		var i = 0
 		var nonvoting = 0
-		require.Nil(t, agents[3].readIndex(shard.ID))
 		agents[0].Read(func(s State) {
 			s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
 				if r.IsNonVoting {
