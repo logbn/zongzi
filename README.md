@@ -8,13 +8,14 @@ A cluster coordinator for Dragonboat
 [![Go Report Card](https://goreportcard.com/badge/github.com/logbn/zongzi?4)](https://goreportcard.com/report/github.com/logbn/zongzi)
 [![Go Coverage](https://github.com/logbn/zongzi/wiki/coverage.svg)](https://raw.githack.com/wiki/logbn/zongzi/coverage.html)
 
-This package provides a centralized management layer for Dragonboat multi-group Raft consesus clusters.
+This package provides a centralized coordination layer for Dragonboat multi-group Raft consesus clusters.
 
 ### Components
 
 - Cluster State Registry
-  - Prime shard (shardID: 0)
   - Stores desired state of all hosts, shards and replicas in the cluster
+  - Cluster state stored in raft shard zero (shardID: 0)
+  - All cluster state changes pass through the Zongzi agent
 - Host Controller
   - Manages replicas on all hosts (start, stop, recover, delete, etc)
   - Responds automatically to changes in cluster state registry
