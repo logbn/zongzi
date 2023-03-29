@@ -26,12 +26,14 @@ func newGrpcServer(listenAddr string, secrets []string) *grpcServer {
 }
 
 func (s *grpcServer) Probe(ctx context.Context, req *internal.ProbeRequest) (res *internal.ProbeResponse, err error) {
+	// s.agent.log.Debugf(`gRPC Req Probe: %#v`, req)
 	return &internal.ProbeResponse{
 		GossipAdvertiseAddress: s.agent.hostConfig.Gossip.AdvertiseAddress,
 	}, nil
 }
 
 func (s *grpcServer) Info(ctx context.Context, req *internal.InfoRequest) (res *internal.InfoResponse, err error) {
+	// s.agent.log.Debugf(`gRPC Req Info: %#v`, req)
 	return &internal.InfoResponse{
 		HostId:    s.agent.HostID(),
 		ReplicaId: s.agent.replicaConfig.ReplicaID,
@@ -39,18 +41,24 @@ func (s *grpcServer) Info(ctx context.Context, req *internal.InfoRequest) (res *
 }
 
 func (s *grpcServer) Members(ctx context.Context, req *internal.MembersRequest) (res *internal.MembersResponse, err error) {
+	// s.agent.log.Debugf(`gRPC Req Members: %#v`, req)
 	return &internal.MembersResponse{
 		Members: s.agent.members,
 	}, nil
 }
 
 func (s *grpcServer) Join(ctx context.Context, req *internal.JoinRequest) (res *internal.JoinResponse, err error) {
+	// s.agent.log.Debugf(`gRPC Req Join: %#v`, req)
 	res = &internal.JoinResponse{}
 	res.Value, err = s.agent.addReplica(req.HostId, s.agent.replicaConfig.ShardID, req.IsNonVoting)
 	return
 }
 
 func (s *grpcServer) Propose(ctx context.Context, req *internal.Request) (res *internal.Response, err error) {
+	// s.agent.log.Debugf(`gRPC Req Propose: %#v`, req)
+	if !req.Linear && !s.agent.hostConfig.NotifyCommit {
+		s.agent.log.Warningf(`%v`, ErrNotifyCommitDisabled)
+	}
 	if s.agent.Status() != AgentStatus_Ready {
 		err = ErrAgentNotReady
 		return
@@ -66,16 +74,13 @@ func (s *grpcServer) Propose(ctx context.Context, req *internal.Request) (res *i
 			if r.Aborted() {
 				err = ErrAborted
 				return
-			} else if r.Committed() {
-				if !req.Linear {
-					return
-				}
+			} else if r.Committed() && !req.Linear {
+				res = &internal.Response{}
+				return
 			} else if r.Completed() {
-				if req.Linear {
-					res = &internal.Response{
-						Value: r.GetResult().Value,
-						Data:  r.GetResult().Data,
-					}
+				res = &internal.Response{
+					Value: r.GetResult().Value,
+					Data:  r.GetResult().Data,
 				}
 				return
 			} else if r.Dropped() {
@@ -105,6 +110,7 @@ func (s *grpcServer) Propose(ctx context.Context, req *internal.Request) (res *i
 }
 
 func (s *grpcServer) Query(ctx context.Context, req *internal.Request) (res *internal.Response, err error) {
+	// s.agent.log.Debugf(`gRPC Req Query: %#v`, req)
 	var r any
 	if req.Linear {
 		r, err = s.agent.host.SyncRead(raftCtx(), req.ShardId, newLookupQuery(ctx, req.Data))
@@ -118,6 +124,7 @@ func (s *grpcServer) Query(ctx context.Context, req *internal.Request) (res *int
 }
 
 func (s *grpcServer) Start(a *Agent) error {
+	// a.log.Errorf("Starting gRPC server on %s", s.listenAddr)
 	s.agent = a
 	lis, err := net.Listen("tcp", s.listenAddr)
 	if err != nil {

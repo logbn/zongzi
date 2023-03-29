@@ -353,13 +353,7 @@ func (f *fsmStateRadix) Save(w io.Writer) error {
 
 func (f *fsmStateRadix) recover(r io.Reader) (err error) {
 	fsm := f.withTxn(true)
-	defer func() {
-		if err == nil {
-			fsm.commit()
-		} else {
-			fsm.rollback()
-		}
-	}()
+	defer fsm.commit()
 	decoder := json.NewDecoder(r)
 	var header fsmStateMetaHeader
 	if err := decoder.Decode(&header); err != nil {

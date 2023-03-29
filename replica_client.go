@@ -36,17 +36,16 @@ func newReplicaClient(replica Replica, host Host, a *Agent) *ReplicaClient {
 //	false - if you want blind high-volume writes. Returned value and data will always be empty.
 //	true  - if you need a response.
 func (c *ReplicaClient) Propose(ctx context.Context, cmd []byte, linear bool) (value uint64, data []byte, err error) {
-	if !linear && !c.agent.hostConfig.NotifyCommit {
-		c.agent.log.Warningf(`%v`, ErrNotifyCommitDisabled)
-	}
 	var res *internal.Response
 	if c.hostID == c.agent.HostID() {
+		c.agent.log.Debugf(`gRPC Client Propose Local: %s, %v`, string(cmd), linear)
 		res, err = c.agent.grpcServer.Propose(ctx, &internal.Request{
 			ShardId: c.shardID,
 			Linear:  linear,
 			Data:    cmd,
 		})
 	} else {
+		c.agent.log.Debugf(`gRPC Client Propose Remote: %s, %v`, string(cmd), linear)
 		res, err = c.agent.grpcClientPool.get(c.hostApiAddress).Propose(ctx, &internal.Request{
 			ShardId: c.shardID,
 			Linear:  linear,

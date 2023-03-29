@@ -66,6 +66,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 	default:
 		fsm.log.Errorf("Unrecognized cmd type %s", cmdBase.Type, cmdBase)
 	}
+	// fsm.log.Debugf(`Update: %d %s`, entry.Index, string(entry.Cmd))
 	state := fsm.state.withTxn(true)
 	defer state.commit()
 	switch cmd.(type) {
@@ -123,6 +124,10 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			}
 			cmd.Shard.Updated = entry.Index
 			state.shardPut(cmd.Shard)
+			state.ReplicaIterateByShardID(cmd.Shard.ID, func(r Replica) bool {
+				state.hostTouch(r.HostID, entry.Index)
+				return true
+			})
 			entry.Result.Value = 1
 		// Delete
 		case command_action_del:
@@ -151,6 +156,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			cmd.Replica.Created = entry.Index
 			cmd.Replica.Updated = entry.Index
 			state.replicaPut(cmd.Replica)
+			state.hostTouch(cmd.Replica.HostID, entry.Index)
 			entry.Result.Value = cmd.Replica.ID
 		// Status Update
 		case command_action_status_update:
@@ -172,6 +178,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			}
 			cmd.Replica.Updated = entry.Index
 			state.replicaPut(cmd.Replica)
+			state.hostTouch(cmd.Replica.HostID, entry.Index)
 			entry.Result.Value = 1
 		// Delete
 		case command_action_del:

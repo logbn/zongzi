@@ -91,13 +91,13 @@ func (a *Agent) Start() (err error) {
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
+		defer a.log.Debugf("Stopped gRPC Server")
 		for {
 			if err := a.grpcServer.Start(a); err != nil {
 				a.log.Errorf("Error starting gRPC server: %s", err.Error())
 			}
 			select {
 			case <-a.ctx.Done():
-				a.log.Debugf("Stopped gRPC Server")
 				return
 			case <-a.clock.After(waitPeriod):
 			}
@@ -217,7 +217,7 @@ func (a *Agent) Status() AgentStatus {
 // Read is thread safe.
 func (a *Agent) Read(fn func(State), linear ...bool) (err error) {
 	if len(linear) > 0 && linear[0] {
-		err = a.readIndex()
+		err = a.readIndex(a.replicaConfig.ShardID)
 		if err != nil {
 			return
 		}
@@ -243,6 +243,7 @@ func (a *Agent) CreateShard(uri, version string) (shard Shard, err error) {
 
 // CreateReplica creates a replica
 func (a *Agent) CreateReplica(shardID uint64, nodeHostID string, isNonVoting bool) (id uint64, err error) {
+	a.log.Infof("Create replica %d, %s, %v", shardID, nodeHostID, isNonVoting)
 	res, err := a.primePropose(newCmdReplicaPost(nodeHostID, shardID, isNonVoting))
 	if err == nil {
 		id = res.Value
@@ -308,6 +309,7 @@ func (a *Agent) GetReplicaClient(replicaID uint64) (c *ReplicaClient) {
 		if !ok {
 			return
 		}
+		a.log.Debugf(`New replica client %s, %+v, %+v`, a.HostID(), replica, host)
 		c = newReplicaClient(replica, host, a)
 	})
 	return
@@ -464,7 +466,7 @@ func (a *Agent) startPrimeReplica(members map[uint64]string, join bool) (err err
 		err = fmt.Errorf(`startPrimeReplica: %w`, err)
 		return
 	}
-	err = a.readIndex()
+	err = a.readIndex(a.replicaConfig.ShardID)
 	if err != nil {
 		return
 	}
@@ -518,18 +520,18 @@ func (a *Agent) updateReplica() (err error) {
 }
 
 // readIndex blocks until it can read from the prime shard, indicating that the local replica is up to date.
-func (a *Agent) readIndex() (err error) {
+func (a *Agent) readIndex(shardID uint64) (err error) {
 	var rs *dragonboat.RequestState
 	for {
-		rs, err = a.host.ReadIndex(a.replicaConfig.ShardID, raftTimeout)
+		rs, err = a.host.ReadIndex(shardID, raftTimeout)
 		if err != nil || rs == nil {
-			a.log.Infof(`Error reading prime shard index: %v`, err)
+			a.log.Infof(`[%05x:%05x] Error reading shard index: %v`, a.replicaConfig.ReplicaID, shardID, err)
 			a.clock.Sleep(waitPeriod)
 			continue
 		}
 		res := <-rs.ResultC()
 		if !res.Completed() {
-			a.log.Infof(`[%08x] Waiting for other nodes`, a.replicaConfig.ReplicaID)
+			a.log.Infof(`[%05x:%05x]  Waiting for other nodes`, a.replicaConfig.ReplicaID, shardID)
 			rs.Release()
 			a.clock.Sleep(waitPeriod)
 			continue

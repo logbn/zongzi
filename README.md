@@ -82,7 +82,7 @@ is delegated to the developer. See [ADR: Raft Sessions](/docs/adr/raft_sessions.
 - [ ] Make existing example more useful (see [optimistic-write-lock](https://github.com/lni/dragonboat-example/tree/25d608db03747515d1abb07b95afdb2d5e1cd5ea/optimistic-write-lock))
 - [ ] Add persistent state machine example
 - [X] Add integration tests for non-voting members
-- [ ] Add integration tests for user shards and replicas
+- [X] Add integration tests for user shards and replicas
 
 ## v0.2.0
 
