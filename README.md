@@ -8,21 +8,24 @@ A cluster coordinator for Dragonboat
 [![Go Report Card](https://goreportcard.com/badge/github.com/logbn/zongzi?4)](https://goreportcard.com/report/github.com/logbn/zongzi)
 [![Go Coverage](https://github.com/logbn/zongzi/wiki/coverage.svg)](https://raw.githack.com/wiki/logbn/zongzi/coverage.html)
 
-The goal of this package is to wrap Dragonboat behind a facade that presents a simpler interface.
+This package provides a centralized management layer for Dragonboat multi-group Raft consesus clusters.
+
+## Components
 
 - Cluster State Registry
   - Prime shard (shardID: 0)
   - Stores desired state of all hosts, shards and replicas in the cluster
 - Host Controller
-  - Creates missing shards
-  - Starts and deletes replicas
-  - Responds automatically to changes in registry state
+  - Manages replicas on all hosts (start, stop, recover, delete, etc)
+  - Responds automatically to changes in cluster state registry
 - Message Bus
   - Internal gPRC
   - Facilitates cluster boostrap
-  - Forwards proposals and queries
+  - Forwards proposals and queries between nodes
 
-The zongzi Agent simplifies multi-host operations using an internal API that automatically coordinates the
+## Usage
+
+The Zongzi Agent simplifies multi-host operations using an internal API that automatically coordinates the
 necessary multi-host actions required to achieve the desired cluster state.
 
 1. Call `zongzi.(*Agent).CreateReplica` from any host in the cluster
