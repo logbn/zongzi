@@ -67,6 +67,7 @@ func (c *controller) tick() (err error) {
 	hostInfo := c.agent.host.GetNodeHostInfo(dragonboat.NodeHostInfoOption{})
 	var index uint64
 	c.agent.Read(func(state State) {
+		index = state.Index()
 		host, ok = state.HostGet(nhid)
 		if !ok {
 			return
@@ -123,7 +124,6 @@ func (c *controller) tick() (err error) {
 				})
 			}
 		}
-		index = state.Index()
 	}, true)
 	for _, params := range toStart {
 		item, ok := c.agent.shardTypes[params.shardType]

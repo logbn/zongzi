@@ -15,8 +15,9 @@ import (
 
 const (
 	minReplicas  = 3
-	raftTimeout  = 3 * time.Second
+	raftTimeout  = time.Second
 	joinTimeout  = 5 * time.Second
+	waitPeriod   = 500 * time.Millisecond
 	projectName  = "zongzi"
 	shardUri     = "github.com/logbn/zongzi/prime"
 	shardVersion = "v0.0.1"
@@ -34,15 +35,15 @@ var (
 	DefaultHostConfig = HostConfig{
 		NodeHostDir:    "/var/lib/zongzi/raft",
 		RaftAddress:    DefaultRaftAddress,
-		RTTMillisecond: 100,
+		RTTMillisecond: 5,
 		WALDir:         "/var/lib/zongzi/wal",
 	}
 	DefaultReplicaConfig = ReplicaConfig{
 		PreVote:                 true,
 		CheckQuorum:             true,
 		CompactionOverhead:      1000,
-		ElectionRTT:             20,
-		HeartbeatRTT:            2,
+		ElectionRTT:             100,
+		HeartbeatRTT:            10,
 		OrderedConfigChange:     true,
 		Quiesce:                 false,
 		SnapshotCompressionType: config.Snappy,

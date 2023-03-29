@@ -99,17 +99,19 @@ func (a *Agent) Start() (err error) {
 			case <-a.ctx.Done():
 				a.log.Debugf("Stopped gRPC Server")
 				return
-			case <-a.clock.After(time.Second):
+			case <-a.clock.After(waitPeriod):
 			}
 		}
 	}()
 	// Resolve member gossip addresses
 	a.hostConfig.Gossip.Seed, err = a.resolvePeerGossipSeed()
 	if err != nil {
+		a.log.Errorf(`Failed to resolve gossip seeds: %v`, err)
 		return
 	}
 	// Start node host
 	if a.host, err = dragonboat.NewNodeHost(a.hostConfig); err != nil {
+		a.log.Errorf(`Failed to start host: %v`, err)
 		return
 	}
 	a.log.Infof(`Started host "%s"`, a.HostID())
@@ -127,51 +129,69 @@ func (a *Agent) Start() (err error) {
 	// Resolve prime member replicaIDs
 	a.members, init, err = a.resolvePrimeMembership()
 	if err != nil {
+		a.log.Errorf(`Failed to resolve prime membership: %v`, err)
 		return
 	}
 	if a.replicaConfig.ReplicaID == 0 {
 		a.setStatus(AgentStatus_Joining)
-		a.replicaConfig.ReplicaID, err = a.joinPrimeShard()
-		if err != nil {
-			return
+		for {
+			a.replicaConfig.ReplicaID, err = a.joinPrimeShard()
+			if err != nil {
+				a.log.Warningf(`Failed to join prime shard: %v`, err)
+				a.clock.Sleep(waitPeriod)
+				continue
+			}
+			break
 		}
 		for {
 			err = a.startPrimeReplica(nil, true)
 			if err != nil {
-				a.log.Infof("Error starting prime replica: %s", err.Error())
-				a.clock.Sleep(time.Second)
+				a.log.Warningf("Error startPrimeReplica: (%s) %s", AgentStatus_Joining, err.Error())
+				a.clock.Sleep(waitPeriod)
 				continue
 			}
 			break
 		}
 	} else if !existing {
+		if init {
+			a.setStatus(AgentStatus_Initializing)
+		} else {
+			a.setStatus(AgentStatus_Joining)
+		}
 		err = a.startPrimeReplica(a.members, false)
 		if err != nil {
+			a.log.Errorf(`Failed to startPrimeReplica: %v`, err)
 			return
 		}
 		if init {
 			err = a.primeInit(a.members)
 			if err != nil {
+				a.log.Errorf(`Failed to primeInit: %v`, err)
 				return
 			}
 		} else {
 			err = a.primeInitAwait()
 			if err != nil {
+				a.log.Errorf(`Failed to primeInitAwait: %v`, err)
 				return
 			}
 		}
 	} else {
+		a.setStatus(AgentStatus_Rejoining)
 		err = a.startPrimeReplica(nil, false)
 		if err != nil {
+			a.log.Errorf(`Failed to startPrimeReplica: %v`, err)
 			return
 		}
 	}
 	err = a.updateHost()
 	if err != nil {
+		a.log.Errorf(`Failed to updateHost: %v`, err)
 		return
 	}
 	err = a.updateReplica()
 	if err != nil {
+		a.log.Errorf(`Failed to updateReplica: %v`, err)
 		return
 	}
 	// Start non-prime shards
@@ -341,7 +361,7 @@ func (a *Agent) resolvePeerGossipSeed() (gossip []string, err error) {
 			case <-a.ctx.Done():
 				err = fmt.Errorf(`Cancelling findGossip (agent stopped)`)
 				return
-			case <-a.clock.After(time.Second):
+			case <-a.clock.After(waitPeriod):
 			}
 			continue
 		}
@@ -426,7 +446,7 @@ func (a *Agent) resolvePrimeMembership() (members map[uint64]string, init bool, 
 				break
 			}
 		}
-		a.clock.Sleep(time.Second)
+		a.clock.Sleep(waitPeriod)
 	}
 	a.log.Debugf(`Init: %v, Members: %+v`, init, members)
 	return
@@ -504,14 +524,14 @@ func (a *Agent) readIndex() (err error) {
 		rs, err = a.host.ReadIndex(a.replicaConfig.ShardID, raftTimeout)
 		if err != nil || rs == nil {
 			a.log.Infof(`Error reading prime shard index: %v`, err)
-			a.clock.Sleep(time.Second)
+			a.clock.Sleep(waitPeriod)
 			continue
 		}
 		res := <-rs.ResultC()
 		if !res.Completed() {
-			a.log.Infof(`Waiting for other nodes`)
+			a.log.Infof(`[%08x] Waiting for other nodes`, a.replicaConfig.ReplicaID)
 			rs.Release()
-			a.clock.Sleep(time.Second)
+			a.clock.Sleep(waitPeriod)
 			continue
 		}
 		rs.Release()

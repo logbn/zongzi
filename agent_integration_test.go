@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	// "github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,23 +21,29 @@ func TestAgent(t *testing.T) {
 		}
 	}()
 	os.RemoveAll(basedir)
-	run := func(t *testing.T, peers, apiAddr, gossipAddr, raftAddr []string) {
-		for i := range apiAddr {
+	run := func(t *testing.T, peers []string, addresses ...[]string) {
+		for _, addr := range addresses {
 			a, err := NewAgent(`test001`, peers,
-				WithApiAddress(apiAddr[i]),
-				WithGossipAddress(gossipAddr[i]),
+				WithApiAddress(addr[0]),
+				WithGossipAddress(addr[1]),
 				WithHostConfig(HostConfig{
 					WALDir:         fmt.Sprintf(basedir+`/agent-%d/wal`, len(agents)),
 					NodeHostDir:    fmt.Sprintf(basedir+`/agent-%d/raft`, len(agents)),
-					RaftAddress:    raftAddr[i],
-					RTTMillisecond: 10,
+					RaftAddress:    addr[2],
+					RTTMillisecond: 5,
 				}))
 			require.Nil(t, err)
-			go func(a *Agent) {
-				err := a.Start()
-				assert.Nil(t, err, `%+v`, err)
-			}(a)
 			agents = append(agents, a)
+			go func(a *Agent) {
+				for i := 0; i < 5; i++ {
+					err := a.Start()
+					require.Nil(t, err, `%#v`, err)
+					if err == nil {
+						break
+					}
+				}
+				require.Nil(t, err, `%+v`, err)
+			}(a)
 		}
 		var good bool
 		// 10 seconds to start the cluster.
@@ -51,7 +57,7 @@ func TestAgent(t *testing.T) {
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
-		assert.True(t, good, `%+v`, agents)
+		require.True(t, good, `%+v`, agents)
 		// 10 seconds for all host controllers to complete their first run.
 		for i := 0; i < 100; i++ {
 			good = true
@@ -63,21 +69,25 @@ func TestAgent(t *testing.T) {
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
-		assert.True(t, good, `%+v`, agents)
+		require.True(t, good, `%#v`, agents)
 	}
-	peers := []string{`127.0.0.1:17101`, `127.0.0.1:17111`, `127.0.0.1:17121`}
+	peers := []string{
+		`127.0.0.1:18011`,
+		`127.0.0.1:18021`,
+		`127.0.0.1:18031`,
+	}
 	t.Run(`start`, func(t *testing.T) {
 		run(t, peers,
-			[]string{`127.0.0.1:17101`, `127.0.0.1:17111`, `127.0.0.1:17121`},
-			[]string{`127.0.0.1:17102`, `127.0.0.1:17112`, `127.0.0.1:17122`},
-			[]string{`127.0.0.1:17103`, `127.0.0.1:17113`, `127.0.0.1:17123`},
+			[]string{`127.0.0.1:18011`, `127.0.0.1:18012`, `127.0.0.1:18013`},
+			[]string{`127.0.0.1:18021`, `127.0.0.1:18022`, `127.0.0.1:18023`},
+			[]string{`127.0.0.1:18031`, `127.0.0.1:18032`, `127.0.0.1:18033`},
 		)
 	})
 	t.Run(`join`, func(t *testing.T) {
 		run(t, peers,
-			[]string{`127.0.0.1:17131`, `127.0.0.1:17141`, `127.0.0.1:17151`},
-			[]string{`127.0.0.1:17132`, `127.0.0.1:17142`, `127.0.0.1:17152`},
-			[]string{`127.0.0.1:17133`, `127.0.0.1:17143`, `127.0.0.1:17153`},
+			[]string{`127.0.0.1:18041`, `127.0.0.1:18042`, `127.0.0.1:18043`},
+			[]string{`127.0.0.1:18051`, `127.0.0.1:18052`, `127.0.0.1:18053`},
+			[]string{`127.0.0.1:18061`, `127.0.0.1:18062`, `127.0.0.1:18063`},
 		)
 		// 5 seconds for all hosts to see themselves with at least one active replica
 		var good bool
@@ -103,7 +113,7 @@ func TestAgent(t *testing.T) {
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
-		assert.True(t, good, `%+v`, replicas)
+		require.True(t, good, `%+v`, replicas)
 	})
 	// Create shard
 	// Add replicas
