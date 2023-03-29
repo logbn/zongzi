@@ -62,6 +62,39 @@ func TestAgent(t *testing.T) {
 					},
 				}
 			})
+			a.RegisterPersistentStateMachine(`test-persistent`, `v0.0.1`, func(shardID uint64, replicaID uint64) PersistentStateMachine {
+				var idx uint64
+				return &mockPersistentStateMachine{
+					mockOpen: func(stopc <-chan struct{}) (index uint64, err error) {
+						return idx, nil
+					},
+					mockUpdate: func(e []Entry) []Entry {
+						for i := range e {
+							e[i].Result.Value = uint64(len(e[i].Cmd))
+							idx = e[i].Index
+						}
+						return e
+					},
+					mockQuery: func(ctx context.Context, data []byte) *Result {
+						return &Result{Value: uint64(len(data))}
+					},
+					mockPrepareSnapshot: func() (cursor any, err error) {
+						return
+					},
+					mockSaveSnapshot: func(cursor any, w io.Writer, close <-chan struct{}) error {
+						return nil
+					},
+					mockRecoverFromSnapshot: func(r io.Reader, close <-chan struct{}) error {
+						return nil
+					},
+					mockSync: func() error {
+						return nil
+					},
+					mockClose: func() error {
+						return nil
+					},
+				}
+			})
 			go func(a *Agent) {
 				for i := 0; i < 5; i++ {
 					err = a.Start()
@@ -151,6 +184,41 @@ func TestAgent(t *testing.T) {
 	})
 	require.Nil(t, err)
 	t.Run(`create replicas`, func(t *testing.T) {
+		var replicaID uint64
+		for i := 0; i < len(agents); i++ {
+			replicaID, err = agents[i].CreateReplica(shard.ID, agents[i].HostID(), i > 2)
+			require.Nil(t, err)
+			require.NotEqual(t, 0, replicaID)
+		}
+		var replicaCount int
+		var replicas []Replica
+		// 10 seconds for replicas to be active on all hosts
+		for i := 0; i < 100; i++ {
+			replicaCount = 0
+			replicas = replicas[:0]
+			agents[0].Read(func(s State) {
+				s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
+					replicas = append(replicas, r)
+					if r.Status == ReplicaStatus_Active {
+						replicaCount++
+					}
+					return true
+				})
+			})
+			if replicaCount == len(agents) {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		require.Equal(t, len(agents), replicaCount, `%#v`, replicas)
+	})
+	t.Run(`create persistent shard`, func(t *testing.T) {
+		shard, err = agents[0].CreateShard(`test`, `v0.0.1`)
+		require.Nil(t, err)
+		t.Logf(`%#v`, shard)
+	})
+	require.Nil(t, err)
+	t.Run(`create persistent replicas`, func(t *testing.T) {
 		var replicaID uint64
 		for i := 0; i < len(agents); i++ {
 			replicaID, err = agents[i].CreateReplica(shard.ID, agents[i].HostID(), i > 2)
