@@ -123,6 +123,10 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			}
 			cmd.Shard.Updated = entry.Index
 			state.shardPut(cmd.Shard)
+			state.ReplicaIterateByShardID(cmd.Shard.ID, func(r Replica) bool {
+				state.hostTouch(r.HostID, entry.Index)
+				return true
+			})
 			entry.Result.Value = 1
 		// Delete
 		case command_action_del:
@@ -151,6 +155,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			cmd.Replica.Created = entry.Index
 			cmd.Replica.Updated = entry.Index
 			state.replicaPut(cmd.Replica)
+			state.hostTouch(cmd.Replica.HostID, entry.Index)
 			entry.Result.Value = cmd.Replica.ID
 		// Status Update
 		case command_action_status_update:
@@ -172,6 +177,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			}
 			cmd.Replica.Updated = entry.Index
 			state.replicaPut(cmd.Replica)
+			state.hostTouch(cmd.Replica.HostID, entry.Index)
 			entry.Result.Value = 1
 		// Delete
 		case command_action_del:

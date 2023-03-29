@@ -243,6 +243,7 @@ func (a *Agent) CreateShard(uri, version string) (shard Shard, err error) {
 
 // CreateReplica creates a replica
 func (a *Agent) CreateReplica(shardID uint64, nodeHostID string, isNonVoting bool) (id uint64, err error) {
+	a.log.Infof("Create replica %d, %s, %v", shardID, nodeHostID, isNonVoting)
 	res, err := a.primePropose(newCmdReplicaPost(nodeHostID, shardID, isNonVoting))
 	if err == nil {
 		id = res.Value
