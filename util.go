@@ -36,6 +36,7 @@ var (
 		NodeHostDir:    "/var/lib/zongzi/raft",
 		RaftAddress:    DefaultRaftAddress,
 		RTTMillisecond: 5,
+		NotifyCommit:   true,
 		WALDir:         "/var/lib/zongzi/wal",
 	}
 	DefaultReplicaConfig = ReplicaConfig{

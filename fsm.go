@@ -66,6 +66,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 	default:
 		fsm.log.Errorf("Unrecognized cmd type %s", cmdBase.Type, cmdBase)
 	}
+	// fsm.log.Debugf(`Update: %d %s`, entry.Index, string(entry.Cmd))
 	state := fsm.state.withTxn(true)
 	defer state.commit()
 	switch cmd.(type) {
