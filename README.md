@@ -10,7 +10,7 @@ A cluster coordinator for Dragonboat
 
 This package provides a centralized management layer for Dragonboat multi-group Raft consesus clusters.
 
-## Components
+### Components
 
 - Cluster State Registry
   - Prime shard (shardID: 0)
