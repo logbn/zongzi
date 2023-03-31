@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/lni/dragonboat/v4"
@@ -51,45 +52,6 @@ var (
 		SnapshotEntries:         10,
 	}
 )
-
-type (
-	shardType struct {
-		Config                        ReplicaConfig
-		StateMachineFactory           StateMachineFactory
-		PersistentStateMachineFactory PersistentStateMachineFactory
-		Uri                           string
-		Version                       string
-	}
-	lookupQuery struct {
-		ctx  context.Context
-		data []byte
-	}
-	watchQuery struct {
-		ctx    context.Context
-		data   []byte
-		result chan *Result
-	}
-)
-
-func getLookupQuery() *lookupQuery {
-	// TODO - implement lookupQuery pool
-	return &lookupQuery{}
-}
-
-func newLookupQuery(ctx context.Context, data []byte) *lookupQuery {
-	// TODO - implement lookupQuery pool
-	return &lookupQuery{ctx, data}
-}
-
-func getWatchQuery() *watchQuery {
-	// TODO - implement watchQuery pool
-	return &watchQuery{}
-}
-
-func newWatchQuery(ctx context.Context, data []byte, result chan *Result) *watchQuery {
-	// TODO - implement watchQuery pool
-	return &watchQuery{ctx, data, result}
-}
 
 type (
 	HostConfig    = config.NodeHostConfig
@@ -171,6 +133,80 @@ var (
 	ErrNotifyCommitDisabled = fmt.Errorf("Attempted to make a non-linearizable write while NotifyCommit is disabled")
 )
 
+type (
+	shardType struct {
+		Config                        ReplicaConfig
+		StateMachineFactory           StateMachineFactory
+		PersistentStateMachineFactory PersistentStateMachineFactory
+		Uri                           string
+		Version                       string
+	}
+	lookupQuery struct {
+		ctx  context.Context
+		data []byte
+	}
+	watchQuery struct {
+		ctx    context.Context
+		data   []byte
+		result chan *Result
+	}
+)
+
+func (q *lookupQuery) Release() {
+	q.ctx = nil
+	q.data = q.data[:0]
+	lookupQueryPool.Put(q)
+}
+
+var lookupQueryPool = sync.Pool{New: func() any { return &lookupQuery{} }}
+
+func getLookupQuery() *lookupQuery {
+	return lookupQueryPool.Get().(*lookupQuery)
+}
+
+func newLookupQuery(ctx context.Context, data []byte) (q *lookupQuery) {
+	q = lookupQueryPool.Get().(*lookupQuery)
+	q.ctx = ctx
+	q.data = data
+	return q
+}
+
+func (q *watchQuery) Release() {
+	q.ctx = nil
+	q.data = q.data[:0]
+	q.result = nil
+	watchQueryPool.Put(q)
+}
+
+var watchQueryPool = sync.Pool{New: func() any { return &watchQuery{} }}
+
+func getWatchQuery() *watchQuery {
+	return watchQueryPool.Get().(*watchQuery)
+}
+
+func newWatchQuery(ctx context.Context, data []byte, result chan *Result) (q *watchQuery) {
+	q = watchQueryPool.Get().(*watchQuery)
+	q.ctx = ctx
+	q.data = data
+	q.result = result
+	return
+}
+
+var resultPool = sync.Pool{New: func() any { return &Result{} }}
+
+func releaseResult(r *Result) {
+	r.Value = 0
+	r.Data = r.Data[:0]
+	resultPool.Put(r)
+}
+
+// GetResult can be used to efficiently retrieve an empty Result from a global pool. It is recommended to use this
+// method to instantiate Result objects returned by Lookup or sent over Watch channels as they will be automatically
+// returned to the pool to reduce allocation overhead.
+func GetResult() *Result {
+	return resultPool.Get().(*Result)
+}
+
 func mustBase36Decode(name string) uint64 {
 	id, err := base36Decode(name)
 	if err != nil {
@@ -194,14 +230,6 @@ func raftCtx(ctxs ...context.Context) (ctx context.Context) {
 	}
 	ctx, _ = context.WithTimeout(ctx, raftTimeout)
 	return
-}
-
-// GetResult can be used to efficiently retrieve an empty Result from a global pool. It is recommended to use this
-// method to instantiate Result objects returned by Lookup or sent over Watch channels as they will be automatically
-// returned to the pool to reduce allocation overhead.
-func GetResult() *Result {
-	// TODO - Implement resultPool
-	return &Result{}
 }
 
 // SetLogLevel sets log level for all zongzi and dragonboat loggers.

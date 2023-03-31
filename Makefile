@@ -1,8 +1,8 @@
 test:
-	@go test ./...
+	@go test
 
 unit:
-	@go test ./... -tags unit
+	@go test -tags unit
 
 cover:
 	@mkdir -p _dist

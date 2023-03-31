@@ -313,7 +313,6 @@ type fsmStateMetaHeader struct {
 
 func (f *fsmStateRadix) Save(w io.Writer) error {
 	fsm := f.withTxn(false)
-	// TODO - Maintain counts in meta so we don't have to recompute on every snapshot
 	header := fsmStateMetaHeader{
 		Index:     fsm.metaGet(`index`),
 		ShardID:   fsm.metaGet(`shardID`),

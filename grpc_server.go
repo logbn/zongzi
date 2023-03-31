@@ -111,14 +111,21 @@ func (s *grpcServer) Propose(ctx context.Context, req *internal.Request) (res *i
 
 func (s *grpcServer) Query(ctx context.Context, req *internal.Request) (res *internal.Response, err error) {
 	// s.agent.log.Debugf(`gRPC Req Query: %#v`, req)
+	res = &internal.Response{}
+	query := getLookupQuery()
+	query.ctx = ctx
+	query.data = req.Data
+	defer query.Release()
 	var r any
 	if req.Linear {
-		r, err = s.agent.host.SyncRead(raftCtx(), req.ShardId, newLookupQuery(ctx, req.Data))
+		r, err = s.agent.host.SyncRead(raftCtx(), req.ShardId, query)
 	} else {
-		r, err = s.agent.host.StaleRead(req.ShardId, newLookupQuery(ctx, req.Data))
+		r, err = s.agent.host.StaleRead(req.ShardId, query)
 	}
 	if r != nil {
-		res = r.(*internal.Response)
+		res.Value = r.(*Result).Value
+		res.Data = r.(*Result).Data
+		releaseResult(r.(*Result))
 	}
 	return
 }

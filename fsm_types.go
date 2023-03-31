@@ -17,38 +17,38 @@ const (
 )
 
 type Host struct {
-	ID      string `json:"id"`
-	Created uint64 `json:"created"`
-	Updated uint64 `json:"updated"`
-	Meta    []byte `json:"meta"`
+	ID      string     `json:"id"`
+	Meta    []byte     `json:"meta"`
+	Status  HostStatus `json:"status"`
+	Created uint64     `json:"created"`
+	Updated uint64     `json:"updated"`
 
-	ApiAddress string     `json:"apiAddress"`
-	ShardTypes []string   `json:"shardTypes"`
-	Status     HostStatus `json:"status"`
+	ApiAddress string   `json:"apiAddress"`
+	ShardTypes []string `json:"shardTypes"`
 }
 
 type Shard struct {
-	ID      uint64 `json:"id"`
-	Created uint64 `json:"created"`
-	Updated uint64 `json:"updated"`
-	Meta    []byte `json:"meta"`
-
+	ID      uint64      `json:"id"`
+	Meta    []byte      `json:"meta"`
 	Status  ShardStatus `json:"status"`
-	Type    string      `json:"type"`
-	Version string      `json:"version"`
+	Created uint64      `json:"created"`
+	Updated uint64      `json:"updated"`
+
+	Type    string `json:"type"`
+	Version string `json:"version"`
 }
 
 type Replica struct {
-	ID      uint64 `json:"id"`
-	Created uint64 `json:"created"`
-	Updated uint64 `json:"updated"`
-	Meta    []byte `json:"meta"`
+	ID      uint64        `json:"id"`
+	Meta    []byte        `json:"meta"`
+	Status  ReplicaStatus `json:"status"`
+	Created uint64        `json:"created"`
+	Updated uint64        `json:"updated"`
 
-	HostID      string        `json:"hostID"`
-	IsNonVoting bool          `json:"isNonVoting"`
-	IsWitness   bool          `json:"isWitness"`
-	ShardID     uint64        `json:"shardID"`
-	Status      ReplicaStatus `json:"status"`
+	HostID      string `json:"hostID"`
+	IsNonVoting bool   `json:"isNonVoting"`
+	IsWitness   bool   `json:"isWitness"`
+	ShardID     uint64 `json:"shardID"`
 }
 
 type command struct {

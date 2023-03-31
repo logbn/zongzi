@@ -186,7 +186,6 @@ func TestAgent(t *testing.T) {
 	t.Run(`create shard`, func(t *testing.T) {
 		shard, err = agents[0].CreateShard(`test`, `v0.0.1`)
 		require.Nil(t, err)
-		t.Logf(`%#v`, shard)
 	})
 	require.Nil(t, err)
 	t.Run(`create replicas`, func(t *testing.T) {
