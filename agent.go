@@ -236,11 +236,11 @@ func (a *Agent) CreateShard(uri, version string) (shard Shard, err error) {
 
 // CreateReplica creates a replica
 func (a *Agent) CreateReplica(shardID uint64, nodeHostID string, isNonVoting bool) (id uint64, err error) {
-	a.log.Infof("Create replica %d, %s, %v", shardID, nodeHostID, isNonVoting)
 	res, err := a.primePropose(newCmdReplicaPost(nodeHostID, shardID, isNonVoting))
 	if err == nil {
 		id = res.Value
 	}
+	a.log.Infof("[%05d:%05d] Created replica %s, %v", shardID, id, nodeHostID, isNonVoting)
 	return
 }
 
@@ -304,7 +304,7 @@ func (a *Agent) GetReplicaClient(replicaID uint64) (c *ReplicaClient) {
 		}
 		a.log.Debugf(`[%05d:%05d] New replica client %s isNonVoting: %v`, replica.ShardID, replica.ID, replica.HostID, replica.IsNonVoting)
 		c = newReplicaClient(replica, host, a)
-	})
+	}, true)
 	return
 }
 
@@ -509,16 +509,16 @@ func (a *Agent) updateReplica() (err error) {
 // readIndex blocks until it can read from the prime shard, indicating that the local replica is up to date.
 func (a *Agent) readIndex(shardID uint64) (err error) {
 	var rs *dragonboat.RequestState
-	for {
+	for i := 0; i < 10; i++ {
 		rs, err = a.host.ReadIndex(shardID, raftTimeout)
 		if err != nil || rs == nil {
-			a.log.Infof(`[%05x:%05x] Error reading shard index: %v`, a.replicaConfig.ReplicaID, shardID, err)
+			a.log.Infof(`[%05x] Error reading shard index: %s: %v`, shardID, a.HostID(), err)
 			a.clock.Sleep(waitPeriod)
 			continue
 		}
 		res := <-rs.ResultC()
 		if !res.Completed() {
-			a.log.Infof(`[%05x:%05x]  Waiting for other nodes`, shardID, a.replicaConfig.ReplicaID)
+			a.log.Infof(`[%05x] Waiting for other nodes`, shardID)
 			rs.Release()
 			a.clock.Sleep(waitPeriod)
 			continue

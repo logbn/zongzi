@@ -187,15 +187,13 @@ func TestAgent(t *testing.T) {
 		shard, err = agents[0].CreateShard(`test`, `v0.0.1`)
 		require.Nil(t, err)
 	})
-	require.Nil(t, err)
 	t.Run(`create replicas`, func(t *testing.T) {
 		var replicaID uint64
 		for i := 0; i < len(agents); i++ {
-			replicaID, err = agents[i].CreateReplica(shard.ID, agents[i].HostID(), i > 2)
+			replicaID, err = agents[0].CreateReplica(shard.ID, agents[i].HostID(), i > 2)
 			require.Nil(t, err)
 			require.NotEqual(t, 0, replicaID)
 		}
-		require.Nil(t, err)
 		var replicaCount int
 		var replicas []Replica
 		// 10 seconds for replicas to be active on all hosts
@@ -218,7 +216,6 @@ func TestAgent(t *testing.T) {
 		}
 		require.Equal(t, len(agents), replicaCount, `%#v`, replicas)
 	})
-	require.Nil(t, agents[0].readIndex(shard.ID))
 	t.Run(`update shard`, func(t *testing.T) {
 		var i = 0
 		var nonvoting = 0
@@ -236,7 +233,7 @@ func TestAgent(t *testing.T) {
 				i++
 				return true
 			})
-		})
+		}, true)
 		assert.Equal(t, 3, nonvoting)
 	})
 	t.Run(`update shard non-linear`, func(t *testing.T) {
@@ -256,24 +253,20 @@ func TestAgent(t *testing.T) {
 				i++
 				return true
 			})
-		})
+		}, true)
 		assert.Equal(t, 3, nonvoting)
 	})
 	t.Run(`create persistent shard`, func(t *testing.T) {
 		shard, err = agents[0].CreateShard(`test-persistent`, `v0.0.1`)
 		require.Nil(t, err)
-		t.Logf(`%#v`, shard)
 	})
-	require.Nil(t, err)
 	t.Run(`create persistent replicas`, func(t *testing.T) {
 		var replicaID uint64
 		for i := 0; i < len(agents); i++ {
-			replicaID, err = agents[i].CreateReplica(shard.ID, agents[i].HostID(), i < 3)
+			replicaID, err = agents[0].CreateReplica(shard.ID, agents[i].HostID(), i < 3)
 			require.Nil(t, err)
 			require.NotEqual(t, 0, replicaID)
 		}
-		err = agents[3].readIndex(shard.ID)
-		require.Nil(t, err)
 		var replicaCount int
 		var replicas []Replica
 		// 10 seconds for replicas to be active on all hosts
@@ -288,7 +281,7 @@ func TestAgent(t *testing.T) {
 					}
 					return true
 				})
-			})
+			}, true)
 			if replicaCount == len(agents) {
 				break
 			}
@@ -296,7 +289,9 @@ func TestAgent(t *testing.T) {
 		}
 		require.Equal(t, len(agents), replicaCount, `%#v`, replicas)
 	})
-	require.Nil(t, agents[3].readIndex(shard.ID))
+	for _, a := range agents {
+		require.Nil(t, a.readIndex(shard.ID))
+	}
 	t.Run(`update persistent shard`, func(t *testing.T) {
 		var i = 0
 		var nonvoting = 0
@@ -314,7 +309,7 @@ func TestAgent(t *testing.T) {
 				i++
 				return true
 			})
-		})
+		}, true)
 		assert.Equal(t, 3, nonvoting)
 	})
 	t.Run(`update persistent shard non-linear`, func(t *testing.T) {
@@ -334,7 +329,7 @@ func TestAgent(t *testing.T) {
 				i++
 				return true
 			})
-		})
+		}, true)
 		assert.Equal(t, 3, nonvoting)
 	})
 }

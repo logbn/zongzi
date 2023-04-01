@@ -30,7 +30,7 @@ func (c *controller) Start() (err error) {
 	var ctx context.Context
 	ctx, c.cancel = context.WithCancel(context.Background())
 	go func() {
-		t := time.NewTicker(time.Second)
+		t := time.NewTicker(waitPeriod)
 		defer t.Stop()
 		for {
 			select {
@@ -50,29 +50,19 @@ func (c *controller) Start() (err error) {
 func (c *controller) tick() (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	var (
-		found = map[uint64]bool{}
-		nhid  = c.agent.host.ID()
-	)
-	var ok bool
-	var host Host
-	hostInfo := c.agent.host.GetNodeHostInfo(nodeHostInfoOption{})
 	var index uint64
 	var hadErr bool
 	c.agent.Read(func(state State) {
-		hadErr = false
 		index = state.Index()
-		host, ok = state.HostGet(nhid)
-		if !ok {
+		if index <= c.index {
 			return
 		}
-		if host.Updated <= c.index {
-			return
-		}
-		state.ReplicaIterateByHostID(host.ID, func(r Replica) bool {
+		var found = map[uint64]bool{}
+		state.ReplicaIterateByHostID(c.agent.HostID(), func(r Replica) bool {
 			found[r.ID] = false
 			return true
 		})
+		hostInfo := c.agent.host.GetNodeHostInfo(nodeHostInfoOption{})
 		for _, info := range hostInfo.ShardInfoList {
 			if replica, ok := state.ReplicaGet(info.ReplicaID); ok {
 				found[replica.ID] = true
@@ -90,7 +80,6 @@ func (c *controller) tick() (err error) {
 			}
 		}
 		for id, ok := range found {
-			hadErr = hadErr || err != nil
 			if ok {
 				continue
 			}
@@ -100,20 +89,16 @@ func (c *controller) tick() (err error) {
 			}
 			shard, ok := state.ShardGet(replica.ShardID)
 			if !ok {
+				hadErr = true
+				err = fmt.Errorf("Shard not found")
 				continue
 			}
-			members := map[uint64]string{}
-			state.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
-				if !r.IsNonVoting && !r.IsWitness {
-					members[r.ID] = r.HostID
-				}
-				return true
-			})
 			item, ok := c.agent.shardTypes[shard.Type]
 			if !ok {
-				err = fmt.Errorf("Shard name not found in registry: %s", shard.Type)
+				c.agent.log.Warningf("Shard name not found in registry: %s", shard.Type)
 				continue
 			}
+			members := state.ShardMembers(shard.ID)
 			item.Config.ShardID = shard.ID
 			item.Config.ReplicaID = replica.ID
 			item.Config.IsNonVoting = replica.IsNonVoting
@@ -122,6 +107,10 @@ func (c *controller) tick() (err error) {
 				shim := stateMachineFactoryShim(item.StateMachineFactory)
 				switch replica.Status {
 				case ReplicaStatus_Bootstrapping:
+					if len(members) < 3 {
+						err = fmt.Errorf("Not enough members")
+						break
+					}
 					err = c.agent.host.StartConcurrentReplica(members, false, shim, item.Config)
 				case ReplicaStatus_Joining:
 					res := c.requestShardJoin(members, shard.ID, replica.ID, replica.IsNonVoting)
@@ -137,11 +126,15 @@ func (c *controller) tick() (err error) {
 				shim := persistentStateMachineFactoryShim(item.PersistentStateMachineFactory)
 				switch replica.Status {
 				case ReplicaStatus_Bootstrapping:
+					if len(members) < 3 {
+						err = fmt.Errorf("Not enough members")
+						break
+					}
 					err = c.agent.host.StartOnDiskReplica(members, false, shim, item.Config)
 				case ReplicaStatus_Joining:
 					res := c.requestShardJoin(members, shard.ID, replica.ID, replica.IsNonVoting)
 					if res == 0 {
-						err = fmt.Errorf(`[%05d:%05d] Unable to join shard`, shard.ID, replica.ID)
+						err = fmt.Errorf(`[%05d:%05d] Unable to join persistent shard`, shard.ID, replica.ID)
 						break
 					}
 					err = c.agent.host.StartOnDiskReplica(nil, true, shim, item.Config)
@@ -150,18 +143,19 @@ func (c *controller) tick() (err error) {
 				}
 			}
 			if err != nil {
-				err = fmt.Errorf("Failed to start replica: %w", err)
+				hadErr = true
+				c.agent.log.Warningf("Failed to start replica: %v", err)
 				continue
 			}
 			var res Result
 			res, err = c.agent.primePropose(newCmdReplicaUpdateStatus(replica.ID, ReplicaStatus_Active))
 			if err != nil || res.Value != 1 {
-				err = fmt.Errorf("Failed to update replica status: %w", err)
-				continue
+				hadErr = true
+				c.agent.log.Warningf("Failed to update replica status: %v", err)
 			}
 		}
 	}, true)
-	if err == nil && !hadErr {
+	if !hadErr {
 		c.index = index
 	}
 	return
@@ -188,8 +182,11 @@ func (c *controller) requestShardJoin(members map[uint64]string, shardID, replic
 			ReplicaId:   replicaID,
 			IsNonVoting: isNonVoting,
 		})
+		if err != nil {
+			c.agent.log.Warningf(`[%05d:%05d] %s Unable to join shard (%v): %v`, shardID, replicaID, c.agent.HostID(), isNonVoting, err)
+		}
 		if res != nil && res.Value > 0 {
-			replicaID = res.Value
+			v = res.Value
 			break
 		}
 	}
