@@ -41,102 +41,22 @@ func TestAgent(t *testing.T) {
 			require.Nil(t, err)
 			// a.log.SetLevel(LogLevelDebug)
 			agents = append(agents, a)
-			a.RegisterStateMachine(`test`, `v0.0.1`, func(shardID uint64, replicaID uint64) StateMachine {
-				a.log.Debugf(`[%05d:%05d] Create mockStateMachine`, shardID, replicaID)
-				return &mockStateMachine{
-					mockUpdate: func(e []Entry) []Entry {
-						for i := range e {
-							a.log.Debugf(`[%05d:%05d] Update: %d %s`, shardID, replicaID, e[i].Index, string(e[i].Cmd))
-							e[i].Result.Value = uint64(len(e[i].Cmd))
-						}
-						return e
-					},
-					mockQuery: func(ctx context.Context, data []byte) *Result {
-						return &Result{Value: uint64(len(data))}
-					},
-					mockPrepareSnapshot: func() (cursor any, err error) {
-						return
-					},
-					mockSaveSnapshot: func(cursor any, w io.Writer, c SnapshotFileCollection, close <-chan struct{}) error {
-						return nil
-					},
-					mockRecoverFromSnapshot: func(r io.Reader, f []SnapshotFile, close <-chan struct{}) error {
-						return nil
-					},
-					mockClose: func() error {
-						return nil
-					},
-				}
-			})
-			a.RegisterPersistentStateMachine(`test-persistent`, `v0.0.1`, func(shardID uint64, replicaID uint64) PersistentStateMachine {
-				var idx uint64
-				return &mockPersistentStateMachine{
-					mockOpen: func(stopc <-chan struct{}) (index uint64, err error) {
-						return idx, nil
-					},
-					mockUpdate: func(e []Entry) []Entry {
-						for i := range e {
-							e[i].Result.Value = uint64(len(e[i].Cmd))
-							idx = e[i].Index
-						}
-						return e
-					},
-					mockQuery: func(ctx context.Context, data []byte) *Result {
-						return &Result{Value: uint64(len(data))}
-					},
-					mockPrepareSnapshot: func() (cursor any, err error) {
-						return
-					},
-					mockSaveSnapshot: func(cursor any, w io.Writer, close <-chan struct{}) error {
-						return nil
-					},
-					mockRecoverFromSnapshot: func(r io.Reader, close <-chan struct{}) error {
-						return nil
-					},
-					mockSync: func() error {
-						return nil
-					},
-					mockClose: func() error {
-						return nil
-					},
-				}
-			})
+			a.RegisterStateMachine(`concurrent`, `v0.0.1`, mockConcurrentSM)
+			a.RegisterPersistentStateMachine(`persistent`, `v0.0.1`, mockPersistentSM)
 			go func(a *Agent) {
-				for i := 0; i < 5; i++ {
-					err = a.Start()
-					require.Nil(t, err, `%#v`, err)
-					if err == nil {
-						break
-					}
-				}
+				err = a.Start()
 				require.Nil(t, err, `%+v`, err)
 			}(a)
 		}
-		var good bool
 		// 10 seconds to start the cluster.
-		for i := 0; i < 100; i++ {
-			good = true
+		require.True(t, await(10, 100, func() bool {
 			for j := range agents {
-				good = good && agents[j].Status() == AgentStatus_Ready
+				if agents[j].Status() != AgentStatus_Ready {
+					return false
+				}
 			}
-			if good {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-		require.True(t, good, `%+v`, agents)
-		// 10 seconds for all host controllers to complete their first run.
-		for i := 0; i < 100; i++ {
-			good = true
-			for j := range agents {
-				good = good && agents[j].controller.index > 0
-			}
-			if good {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-		require.True(t, good, `%#v`, agents)
+			return true
+		}), `%#v`, agents)
 	}
 	peers := []string{
 		`127.0.0.1:18011`,
@@ -157,14 +77,12 @@ func TestAgent(t *testing.T) {
 			[]string{`127.0.0.1:18061`, `127.0.0.1:18062`, `127.0.0.1:18063`},
 		)
 		// 5 seconds for all hosts to see themselves with at least one active replica
-		var good bool
 		var replicas []Replica
-		for i := 0; i < 100; i++ {
-			good = true
+		require.True(t, await(5, 100, func() bool {
+			var replicaCount = 0
 			replicas = replicas[:0]
 			for j, a := range agents {
 				agents[j].Read(func(s State) {
-					var replicaCount = 0
 					s.ReplicaIterateByHostID(a.HostID(), func(r Replica) bool {
 						replicas = append(replicas, r)
 						if r.Status == ReplicaStatus_Active {
@@ -172,164 +90,142 @@ func TestAgent(t *testing.T) {
 						}
 						return true
 					})
-					good = good && replicaCount > 0
 				}, true)
 			}
-			if good {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-		require.True(t, good, `%+v`, replicas)
+			return replicaCount == len(agents)
+		}), `%+v`, replicas)
 	})
-	var shard Shard
-	t.Run(`create shard`, func(t *testing.T) {
-		shard, err = agents[0].CreateShard(`test`, `v0.0.1`)
-		require.Nil(t, err)
-	})
-	t.Run(`create replicas`, func(t *testing.T) {
-		var replicaID uint64
-		for i := 0; i < len(agents); i++ {
-			replicaID, err = agents[0].CreateReplica(shard.ID, agents[i].HostID(), i > 2)
+	for _, sm := range []string{`concurrent`, `persistent`} {
+		var shard Shard
+		t.Run(sm+` shard create`, func(t *testing.T) {
+			shard, err = agents[0].CreateShard(sm, `v0.0.1`)
 			require.Nil(t, err)
-			require.NotEqual(t, 0, replicaID)
-		}
-		var replicaCount int
-		var replicas []Replica
-		// 10 seconds for replicas to be active on all hosts
-		for i := 0; i < 100; i++ {
-			replicaCount = 0
-			replicas = replicas[:0]
-			agents[0].Read(func(s State) {
-				s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
-					replicas = append(replicas, r)
-					if r.Status == ReplicaStatus_Active {
-						replicaCount++
-					}
-					return true
-				})
-			}, true)
-			if replicaCount == len(agents) {
-				break
+		})
+		t.Run(sm+` replica create`, func(t *testing.T) {
+			var replicaID uint64
+			for i := 0; i < len(agents); i++ {
+				replicaID, err = agents[0].CreateReplica(shard.ID, agents[i].HostID(), i > 2)
+				require.Nil(t, err)
+				require.NotEqual(t, 0, replicaID)
 			}
-			time.Sleep(100 * time.Millisecond)
+			var replicas []Replica
+			// 10 seconds for replicas to be active on all hosts
+			require.True(t, await(10, 100, func() bool {
+				var replicaCount = 0
+				replicas = replicas[:0]
+				agents[0].Read(func(s State) {
+					s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
+						replicas = append(replicas, r)
+						if r.Status == ReplicaStatus_Active {
+							replicaCount++
+						}
+						return true
+					})
+				}, true)
+				return replicaCount == len(agents)
+			}), `%+v`, replicas)
+		})
+		for _, a := range agents {
+			require.Nil(t, a.readIndex(shard.ID))
 		}
-		require.Equal(t, len(agents), replicaCount, `%#v`, replicas)
-	})
-	t.Run(`update shard`, func(t *testing.T) {
-		var i = 0
-		var nonvoting = 0
-		agents[0].Read(func(s State) {
-			s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
-				if r.IsNonVoting {
-					nonvoting++
-					return true
-				}
-				replicaClient := agents[0].GetReplicaClient(r.ID)
-				require.NotNil(t, replicaClient)
-				val, _, err := replicaClient.Propose(raftCtx(), bytes.Repeat([]byte("test"), i+1), true)
-				require.Nil(t, err, `%v, %v, %#v`, i, err, replicaClient)
-				assert.Equal(t, uint64((i+1)*4), val)
-				i++
-				return true
-			})
-		}, true)
-		assert.Equal(t, 3, nonvoting)
-	})
-	t.Run(`update shard non-linear`, func(t *testing.T) {
-		var i = 0
-		var nonvoting = 0
-		agents[0].Read(func(s State) {
-			s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
-				if r.IsNonVoting {
-					nonvoting++
-					return true
-				}
-				replicaClient := agents[0].GetReplicaClient(r.ID)
-				require.NotNil(t, replicaClient)
-				val, _, err := replicaClient.Propose(raftCtx(), bytes.Repeat([]byte("test"), i+1), false)
-				require.Nil(t, err, `%v, %v, %#v`, i, err, replicaClient)
-				assert.Equal(t, uint64(0), val)
-				i++
-				return true
-			})
-		}, true)
-		assert.Equal(t, 3, nonvoting)
-	})
-	t.Run(`create persistent shard`, func(t *testing.T) {
-		shard, err = agents[0].CreateShard(`test-persistent`, `v0.0.1`)
-		require.Nil(t, err)
-	})
-	t.Run(`create persistent replicas`, func(t *testing.T) {
-		var replicaID uint64
-		for i := 0; i < len(agents); i++ {
-			replicaID, err = agents[0].CreateReplica(shard.ID, agents[i].HostID(), i < 3)
-			require.Nil(t, err)
-			require.NotEqual(t, 0, replicaID)
-		}
-		var replicaCount int
-		var replicas []Replica
-		// 10 seconds for replicas to be active on all hosts
-		for i := 0; i < 100; i++ {
-			replicaCount = 0
-			replicas = replicas[:0]
-			agents[0].Read(func(s State) {
-				s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
-					replicas = append(replicas, r)
-					if r.Status == ReplicaStatus_Active {
-						replicaCount++
-					}
-					return true
+		for _, op := range []string{"update", "query"} {
+			for _, linarity := range []string{"linear", "non-linear"} {
+				t.Run(fmt.Sprintf(`%s %s %s`, sm, op, linarity), func(t *testing.T) {
+					var i = 0
+					var nonvoting = 0
+					var val uint64
+					agents[0].Read(func(s State) {
+						s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
+							if r.IsNonVoting {
+								nonvoting++
+								return true
+							}
+							replicaClient := agents[0].GetReplicaClient(r.ID)
+							require.NotNil(t, replicaClient)
+							if op == "update" {
+								val, _, err = replicaClient.Propose(raftCtx(), bytes.Repeat([]byte("test"), i+1), linarity == "linear")
+							} else {
+								val, _, err = replicaClient.Query(raftCtx(), bytes.Repeat([]byte("test"), i+1), linarity == "linear")
+							}
+							require.Nil(t, err, `%v, %v, %#v`, i, err, replicaClient)
+							assert.Equal(t, uint64((i+1)*4), val)
+							i++
+							return true
+						})
+					}, true)
+					assert.Equal(t, 3, nonvoting)
 				})
-			}, true)
-			if replicaCount == len(agents) {
-				break
 			}
-			time.Sleep(100 * time.Millisecond)
 		}
-		require.Equal(t, len(agents), replicaCount, `%#v`, replicas)
-	})
-	for _, a := range agents {
-		require.Nil(t, a.readIndex(shard.ID))
 	}
-	t.Run(`update persistent shard`, func(t *testing.T) {
-		var i = 0
-		var nonvoting = 0
-		agents[0].Read(func(s State) {
-			s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
-				if r.IsNonVoting {
-					nonvoting++
-					return true
-				}
-				replicaClient := agents[0].GetReplicaClient(r.ID)
-				require.NotNil(t, replicaClient)
-				val, _, err := replicaClient.Propose(raftCtx(), bytes.Repeat([]byte("test"), i+1), true)
-				require.Nil(t, err, `%v, %v, %#v`, i, err, replicaClient)
-				assert.Equal(t, uint64((i+1)*4), val)
-				i++
-				return true
-			})
-		}, true)
-		assert.Equal(t, 3, nonvoting)
-	})
-	t.Run(`update persistent shard non-linear`, func(t *testing.T) {
-		var i = 0
-		var nonvoting = 0
-		agents[0].Read(func(s State) {
-			s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
-				if r.IsNonVoting {
-					nonvoting++
-					return true
-				}
-				replicaClient := agents[0].GetReplicaClient(r.ID)
-				require.NotNil(t, replicaClient)
-				val, _, err := replicaClient.Propose(raftCtx(), bytes.Repeat([]byte("test"), i+1), false)
-				require.Nil(t, err, `%v, %v, %#v`, i, err, replicaClient)
-				assert.Equal(t, uint64(0), val)
-				i++
-				return true
-			})
-		}, true)
-		assert.Equal(t, 3, nonvoting)
-	})
+}
+
+func await(d, n time.Duration, fn func() bool) bool {
+	for i := 0; i < int(n); i++ {
+		if fn() {
+			return true
+		}
+		time.Sleep(d * time.Second / n)
+	}
+	return false
+}
+
+var mockConcurrentSM = func(shardID uint64, replicaID uint64) StateMachine {
+	return &mockStateMachine{
+		mockUpdate: func(e []Entry) []Entry {
+			for i := range e {
+				e[i].Result.Value = uint64(len(e[i].Cmd))
+			}
+			return e
+		},
+		mockQuery: func(ctx context.Context, data []byte) *Result {
+			return &Result{Value: uint64(len(data))}
+		},
+		mockPrepareSnapshot: func() (cursor any, err error) {
+			return
+		},
+		mockSaveSnapshot: func(cursor any, w io.Writer, c SnapshotFileCollection, close <-chan struct{}) error {
+			return nil
+		},
+		mockRecoverFromSnapshot: func(r io.Reader, f []SnapshotFile, close <-chan struct{}) error {
+			return nil
+		},
+		mockClose: func() error {
+			return nil
+		},
+	}
+}
+
+var mockPersistentSM = func(shardID uint64, replicaID uint64) PersistentStateMachine {
+	var idx uint64
+	return &mockPersistentStateMachine{
+		mockOpen: func(stopc <-chan struct{}) (index uint64, err error) {
+			return idx, nil
+		},
+		mockUpdate: func(e []Entry) []Entry {
+			for i := range e {
+				e[i].Result.Value = uint64(len(e[i].Cmd))
+				idx = e[i].Index
+			}
+			return e
+		},
+		mockQuery: func(ctx context.Context, data []byte) *Result {
+			return &Result{Value: uint64(len(data))}
+		},
+		mockPrepareSnapshot: func() (cursor any, err error) {
+			return
+		},
+		mockSaveSnapshot: func(cursor any, w io.Writer, close <-chan struct{}) error {
+			return nil
+		},
+		mockRecoverFromSnapshot: func(r io.Reader, close <-chan struct{}) error {
+			return nil
+		},
+		mockSync: func() error {
+			return nil
+		},
+		mockClose: func() error {
+			return nil
+		},
+	}
 }

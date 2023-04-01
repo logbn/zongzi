@@ -68,7 +68,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 	}
 	state := fsm.state.withTxn(true)
 	defer state.commit()
-	fsm.log.Debugf(`Update: %d %d %s`, entry.Index, state.Index(), string(entry.Cmd))
+	// fsm.log.Debugf(`Update: %d %d %s`, entry.Index, state.Index(), string(entry.Cmd))
 	switch cmd.(type) {
 	// Host
 	case commandHost:

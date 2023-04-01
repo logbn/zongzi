@@ -310,6 +310,7 @@ func (a *Agent) GetReplicaClient(replicaID uint64) (c *ReplicaClient) {
 
 // Stop stops the agent
 func (a *Agent) Stop() {
+	a.controller.Stop()
 	a.ctxCancel()
 	a.wg.Wait()
 	a.stopReplica(a.replicaConfig)
@@ -449,7 +450,7 @@ func (a *Agent) resolvePrimeMembership() (members map[uint64]string, init bool, 
 
 // startPrimeReplica starts the prime replica
 func (a *Agent) startPrimeReplica(members map[uint64]string, join bool) (err error) {
-	a.log.Debugf("Starting Replica %+v (%v)", members, join)
+	// a.log.Debugf("Starting Replica %+v (%v)", members, join)
 	err = a.host.StartReplica(members, join, fsmFactory(a), a.replicaConfig)
 	if err == dragonboat.ErrShardAlreadyExist {
 		a.log.Infof("Shard already exists %+v (%v) %+v", members, join, a.replicaConfig)
