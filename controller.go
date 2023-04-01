@@ -14,7 +14,6 @@ type controller struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	mutex  sync.RWMutex
-	leader bool
 	index  uint64
 }
 
@@ -26,7 +25,6 @@ func newController(a *Agent) *controller {
 
 func (c *controller) Start() (err error) {
 	c.mutex.Lock()
-	defer c.mutex.Unlock()
 	var ctx context.Context
 	ctx, c.cancel = context.WithCancel(context.Background())
 	go func() {
@@ -44,7 +42,8 @@ func (c *controller) Start() (err error) {
 			}
 		}
 	}()
-	return
+	c.mutex.Unlock()
+	return c.tick()
 }
 
 func (c *controller) tick() (err error) {
@@ -217,20 +216,8 @@ func (c *controller) requestShardJoin(members map[uint64]string, shardID, replic
 func (c *controller) Stop() {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
+	c.index = 0
 	if c.cancel != nil {
 		c.cancel()
-	}
-}
-
-func (c *controller) LeaderUpdated(info LeaderInfo) {
-	switch info.ShardID {
-	case c.agent.replicaConfig.ShardID:
-		c.mutex.Lock()
-		defer c.mutex.Unlock()
-		if info.LeaderID == info.ReplicaID {
-			c.leader = true
-		} else {
-			c.leader = false
-		}
 	}
 }

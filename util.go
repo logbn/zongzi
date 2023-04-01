@@ -83,12 +83,12 @@ const (
 )
 
 const (
-	AgentStatus_Active       = AgentStatus("active")
 	AgentStatus_Initializing = AgentStatus("initializing")
 	AgentStatus_Joining      = AgentStatus("joining")
 	AgentStatus_Pending      = AgentStatus("pending")
 	AgentStatus_Ready        = AgentStatus("ready")
 	AgentStatus_Rejoining    = AgentStatus("rejoining")
+	AgentStatus_Stopped      = AgentStatus("stopped")
 
 	HostStatus_Active     = HostStatus("active")
 	HostStatus_Gone       = HostStatus("gone")
@@ -269,22 +269,6 @@ func SetLogLevelDebug() {
 func SetLogLevelProduction() {
 	SetLogLevel(logger.WARNING)
 	logger.GetLogger("gossip").SetLevel(logger.ERROR)
-}
-
-type compositeRaftEventListener struct {
-	listeners []raftio.IRaftEventListener
-}
-
-func newCompositeRaftEventListener(listeners ...raftio.IRaftEventListener) raftio.IRaftEventListener {
-	return &compositeRaftEventListener{listeners}
-}
-
-func (c *compositeRaftEventListener) LeaderUpdated(info LeaderInfo) {
-	for _, listener := range c.listeners {
-		if listener != nil {
-			listener.LeaderUpdated(info)
-		}
-	}
 }
 
 func parseUint64(s string) (uint64, error) {

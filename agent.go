@@ -70,7 +70,6 @@ func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent
 	a.hostConfig.DeploymentID = mustBase36Decode(clusterName)
 	a.hostConfig.AddressByNodeHostID = true
 	a.hostConfig.Gossip.Meta = append(a.hostConfig.Gossip.Meta, []byte(`|`+a.advertiseAddress)...)
-	a.hostConfig.RaftEventListener = newCompositeRaftEventListener(a.controller, a.hostConfig.RaftEventListener)
 	a.grpcClientPool = newGrpcClientPool(1e4, a.secrets)
 	a.grpcServer = newGrpcServer(a.bindAddress, a.secrets)
 	return a, nil
@@ -80,16 +79,15 @@ func (a *Agent) Start() (err error) {
 	var init bool
 	defer func() {
 		if err == nil {
-			a.setStatus(AgentStatus_Ready)
 			a.controller.Start()
-		} else {
-			a.grpcServer.Stop()
+			a.setStatus(AgentStatus_Ready)
 		}
 	}()
 	a.ctx, a.ctxCancel = context.WithCancel(context.Background())
 	// Start gRPC server
 	a.wg.Add(1)
 	go func() {
+		defer a.grpcServer.Stop()
 		defer a.wg.Done()
 		defer a.log.Debugf("Stopped gRPC Server")
 		for {
@@ -313,15 +311,16 @@ func (a *Agent) Stop() {
 	a.controller.Stop()
 	a.ctxCancel()
 	a.wg.Wait()
-	a.stopReplica(a.replicaConfig)
-	a.grpcClientPool.Close()
-	a.log.Infof("Agent stopped.")
+	if a.host != nil {
+		a.host.Close()
+	}
+	a.setStatus(AgentStatus_Stopped)
 }
 
 func (a *Agent) setStatus(s AgentStatus) {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
-	a.log.Debugf("Agent Status: %v", s)
+	a.log.Infof("%s Agent Status: %v", a.HostID(), s)
 	a.status = s
 }
 

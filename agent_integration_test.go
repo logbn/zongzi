@@ -5,6 +5,7 @@ package zongzi
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -19,11 +20,6 @@ func TestAgent(t *testing.T) {
 	// SetLogLevel(LogLevelDebug)
 	basedir := `/tmp/zongzi-test`
 	agents := []*Agent{}
-	defer func() {
-		for _, a := range agents {
-			a.Stop()
-		}
-	}()
 	var err error
 	os.RemoveAll(basedir)
 	start := func(t *testing.T, peers []string, notifyCommit bool, addresses ...[]string) {
@@ -136,16 +132,44 @@ func TestAgent(t *testing.T) {
 			}
 		}
 	}
+	t.Run(`host restart`, func(t *testing.T) {
+		t.Run(`stop`, func(t *testing.T) {
+			agents[0].Stop()
+			// 5 seconds for the host to transition to stopped
+			require.True(t, await(5, 100, func() bool {
+				return agents[0].Status() == AgentStatus_Stopped
+			}), `%s`, mustJson(agents))
+		})
+		t.Run(`start`, func(t *testing.T) {
+			agents[0].Start()
+			// 5 seconds for the host to transition to active
+			require.True(t, await(10, 100, func() bool {
+				return agents[0].Status() == AgentStatus_Ready
+			}), `%#v`, *agents[0])
+			require.True(t, await(5, 100, func() (success bool) {
+				agents[0].Read(func(s State) {
+					host, ok := s.HostGet(agents[0].HostID())
+					success = ok && host.Status == HostStatus_Active
+				})
+				return
+			}), `%s`, mustJson(agents))
+		})
+	})
+}
+
+func mustJson(in any) string {
+	b, _ := json.Marshal(in)
+	return string(b)
 }
 
 func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, sm, op string, linear bool) {
 	var i = 0
-	var nonvoting = 0
-	var val uint64
 	var err error
+	var val uint64
+	var nonvoting = 0
 	agents[0].Read(func(s State) {
 		s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
-			if r.IsNonVoting {
+			if op == "update" && r.IsNonVoting {
 				nonvoting++
 				return true
 			}
@@ -166,7 +190,9 @@ func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, sm, op string, 
 			return true
 		})
 	}, true)
-	assert.Equal(t, 3, nonvoting)
+	if op == "update" {
+		assert.Equal(t, 3, nonvoting)
+	}
 }
 
 func await(d, n time.Duration, fn func() bool) bool {
@@ -205,16 +231,18 @@ var mockConcurrentSM = func(shardID uint64, replicaID uint64) StateMachine {
 	}
 }
 
+var idx = map[string]uint64{}
+
 var mockPersistentSM = func(shardID uint64, replicaID uint64) PersistentStateMachine {
-	var idx uint64
+	var id = fmt.Sprintf(`%d-%d`, shardID, replicaID)
 	return &mockPersistentStateMachine{
 		mockOpen: func(stopc <-chan struct{}) (index uint64, err error) {
-			return idx, nil
+			return idx[id], nil
 		},
 		mockUpdate: func(e []Entry) []Entry {
 			for i := range e {
 				e[i].Result.Value = uint64(len(e[i].Cmd))
-				idx = e[i].Index
+				idx[id] = e[i].Index
 			}
 			return e
 		},
