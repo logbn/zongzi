@@ -22,7 +22,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Op:  queryOpRead,
 			Key: r.URL.Path,
 		}
-		code, data, err := h.ctrl.getRandClient(false).Query(ctx, query.MustMarshalBinary(), false)
+		code, data, err := h.ctrl.getRandClient(false).Query(ctx, query.MustMarshalBinary(), r.FormValue("linear") == "true")
 		if err != nil {
 			w.WriteHeader(500)
 			w.Write([]byte(err.Error()))

@@ -58,33 +58,36 @@ func (c *controller) Start() (err error) {
 }
 
 func (c *controller) tick() (err error) {
+	var ok bool
 	var done bool
-	if c.shard.ID == 0 {
-		c.agent.Read(func(state zongzi.State) {
-			if c.shard.ID == 0 {
-				state.ShardIterate(func(s zongzi.Shard) bool {
-					if s.Type == stateMachineUri && s.Status != zongzi.ShardStatus_Closed {
-						c.shard = s
-						return false
-					}
-					return true
-				})
-				// Shard does not yet exist. Create it.
-				if c.shard.ID == 0 {
-					c.shard, err = c.agent.CreateShard(stateMachineUri, stateMachineVersion)
-					if err != nil {
-						return
-					}
-				}
-			}
-		}, true)
-	}
 	c.mutex.RLock()
 	leader := c.leader
 	c.mutex.RUnlock()
+	if c.shard.ID == 0 {
+		c.agent.Read(func(state zongzi.State) {
+			state.ShardIterate(func(s zongzi.Shard) bool {
+				if s.Type == stateMachineUri && s.Status != zongzi.ShardStatus_Closed {
+					c.shard = s
+					return false
+				}
+				return true
+			})
+			// Shard does not yet exist. Create it.
+			if c.shard.ID == 0 {
+				c.shard, err = c.agent.CreateShard(stateMachineUri, stateMachineVersion)
+				if err != nil {
+					return
+				}
+				leader = true
+			}
+		}, true)
+	}
 	if leader {
 		c.agent.Read(func(state zongzi.State) {
-			if state.Index() <= c.leaderIndex {
+			if c.shard, ok = state.ShardGet(c.shard.ID); !ok {
+				return
+			}
+			if c.shard.Updated <= c.leaderIndex {
 				done = true
 			}
 			if done {
@@ -128,7 +131,7 @@ func (c *controller) tick() (err error) {
 				}
 				return true
 			})
-			c.leaderIndex = state.Index()
+			c.leaderIndex = c.shard.Updated
 			// Print snapshot
 			buf := bytes.NewBufferString("")
 			state.Save(buf)
@@ -138,25 +141,30 @@ func (c *controller) tick() (err error) {
 	if c.shard.ID > 0 {
 		// Resolve replica clients
 		c.agent.Read(func(state zongzi.State) {
-			if state.Index() <= c.index {
+			if c.shard, ok = state.ShardGet(c.shard.ID); !ok {
+				return
+			}
+			if c.shard.Updated <= c.index {
 				done = true
 			}
 			if done {
 				return
 			}
-			c.mutex.Lock()
-			defer c.mutex.Unlock()
-			c.members = c.members[:0]
-			c.clients = c.clients[:0]
+			var members []*zongzi.ReplicaClient
+			var clients []*zongzi.ReplicaClient
 			state.ReplicaIterateByShardID(c.shard.ID, func(r zongzi.Replica) bool {
 				rc := c.agent.GetReplicaClient(r.ID)
-				c.clients = append(c.clients, rc)
+				clients = append(clients, rc)
 				if !r.IsNonVoting {
-					c.members = append(c.members, rc)
+					members = append(members, rc)
 				}
 				return true
 			})
-			c.index = state.Index()
+			c.mutex.Lock()
+			c.members = members
+			c.clients = clients
+			c.index = c.shard.Updated
+			c.mutex.Unlock()
 		}, true)
 	}
 	return
@@ -173,9 +181,12 @@ func (c *controller) Stop() {
 func (c *controller) LeaderUpdated(info zongzi.LeaderInfo) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
+	if c.shard.ID == 0 {
+		return
+	}
+	log.Printf("[%05d:%05d] LeaderUpdated: %05d", info.ShardID, info.ReplicaID, info.LeaderID)
 	switch info.ShardID {
-	case 0:
-		log.Printf("[RAFT EVENT] LeaderUpdated: %#v", info)
+	case c.shard.ID:
 		if info.LeaderID == info.ReplicaID {
 			c.leader = true
 		} else {

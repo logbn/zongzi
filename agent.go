@@ -302,7 +302,7 @@ func (a *Agent) GetReplicaClient(replicaID uint64) (c *ReplicaClient) {
 		if !ok {
 			return
 		}
-		a.log.Debugf(`New replica client %s, %+v, %+v`, a.HostID(), replica, host)
+		a.log.Debugf(`[%05d:%05d] New replica client %s isNonVoting: %v`, replica.ShardID, replica.ID, replica.HostID, replica.IsNonVoting)
 		c = newReplicaClient(replica, host, a)
 	})
 	return
