@@ -129,39 +129,44 @@ func TestAgent(t *testing.T) {
 			require.Nil(t, a.readIndex(shard.ID))
 		}
 		for _, op := range []string{"update", "query"} {
-			for _, linarity := range []string{"linear", "non-linear"} {
-				t.Run(fmt.Sprintf(`%s %s %s`, sm, op, linarity), func(t *testing.T) {
-					var i = 0
-					var nonvoting = 0
-					var val uint64
-					agents[0].Read(func(s State) {
-						s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
-							if r.IsNonVoting {
-								nonvoting++
-								return true
-							}
-							replicaClient := agents[0].GetReplicaClient(r.ID)
-							require.NotNil(t, replicaClient)
-							if op == "update" {
-								val, _, err = replicaClient.Propose(raftCtx(), bytes.Repeat([]byte("test"), i+1), linarity == "linear")
-							} else {
-								val, _, err = replicaClient.Query(raftCtx(), bytes.Repeat([]byte("test"), i+1), linarity == "linear")
-							}
-							require.Nil(t, err, `%v, %v, %#v`, i, err, replicaClient)
-							if op == "update" && linarity != "linear" {
-								assert.Equal(t, uint64(0), val)
-							} else {
-								assert.Equal(t, uint64((i+1)*4), val)
-							}
-							i++
-							return true
-						})
-					}, true)
-					assert.Equal(t, 3, nonvoting)
+			for _, linearity := range []string{"linear", "non-linear"} {
+				t.Run(fmt.Sprintf(`%s %s %s`, sm, op, linearity), func(t *testing.T) {
+					runAgentSubTest(t, agents, shard, sm, op, linearity == "linear")
 				})
 			}
 		}
 	}
+}
+
+func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, sm, op string, linear bool) {
+	var i = 0
+	var nonvoting = 0
+	var val uint64
+	var err error
+	agents[0].Read(func(s State) {
+		s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
+			if r.IsNonVoting {
+				nonvoting++
+				return true
+			}
+			replicaClient := agents[0].GetReplicaClient(r.ID)
+			require.NotNil(t, replicaClient)
+			if op == "update" {
+				val, _, err = replicaClient.Propose(raftCtx(), bytes.Repeat([]byte("test"), i+1), linear)
+			} else {
+				val, _, err = replicaClient.Query(raftCtx(), bytes.Repeat([]byte("test"), i+1), linear)
+			}
+			require.Nil(t, err, `%v, %v, %#v`, i, err, replicaClient)
+			if op == "update" && !linear {
+				assert.Equal(t, uint64(0), val)
+			} else {
+				assert.Equal(t, uint64((i+1)*4), val)
+			}
+			i++
+			return true
+		})
+	}, true)
+	assert.Equal(t, 3, nonvoting)
 }
 
 func await(d, n time.Duration, fn func() bool) bool {
