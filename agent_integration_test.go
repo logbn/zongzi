@@ -148,7 +148,11 @@ func TestAgent(t *testing.T) {
 								val, _, err = replicaClient.Query(raftCtx(), bytes.Repeat([]byte("test"), i+1), linarity == "linear")
 							}
 							require.Nil(t, err, `%v, %v, %#v`, i, err, replicaClient)
-							assert.Equal(t, uint64((i+1)*4), val)
+							if op == "update" && linarity != "linear" {
+								assert.Equal(t, uint64(0), val)
+							} else {
+								assert.Equal(t, uint64((i+1)*4), val)
+							}
 							i++
 							return true
 						})

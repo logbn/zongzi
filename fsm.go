@@ -39,7 +39,6 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 		return entry.Result, nil
 	}
 	switch cmdBase.Type {
-	// Host
 	case command_type_host:
 		var cmdHost commandHost
 		if err = json.Unmarshal(entry.Cmd, &cmdHost); err != nil {
@@ -47,7 +46,6 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			break
 		}
 		cmd = cmdHost
-	// Shard
 	case command_type_shard:
 		var cmdShard commandShard
 		if err = json.Unmarshal(entry.Cmd, &cmdShard); err != nil {
@@ -55,7 +53,6 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			break
 		}
 		cmd = cmdShard
-	// Replica
 	case command_type_replica:
 		var cmdReplica commandReplica
 		if err = json.Unmarshal(entry.Cmd, &cmdReplica); err != nil {
