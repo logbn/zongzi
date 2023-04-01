@@ -66,9 +66,9 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 	default:
 		fsm.log.Errorf("Unrecognized cmd type %s", cmdBase.Type, cmdBase)
 	}
-	// fsm.log.Debugf(`Update: %d %s`, entry.Index, string(entry.Cmd))
 	state := fsm.state.withTxn(true)
 	defer state.commit()
+	fsm.log.Debugf(`Update: %d %d %s`, entry.Index, state.Index(), string(entry.Cmd))
 	switch cmd.(type) {
 	// Host
 	case commandHost:
@@ -177,6 +177,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			}
 			replica.Status = cmd.Replica.Status
 			state.replicaPut(replica)
+			state.hostTouch(replica.HostID, entry.Index)
 			state.shardTouch(replica.ShardID, entry.Index)
 			entry.Result.Value = 1
 		// Put

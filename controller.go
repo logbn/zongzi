@@ -52,14 +52,23 @@ func (c *controller) tick() (err error) {
 	defer c.mutex.Unlock()
 	var index uint64
 	var hadErr bool
+	var shard Shard
 	c.agent.Read(func(state State) {
-		index = state.Index()
+		host, ok := state.HostGet(c.agent.HostID())
+		if !ok {
+			hadErr = true
+			c.agent.log.Warningf("Host not found %s", c.agent.HostID())
+			return
+		}
+		index = host.Updated
 		if index <= c.index {
 			return
 		}
 		var found = map[uint64]bool{}
 		state.ReplicaIterateByHostID(c.agent.HostID(), func(r Replica) bool {
-			found[r.ID] = false
+			if r.ShardID > 0 {
+				found[r.ID] = false
+			}
 			return true
 		})
 		hostInfo := c.agent.host.GetNodeHostInfo(nodeHostInfoOption{})
@@ -75,7 +84,7 @@ func (c *controller) tick() (err error) {
 				if !info.IsNonVoting && replica.IsNonVoting {
 					// Demote to NonVoting
 				}
-			} else {
+			} else if replica.ShardID > 0 {
 				// Remove raftNode
 			}
 		}
@@ -83,14 +92,16 @@ func (c *controller) tick() (err error) {
 			if ok {
 				continue
 			}
-			replica, _ := state.ReplicaGet(id)
-			if replica.ShardID == 0 {
-				continue
-			}
-			shard, ok := state.ShardGet(replica.ShardID)
+			replica, ok := state.ReplicaGet(id)
 			if !ok {
 				hadErr = true
-				err = fmt.Errorf("Shard not found")
+				c.agent.log.Warningf("Replica not found")
+				continue
+			}
+			shard, ok = state.ShardGet(replica.ShardID)
+			if !ok {
+				hadErr = true
+				c.agent.log.Warningf("Shard not found")
 				continue
 			}
 			item, ok := c.agent.shardTypes[shard.Type]
@@ -98,11 +109,12 @@ func (c *controller) tick() (err error) {
 				c.agent.log.Warningf("Shard name not found in registry: %s", shard.Type)
 				continue
 			}
+			// err := c.add(shard, replica)
 			members := state.ShardMembers(shard.ID)
 			item.Config.ShardID = shard.ID
 			item.Config.ReplicaID = replica.ID
 			item.Config.IsNonVoting = replica.IsNonVoting
-			c.agent.log.Debugf("[%05d:%05d] Controller: Starting replica: %s", shard.ID, replica.ID, shard.Type)
+			c.agent.log.Infof("[%05d:%05d] Controller: Starting replica: %s", shard.ID, replica.ID, shard.Type)
 			if item.StateMachineFactory != nil {
 				shim := stateMachineFactoryShim(item.StateMachineFactory)
 				switch replica.Status {
@@ -155,8 +167,11 @@ func (c *controller) tick() (err error) {
 			}
 		}
 	}, true)
-	if !hadErr {
+	if !hadErr && index > c.index {
+		c.agent.log.Debugf("%s Finished processing %d", c.agent.HostID(), index)
 		c.index = index
+	} else {
+		err = nil
 	}
 	return
 }
@@ -171,7 +186,7 @@ func (c *controller) requestShardJoin(members map[uint64]string, shardID, replic
 	for _, hostID := range members {
 		c.agent.Read(func(s State) {
 			host, ok = s.HostGet(hostID)
-		})
+		}, true)
 		if !ok {
 			c.agent.log.Warningf(`Host not found %s`, hostID)
 			continue

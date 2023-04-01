@@ -39,8 +39,8 @@ func TestAgent(t *testing.T) {
 					NotifyCommit:   notifyCommit,
 				}))
 			require.Nil(t, err)
-			agents = append(agents, a)
 			// a.log.SetLevel(LogLevelDebug)
+			agents = append(agents, a)
 			a.RegisterStateMachine(`test`, `v0.0.1`, func(shardID uint64, replicaID uint64) StateMachine {
 				a.log.Debugf(`[%05d:%05d] Create mockStateMachine`, shardID, replicaID)
 				return &mockStateMachine{

@@ -23,8 +23,9 @@ type Host struct {
 	Created uint64     `json:"created"`
 	Updated uint64     `json:"updated"`
 
-	ApiAddress string   `json:"apiAddress"`
-	ShardTypes []string `json:"shardTypes"`
+	ApiAddress  string   `json:"apiAddress"`
+	RaftAddress string   `json:"raftAddress"`
+	ShardTypes  []string `json:"shardTypes"`
 }
 
 type Shard struct {
@@ -71,16 +72,17 @@ type commandReplica struct {
 	Replica Replica `json:"replica"`
 }
 
-func newCmdHostPut(nhid, apiAddr string, meta []byte, status HostStatus, shardTypes []string) (b []byte) {
+func newCmdHostPut(nhid, apiAddr, raftAddr string, meta []byte, status HostStatus, shardTypes []string) (b []byte) {
 	b, _ = json.Marshal(commandHost{command{
 		Action: command_action_put,
 		Type:   command_type_host,
 	}, Host{
-		ApiAddress: apiAddr,
-		ID:         nhid,
-		Meta:       meta,
-		ShardTypes: shardTypes,
-		Status:     status,
+		ApiAddress:  apiAddr,
+		ID:          nhid,
+		Meta:        meta,
+		RaftAddress: raftAddr,
+		ShardTypes:  shardTypes,
+		Status:      status,
 	}})
 	return
 }

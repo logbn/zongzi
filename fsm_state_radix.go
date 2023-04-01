@@ -66,7 +66,19 @@ func newFsmStateRadix() *fsmStateRadix {
 					"id": &memdb.IndexSchema{
 						Name:    "id",
 						Unique:  true,
-						Indexer: &memdb.StringFieldIndex{Field: "ID"},
+						Indexer: &memdb.UUIDFieldIndex{Field: "ID"},
+					},
+					"RaftAddress": &memdb.IndexSchema{
+						Name:         "RaftAddress",
+						Unique:       false,
+						AllowMissing: true,
+						Indexer:      &memdb.StringFieldIndex{Field: "RaftAddress"},
+					},
+					"ShardTypes": &memdb.IndexSchema{
+						Name:         "ShardTypes",
+						Unique:       false,
+						AllowMissing: true,
+						Indexer:      &memdb.StringSliceFieldIndex{Field: "ShardTypes"},
 					},
 				},
 			},
@@ -91,7 +103,7 @@ func newFsmStateRadix() *fsmStateRadix {
 					"HostID": &memdb.IndexSchema{
 						Name:    "HostID",
 						Unique:  false,
-						Indexer: &memdb.StringFieldIndex{Field: "HostID"},
+						Indexer: &memdb.UUIDFieldIndex{Field: "HostID"},
 					},
 					"ShardID": &memdb.IndexSchema{
 						Name:    "ShardID",
@@ -128,11 +140,17 @@ func (fsm *fsmStateRadix) rollback() {
 }
 
 func (fsm *fsmStateRadix) metaSet(key string, val uint64) {
-	fsm.txn.Insert(`meta`, metaValue{key, val})
+	err := fsm.txn.Insert(`meta`, metaValue{key, val})
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (fsm *fsmStateRadix) metaSetIndex(val uint64) {
-	fsm.txn.Insert(`meta`, metaValue{`index`, val})
+	err := fsm.txn.Insert(`meta`, metaValue{`index`, val})
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (fsm *fsmStateRadix) metaGet(key string) (val uint64) {
@@ -144,7 +162,10 @@ func (fsm *fsmStateRadix) metaGet(key string) (val uint64) {
 }
 
 func (fsm *fsmStateRadix) Index() (val uint64) {
-	res, _ := fsm.txn.First(`meta`, `id`, `index`)
+	res, err := fsm.txn.First(`meta`, `id`, `index`)
+	if err != nil {
+		panic(err)
+	}
 	if res != nil {
 		val = res.(metaValue).Val
 	}
@@ -152,7 +173,10 @@ func (fsm *fsmStateRadix) Index() (val uint64) {
 }
 
 func (fsm *fsmStateRadix) HostGet(id string) (h Host, ok bool) {
-	res, _ := fsm.txn.First(`host`, `id`, id)
+	res, err := fsm.txn.First(`host`, `id`, id)
+	if err != nil {
+		panic(err)
+	}
 	if res != nil {
 		h = res.(Host)
 		ok = true
@@ -160,23 +184,63 @@ func (fsm *fsmStateRadix) HostGet(id string) (h Host, ok bool) {
 	return
 }
 
-func (fsm *fsmStateRadix) hostPut(h Host) {
-	fsm.txn.Insert(`host`, h)
-}
-
-func (fsm *fsmStateRadix) hostDelete(h Host) {
-	fsm.txn.Delete(`host`, h)
-}
-
-func (fsm *fsmStateRadix) hostTouch(id string, index uint64) {
-	if h, ok := fsm.HostGet(id); ok {
-		h.Updated = index
-		fsm.hostPut(h)
+func (fsm *fsmStateRadix) HostIterateByShardType(shardType string, fn func(h Host) bool) {
+	iter, err := fsm.txn.Get(`host`, `ShardTypes`, shardType)
+	if err != nil {
+		panic(err)
+	}
+	for {
+		res := iter.Next()
+		if res == nil || !fn(res.(Host)) {
+			break
+		}
 	}
 }
 
+func (fsm *fsmStateRadix) hostPut(h Host) {
+	err := fsm.txn.Insert(`host`, h)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (fsm *fsmStateRadix) hostDelete(h Host) {
+	err := fsm.txn.Delete(`host`, h)
+	if err != nil && err != memdb.ErrNotFound {
+		panic(err)
+	}
+}
+
+func (fsm *fsmStateRadix) hostTouch(id string, index uint64) {
+	h, ok := fsm.HostGet(id)
+	if !ok {
+		fsm.HostIterate(func(h Host) bool {
+			fmt.Println(h.ID, h.Updated)
+			return true
+		})
+		panic(`Host not found "` + id + fmt.Sprintf(`" %#v`, h))
+	}
+	h.Updated = index
+	fsm.hostPut(h)
+}
+
+func (fsm *fsmStateRadix) hostByRaftAddress(raftAddress string) (h Host, ok bool) {
+	res, err := fsm.txn.First(`host`, `RaftAddress`, raftAddress)
+	if err != nil {
+		panic(err)
+	}
+	if res != nil {
+		h = res.(Host)
+		ok = true
+	}
+	return
+}
+
 func (fsm *fsmStateRadix) HostIterate(fn func(h Host) bool) {
-	iter, _ := fsm.txn.Get(`host`, `id_prefix`, "")
+	iter, err := fsm.txn.Get(`host`, `id_prefix`, "")
+	if err != nil {
+		panic(err)
+	}
 	for {
 		res := iter.Next()
 		if res == nil || !fn(res.(Host)) {
@@ -186,7 +250,10 @@ func (fsm *fsmStateRadix) HostIterate(fn func(h Host) bool) {
 }
 
 func (fsm *fsmStateRadix) ShardGet(id uint64) (s Shard, ok bool) {
-	res, _ := fsm.txn.First(`shard`, `id`, id)
+	res, err := fsm.txn.First(`shard`, `id`, id)
+	if err != nil {
+		panic(err)
+	}
 	if res != nil {
 		s = res.(Shard)
 		ok = true
@@ -195,12 +262,17 @@ func (fsm *fsmStateRadix) ShardGet(id uint64) (s Shard, ok bool) {
 }
 
 func (fsm *fsmStateRadix) shardPut(s Shard) {
-	fsm.txn.Insert(`shard`, s)
-
+	err := fsm.txn.Insert(`shard`, s)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (fsm *fsmStateRadix) shardDelete(s Shard) {
-	fsm.txn.Delete(`shard`, s)
+	err := fsm.txn.Delete(`shard`, s)
+	if err != nil && err != memdb.ErrNotFound {
+		panic(err)
+	}
 }
 
 func (fsm *fsmStateRadix) shardTouch(id, index uint64) {
@@ -254,11 +326,17 @@ func (fsm *fsmStateRadix) ReplicaGet(id uint64) (r Replica, ok bool) {
 }
 
 func (fsm *fsmStateRadix) replicaPut(r Replica) {
-	fsm.txn.Insert(`replica`, r)
+	err := fsm.txn.Insert(`replica`, r)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (fsm *fsmStateRadix) replicaDelete(r Replica) {
-	fsm.txn.Delete(`replica`, r)
+	err := fsm.txn.Delete(`replica`, r)
+	if err != nil && err != memdb.ErrNotFound {
+		panic(err)
+	}
 }
 
 func (fsm *fsmStateRadix) replicaTouch(id, index uint64) {

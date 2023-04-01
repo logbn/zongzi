@@ -279,7 +279,7 @@ func (a *Agent) GetHostClient(hostID string) (c *HostClient) {
 		if ok {
 			c = newHostClient(host, a)
 		}
-	})
+	}, true)
 	return
 }
 
@@ -485,13 +485,13 @@ func (a *Agent) joinPrimeShard() (replicaID uint64, err error) {
 
 // updateHost adds host info to prime shard
 func (a *Agent) updateHost() (err error) {
-	meta, addr, err := a.parseMeta(a.HostID())
+	meta, apiAddr, err := a.parseMeta(a.HostID())
 	if err != nil {
 		return
 	}
 	shardTypes := keys(a.shardTypes)
 	sort.Strings(shardTypes)
-	cmd := newCmdHostPut(a.HostID(), addr, meta, HostStatus_Active, shardTypes)
+	cmd := newCmdHostPut(a.HostID(), apiAddr, a.hostConfig.RaftAddress, meta, HostStatus_Active, shardTypes)
 	a.log.Debugf("Updating host: %s", string(cmd))
 	_, err = a.primePropose(cmd)
 	return
@@ -532,19 +532,17 @@ func (a *Agent) readIndex(shardID uint64) (err error) {
 func (a *Agent) joinPrimeReplica(hostID string, shardID uint64, isNonVoting bool) (replicaID uint64, err error) {
 	var ok bool
 	var host Host
-	var written bool
 	a.Read(func(s State) {
 		host, ok = s.HostGet(hostID)
 		if !ok {
 			return
 		}
-	})
+	}, true)
 	if host.ID == "" {
 		host, err = a.primeAddHost(hostID)
 		if err != nil {
 			return
 		}
-		written = true
 	}
 	a.Read(func(s State) {
 		s.ReplicaIterateByHostID(host.ID, func(r Replica) bool {
@@ -554,7 +552,7 @@ func (a *Agent) joinPrimeReplica(hostID string, shardID uint64, isNonVoting bool
 			}
 			return true
 		})
-	}, written)
+	}, true)
 	if replicaID == 0 {
 		if replicaID, err = a.primeAddReplica(hostID, isNonVoting); err != nil {
 			return
@@ -638,7 +636,7 @@ func (a *Agent) primeInitAwait() (err error) {
 				found = true
 				return false
 			})
-		})
+		}, true)
 		if err != nil || found {
 			break
 		}
@@ -653,7 +651,7 @@ func (a *Agent) primeAddHost(nhid string) (host Host, err error) {
 	if err != nil {
 		return
 	}
-	cmd := newCmdHostPut(nhid, addr, meta, HostStatus_New, nil)
+	cmd := newCmdHostPut(nhid, addr, "", meta, HostStatus_New, nil)
 	_, err = a.primePropose(cmd)
 	if err != nil {
 		return
@@ -675,7 +673,7 @@ func (a *Agent) primeAddReplica(nhid string, isNonVoting bool) (id uint64, err e
 	return
 }
 
-// primeAddReplica proposes addition of replica metadata to the prime shard state
+// findLocalReplicaID proposes addition of replica metadata to the prime shard state
 func (a *Agent) findLocalReplicaID(shardID uint64) (id uint64) {
 	nhInfo := a.host.GetNodeHostInfo(dragonboat.NodeHostInfoOption{false})
 	for _, info := range nhInfo.LogInfo {
