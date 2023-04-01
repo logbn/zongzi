@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"math/rand"
 	"sync"
@@ -24,29 +23,32 @@ func newController() *controller {
 type controller struct {
 	agent       *zongzi.Agent
 	cancel      context.CancelFunc
+	ctx         context.Context
 	clock       clock.Clock
-	leader      bool
+	isLeader    bool
 	index       uint64
 	leaderIndex uint64
-	mutex       sync.RWMutex
 	shard       zongzi.Shard
 	members     []*zongzi.ReplicaClient
 	clients     []*zongzi.ReplicaClient
+	mutex       sync.RWMutex
+	wg          sync.WaitGroup
 }
 
 func (c *controller) Start() (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	var ctx context.Context
-	ctx, c.cancel = context.WithCancel(context.Background())
+	c.ctx, c.cancel = context.WithCancel(context.Background())
+	c.wg.Add(1)
 	go func() {
-		t := time.NewTicker(time.Second)
+		defer c.wg.Done()
+		t := c.clock.Ticker(500 * time.Millisecond)
 		defer t.Stop()
 		for {
 			select {
 			case <-t.C:
 				err = c.tick()
-			case <-ctx.Done():
+			case <-c.ctx.Done():
 				return
 			}
 			if err != nil {
@@ -57,12 +59,18 @@ func (c *controller) Start() (err error) {
 	return
 }
 
+type hostMeta struct {
+	Host zongzi.Host
+	Meta struct {
+		Zone string `json:"zone"`
+	}
+}
+
 func (c *controller) tick() (err error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	var ok bool
 	var done bool
-	c.mutex.RLock()
-	leader := c.leader
-	c.mutex.RUnlock()
 	if c.shard.ID == 0 {
 		c.agent.Read(func(state zongzi.State) {
 			state.ShardIterate(func(s zongzi.Shard) bool {
@@ -78,11 +86,11 @@ func (c *controller) tick() (err error) {
 				if err != nil {
 					return
 				}
-				leader = true
+				c.isLeader = true
 			}
 		}, true)
 	}
-	if leader {
+	if c.isLeader {
 		c.agent.Read(func(state zongzi.State) {
 			if c.shard, ok = state.ShardGet(c.shard.ID); !ok {
 				return
@@ -93,44 +101,43 @@ func (c *controller) tick() (err error) {
 			if done {
 				return
 			}
-			c.mutex.Lock()
-			defer c.mutex.Unlock()
-			// Add replicas to new hosts and remove replicas for missing hosts
+			// Ensure that every host has a replica of the kv store.
+			// One voting replica per zone. The rest nonVoting (read replicas).
+			var toAdd []hostMeta
 			var zones = map[string]bool{}
 			state.HostIterate(func(h zongzi.Host) bool {
-				var meta map[string]any
-				if err = json.Unmarshal(h.Meta, &meta); err != nil {
-					err = fmt.Errorf("Bad meta: %w", err)
+				var item = hostMeta{Host: h}
+				json.Unmarshal(h.Meta, &item.Meta)
+				if len(item.Meta.Zone) == 0 {
+					log.Println("Invalid host meta %s", string(h.Meta))
 					return true
 				}
 				var hasReplica bool
 				state.ReplicaIterateByHostID(h.ID, func(r zongzi.Replica) bool {
 					if r.ShardID == c.shard.ID {
 						if !r.IsNonVoting {
-							zones[meta["zone"].(string)] = true
+							zones[item.Meta.Zone] = true
 						}
 						hasReplica = true
 						return false
 					}
 					return true
 				})
-				if hasReplica {
-					return true
-				}
-				// Not strictly correct.
-				// Need to evaulate all hosts to ensure no members already exist in this zone.
-				if _, ok := zones[meta["zone"].(string)]; !ok {
-					zones[meta["zone"].(string)] = true
-					if _, err = c.agent.CreateReplica(c.shard.ID, h.ID, false); err != nil {
-						return true
-					}
-				} else {
-					if _, err = c.agent.CreateReplica(c.shard.ID, h.ID, true); err != nil {
-						return true
-					}
+				if !hasReplica {
+					toAdd = append(toAdd, item)
 				}
 				return true
 			})
+			for _, item := range toAdd {
+				if _, ok := zones[item.Meta.Zone]; !ok {
+					_, err = c.agent.CreateReplica(c.shard.ID, item.Host.ID, false)
+				} else {
+					_, err = c.agent.CreateReplica(c.shard.ID, item.Host.ID, true)
+				}
+				if err != nil {
+					log.Println(err)
+				}
+			}
 			c.leaderIndex = c.shard.Updated
 			// Print snapshot
 			buf := bytes.NewBufferString("")
@@ -160,11 +167,9 @@ func (c *controller) tick() (err error) {
 				}
 				return true
 			})
-			c.mutex.Lock()
 			c.members = members
 			c.clients = clients
 			c.index = c.shard.Updated
-			c.mutex.Unlock()
 		}, true)
 	}
 	return
@@ -173,8 +178,9 @@ func (c *controller) tick() (err error) {
 func (c *controller) Stop() {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	if c.leader {
+	if c.isLeader {
 		c.cancel()
+		c.wg.Wait()
 	}
 }
 
@@ -187,11 +193,7 @@ func (c *controller) LeaderUpdated(info zongzi.LeaderInfo) {
 	log.Printf("[%05d:%05d] LeaderUpdated: %05d", info.ShardID, info.ReplicaID, info.LeaderID)
 	switch info.ShardID {
 	case c.shard.ID:
-		if info.LeaderID == info.ReplicaID {
-			c.leader = true
-		} else {
-			c.leader = false
-		}
+		c.isLeader = info.LeaderID == info.ReplicaID
 	}
 }
 
