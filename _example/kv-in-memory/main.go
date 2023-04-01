@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -19,6 +21,7 @@ func main() {
 		listenAddr  = flag.String("l", "127.0.0.1:17001", "Listen address")
 		gossipAddr  = flag.String("g", "127.0.0.1:17002", "Gossip address")
 		raftAddr    = flag.String("r", "127.0.0.1:17003", "Raft address")
+		httpAddr    = flag.String("h", "127.0.0.1:8000", "HTTP address")
 		zone        = flag.String("z", "us-west-1a", "Zone")
 		secret      = flag.String("s", "", "Shared secrets (csv)")
 	)
@@ -36,7 +39,7 @@ func main() {
 			NotifyCommit:      true,
 			RaftAddress:       *raftAddr,
 			RaftEventListener: ctrl,
-			RTTMillisecond:    100,
+			RTTMillisecond:    10,
 			WALDir:            *dataDir + "/wal",
 		}),
 		zongzi.WithMeta(meta),
@@ -46,18 +49,27 @@ func main() {
 		panic(err)
 	}
 	agent.RegisterStateMachine(
-		StateMachineUri,
-		StateMachineVersion,
-		StateMachineFactory(),
+		stateMachineUri,
+		stateMachineVersion,
+		stateMachineFactory(),
 	)
-	ctrl.agent = agent
 	if err = agent.Start(); err != nil {
 		panic(err)
 	}
+	ctrl.agent = agent
+	ctrl.Start()
+	// Start HTTP API
+	go func(s *http.Server) {
+		log.Fatal(s.ListenAndServe())
+	}(&http.Server{
+		Addr:    *httpAddr,
+		Handler: &handler{ctrl},
+	})
 
 	stop := make(chan os.Signal)
 	signal.Notify(stop, os.Interrupt)
 	signal.Notify(stop, syscall.SIGTERM)
 	<-stop
+	ctrl.Stop()
 	agent.Stop()
 }

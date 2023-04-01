@@ -6,11 +6,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lni/dragonboat/v4"
+	"github.com/logbn/zongzi/internal"
 )
 
 type controller struct {
 	agent  *Agent
+	ctx    context.Context
 	cancel context.CancelFunc
 	mutex  sync.RWMutex
 	leader bool
@@ -46,27 +47,20 @@ func (c *controller) Start() (err error) {
 	return
 }
 
-type controllerStartReplicaParams struct {
-	shardMembers map[uint64]string
-	shardType    string
-	shardID      uint64
-	replicaID    uint64
-	index        uint64
-}
-
 func (c *controller) tick() (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	var (
-		found   = map[uint64]bool{}
-		nhid    = c.agent.host.ID()
-		toStart = []controllerStartReplicaParams{}
+		found = map[uint64]bool{}
+		nhid  = c.agent.host.ID()
 	)
 	var ok bool
 	var host Host
-	hostInfo := c.agent.host.GetNodeHostInfo(dragonboat.NodeHostInfoOption{})
+	hostInfo := c.agent.host.GetNodeHostInfo(nodeHostInfoOption{})
 	var index uint64
+	var hadErr bool
 	c.agent.Read(func(state State) {
+		hadErr = false
 		index = state.Index()
 		host, ok = state.HostGet(nhid)
 		if !ok {
@@ -96,63 +90,114 @@ func (c *controller) tick() (err error) {
 			}
 		}
 		for id, ok := range found {
+			hadErr = hadErr || err != nil
 			if ok {
 				continue
 			}
 			replica, _ := state.ReplicaGet(id)
-			if replica.Status == ReplicaStatus_New {
-				if replica.ShardID == 0 {
-					continue
+			if replica.ShardID == 0 {
+				continue
+			}
+			shard, ok := state.ShardGet(replica.ShardID)
+			if !ok {
+				continue
+			}
+			members := map[uint64]string{}
+			state.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
+				if !r.IsNonVoting && !r.IsWitness {
+					members[r.ID] = r.HostID
 				}
-				shard, ok := state.ShardGet(replica.ShardID)
-				if !ok {
-					continue
-				}
-				members := map[uint64]string{}
-				state.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
-					if !r.IsNonVoting && !r.IsWitness {
-						members[r.ID] = r.HostID
+				return true
+			})
+			item, ok := c.agent.shardTypes[shard.Type]
+			if !ok {
+				err = fmt.Errorf("Shard name not found in registry: %s", shard.Type)
+				continue
+			}
+			item.Config.ShardID = shard.ID
+			item.Config.ReplicaID = replica.ID
+			item.Config.IsNonVoting = replica.IsNonVoting
+			c.agent.log.Debugf("[%05d:%05d] Controller: Starting replica: %s", shard.ID, replica.ID, shard.Type)
+			if item.StateMachineFactory != nil {
+				shim := stateMachineFactoryShim(item.StateMachineFactory)
+				switch replica.Status {
+				case ReplicaStatus_Bootstrapping:
+					err = c.agent.host.StartConcurrentReplica(members, false, shim, item.Config)
+				case ReplicaStatus_Joining:
+					res := c.requestShardJoin(members, shard.ID, replica.ID, replica.IsNonVoting)
+					if res == 0 {
+						err = fmt.Errorf(`[%05d:%05d] Unable to join shard`, shard.ID, replica.ID)
+						break
 					}
-					return true
-				})
-				toStart = append(toStart, controllerStartReplicaParams{
-					index:        host.Updated,
-					replicaID:    replica.ID,
-					shardID:      shard.ID,
-					shardType:    shard.Type,
-					shardMembers: members,
-				})
+					err = c.agent.host.StartConcurrentReplica(nil, true, shim, item.Config)
+				case ReplicaStatus_Active:
+					err = c.agent.host.StartConcurrentReplica(nil, false, shim, item.Config)
+				}
+			} else {
+				shim := persistentStateMachineFactoryShim(item.PersistentStateMachineFactory)
+				switch replica.Status {
+				case ReplicaStatus_Bootstrapping:
+					err = c.agent.host.StartOnDiskReplica(members, false, shim, item.Config)
+				case ReplicaStatus_Joining:
+					res := c.requestShardJoin(members, shard.ID, replica.ID, replica.IsNonVoting)
+					if res == 0 {
+						err = fmt.Errorf(`[%05d:%05d] Unable to join shard`, shard.ID, replica.ID)
+						break
+					}
+					err = c.agent.host.StartOnDiskReplica(nil, true, shim, item.Config)
+				case ReplicaStatus_Active:
+					err = c.agent.host.StartOnDiskReplica(nil, false, shim, item.Config)
+				}
+			}
+			if err != nil {
+				err = fmt.Errorf("Failed to start replica: %w", err)
+				continue
+			}
+			var res Result
+			res, err = c.agent.primePropose(newCmdReplicaUpdateStatus(replica.ID, ReplicaStatus_Active))
+			if err != nil || res.Value != 1 {
+				err = fmt.Errorf("Failed to update replica status: %w", err)
+				continue
 			}
 		}
 	}, true)
-	for _, params := range toStart {
-		item, ok := c.agent.shardTypes[params.shardType]
+	if err == nil && !hadErr {
+		c.index = index
+	}
+	return
+}
+
+// requestShardJoin requests host replica be added to a shard
+func (c *controller) requestShardJoin(members map[uint64]string, shardID, replicaID uint64, isNonVoting bool) (v uint64) {
+	c.agent.log.Debugf("[%05d:%05d] Joining shard (isNonVoting: %v)", shardID, replicaID, isNonVoting)
+	var res *internal.ShardJoinResponse
+	var host Host
+	var ok bool
+	var err error
+	for _, hostID := range members {
+		c.agent.Read(func(s State) {
+			host, ok = s.HostGet(hostID)
+		})
 		if !ok {
-			err = fmt.Errorf("Shard name not found in registry: %s", params.shardType)
-			break
+			c.agent.log.Warningf(`Host not found %s`, hostID)
+			continue
 		}
-		item.Config.ShardID = params.shardID
-		item.Config.ReplicaID = params.replicaID
-		if item.StateMachineFactory != nil {
-			shim := stateMachineFactoryShim(item.StateMachineFactory)
-			err = c.agent.host.StartConcurrentReplica(params.shardMembers, false, shim, item.Config)
-		} else {
-			shim := persistentStateMachineFactoryShim(item.PersistentStateMachineFactory)
-			err = c.agent.host.StartOnDiskReplica(params.shardMembers, false, shim, item.Config)
-		}
-		if err != nil {
-			err = fmt.Errorf("Failed to start replica: %w", err)
-			break
-		}
-		var res Result
-		res, err = c.agent.primePropose(newCmdReplicaUpdateStatus(params.replicaID, ReplicaStatus_Active))
-		if err != nil || res.Value != 1 {
-			err = fmt.Errorf("Failed to update replica status: %w", err)
+		res, err = c.agent.grpcClientPool.get(host.ApiAddress).ShardJoin(raftCtx(), &internal.ShardJoinRequest{
+			HostId:      c.agent.HostID(),
+			ShardId:     shardID,
+			ReplicaId:   replicaID,
+			IsNonVoting: isNonVoting,
+		})
+		if res != nil && res.Value > 0 {
+			replicaID = res.Value
 			break
 		}
 	}
-	if err == nil {
-		c.index = index
+	if err != nil {
+		c.agent.log.Warningf(`Unable to join shard: %v`, err)
+	}
+	if res != nil {
+		v = res.Value
 	}
 	return
 }

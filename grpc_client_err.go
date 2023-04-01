@@ -32,6 +32,10 @@ func (c *grpcClientErr) Join(ctx context.Context, in *internal.JoinRequest, opts
 	return nil, c.err
 }
 
+func (c *grpcClientErr) ShardJoin(ctx context.Context, in *internal.ShardJoinRequest, opts ...grpc.CallOption) (*internal.ShardJoinResponse, error) {
+	return nil, c.err
+}
+
 func (c *grpcClientErr) Propose(ctx context.Context, in *internal.Request, opts ...grpc.CallOption) (*internal.Response, error) {
 	return nil, c.err
 }

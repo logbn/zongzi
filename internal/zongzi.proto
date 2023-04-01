@@ -11,17 +11,21 @@ service Zongzi {
 	// Used by new hosts to start dragonboat
 	rpc Probe(ProbeRequest) returns (ProbeResponse) {}
 
-	// Info returns prime replicaID and hostID
-	// Used by new hosts to discover prime shard replicas
+	// Info returns zero shard replicaID and hostID
+	// Used by new hosts to discover zero shard replicas
 	rpc Info(InfoRequest) returns (InfoResponse) {}
 
-	// Members returns json marshaled map of member prime replicaID to hostID
-	// Used by new hosts joining a bootstrapped prime shard
+	// Members returns json marshaled map of member zero shard replicaID to hostID
+	// Used by new hosts joining a bootstrapped zero shard
 	rpc Members(MembersRequest) returns (MembersResponse) {}
 
-	// Join takes a replica ID and host ID and returns success
-	// Used by joining hosts to request their own addition to the prime shard
+	// Join takes a host ID and returns success
+	// Used by joining hosts to request their own addition to the zero shard
 	rpc Join(JoinRequest) returns (JoinResponse) {}
+
+	// ShardJoin takes a replica ID and host ID and returns success
+	// Used during replica creation to request replica's addition to the shard
+	rpc ShardJoin(ShardJoinRequest) returns (ShardJoinResponse) {}
 
 	// Propose provides unary request/response command forwarding
 	rpc Propose(Request) returns (Response) {}
@@ -60,6 +64,17 @@ message JoinRequest {
 	bool is_non_voting = 2;
 }
 message JoinResponse {
+    uint64 value = 1;
+    string error = 2;
+}
+
+message ShardJoinRequest {
+	string host_id = 1;
+	uint64 shard_id = 2;
+	uint64 replica_id = 3;
+	bool is_non_voting = 4;
+}
+message ShardJoinResponse {
     uint64 value = 1;
     string error = 2;
 }

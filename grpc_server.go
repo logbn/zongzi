@@ -50,7 +50,14 @@ func (s *grpcServer) Members(ctx context.Context, req *internal.MembersRequest) 
 func (s *grpcServer) Join(ctx context.Context, req *internal.JoinRequest) (res *internal.JoinResponse, err error) {
 	// s.agent.log.Debugf(`gRPC Req Join: %#v`, req)
 	res = &internal.JoinResponse{}
-	res.Value, err = s.agent.addReplica(req.HostId, s.agent.replicaConfig.ShardID, req.IsNonVoting)
+	res.Value, err = s.agent.joinPrimeReplica(req.HostId, s.agent.replicaConfig.ShardID, req.IsNonVoting)
+	return
+}
+
+func (s *grpcServer) ShardJoin(ctx context.Context, req *internal.ShardJoinRequest) (res *internal.ShardJoinResponse, err error) {
+	// s.agent.log.Debugf(`gRPC Req Join: %#v`, req)
+	res = &internal.ShardJoinResponse{}
+	res.Value, err = s.agent.joinShardReplica(req.HostId, req.ShardId, req.ReplicaId, req.IsNonVoting)
 	return
 }
 
@@ -122,10 +129,10 @@ func (s *grpcServer) Query(ctx context.Context, req *internal.Request) (res *int
 	} else {
 		r, err = s.agent.host.StaleRead(req.ShardId, query)
 	}
-	if r != nil {
-		res.Value = r.(*Result).Value
-		res.Data = r.(*Result).Data
-		releaseResult(r.(*Result))
+	if result, ok := r.(*Result); ok && result != nil {
+		res.Value = result.Value
+		res.Data = result.Data
+		releaseResult(result)
 	}
 	return
 }

@@ -34,6 +34,7 @@ type State interface {
 	HostIterate(fn func(h Host) bool)
 	ShardGet(id uint64) (s Shard, ok bool)
 	ShardIterate(fn func(s Shard) bool)
+	ShardMembers(id uint64) map[uint64]string
 	ReplicaGet(id uint64) (r Replica, ok bool)
 	ReplicaIterate(fn func(r Replica) bool)
 	ReplicaIterateByHostID(hostID string, fn func(r Replica) bool)
@@ -227,6 +228,17 @@ func (fsm *fsmStateRadix) ShardIterate(fn func(s Shard) bool) {
 			break
 		}
 	}
+}
+
+func (fsm *fsmStateRadix) ShardMembers(id uint64) map[uint64]string {
+	members := map[uint64]string{}
+	fsm.ReplicaIterateByShardID(id, func(r Replica) bool {
+		if !r.IsNonVoting {
+			members[r.ID] = r.HostID
+		}
+		return true
+	})
+	return members
 }
 
 func (fsm *fsmStateRadix) ReplicaGet(id uint64) (r Replica, ok bool) {

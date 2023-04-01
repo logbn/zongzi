@@ -155,6 +155,11 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			cmd.Replica.ID = state.replicaIncr()
 			cmd.Replica.Created = entry.Index
 			cmd.Replica.Updated = entry.Index
+			if !cmd.Replica.IsNonVoting && len(state.ShardMembers(cmd.Replica.ShardID)) < 3 {
+				cmd.Replica.Status = ReplicaStatus_Bootstrapping
+			} else {
+				cmd.Replica.Status = ReplicaStatus_Joining
+			}
 			state.replicaPut(cmd.Replica)
 			state.hostTouch(cmd.Replica.HostID, entry.Index)
 			entry.Result.Value = cmd.Replica.ID

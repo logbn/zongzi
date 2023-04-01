@@ -116,14 +116,7 @@ func (a *Agent) Start() (err error) {
 	}
 	a.log.Infof(`Started host "%s"`, a.HostID())
 	// Find prime replicaID
-	nhInfo := a.host.GetNodeHostInfo(dragonboat.NodeHostInfoOption{false})
-	a.log.Debugf(`Get node host info: %+v`, nhInfo)
-	for _, info := range nhInfo.LogInfo {
-		if info.ShardID == a.replicaConfig.ShardID {
-			a.replicaConfig.ReplicaID = info.ReplicaID
-			break
-		}
-	}
+	a.replicaConfig.ReplicaID = a.findLocalReplicaID(a.replicaConfig.ShardID)
 	existing := a.replicaConfig.ReplicaID > 0
 	a.replicaConfig.IsNonVoting = !sliceContains(a.peers, a.advertiseAddress)
 	// Resolve prime member replicaIDs
@@ -476,16 +469,10 @@ func (a *Agent) startPrimeReplica(members map[uint64]string, join bool) (err err
 // joinPrimeShard requests host be added to prime shard
 func (a *Agent) joinPrimeShard() (replicaID uint64, err error) {
 	a.log.Debugf("Joining prime shard")
-	reg, _ := a.host.GetNodeHostRegistry()
 	var res *internal.JoinResponse
 	for _, peerApiAddr := range a.peers {
-		sv, ok := reg.GetShardInfo(a.replicaConfig.ShardID)
-		if !ok {
-			continue
-		}
 		res, err = a.grpcClientPool.get(peerApiAddr).Join(raftCtx(), &internal.JoinRequest{
 			HostId:      a.HostID(),
-			Index:       sv.ConfigChangeIndex,
 			IsNonVoting: a.replicaConfig.IsNonVoting,
 		})
 		if res != nil && res.Value > 0 {
@@ -531,7 +518,7 @@ func (a *Agent) readIndex(shardID uint64) (err error) {
 		}
 		res := <-rs.ResultC()
 		if !res.Completed() {
-			a.log.Infof(`[%05x:%05x]  Waiting for other nodes`, a.replicaConfig.ReplicaID, shardID)
+			a.log.Infof(`[%05x:%05x]  Waiting for other nodes`, shardID, a.replicaConfig.ReplicaID)
 			rs.Release()
 			a.clock.Sleep(waitPeriod)
 			continue
@@ -542,7 +529,7 @@ func (a *Agent) readIndex(shardID uint64) (err error) {
 	return
 }
 
-func (a *Agent) addReplica(hostID string, shardID uint64, isNonVoting bool) (replicaID uint64, err error) {
+func (a *Agent) joinPrimeReplica(hostID string, shardID uint64, isNonVoting bool) (replicaID uint64, err error) {
 	var ok bool
 	var host Host
 	var written bool
@@ -573,19 +560,29 @@ func (a *Agent) addReplica(hostID string, shardID uint64, isNonVoting bool) (rep
 			return
 		}
 	}
+	return a.joinShardReplica(hostID, shardID, replicaID, isNonVoting)
+}
+
+func (a *Agent) joinShardReplica(hostID string, shardID, replicaID uint64, isNonVoting bool) (res uint64, err error) {
 	m, err := a.host.SyncGetShardMembership(raftCtx(), shardID)
 	if err != nil {
 		return
 	}
 	if isNonVoting {
+		if _, ok := m.NonVotings[replicaID]; ok {
+			return replicaID, nil
+		}
 		err = a.host.SyncRequestAddNonVoting(raftCtx(), shardID, replicaID, hostID, m.ConfigChangeID)
 	} else {
+		if _, ok := m.Nodes[replicaID]; ok {
+			return replicaID, nil
+		}
 		err = a.host.SyncRequestAddReplica(raftCtx(), shardID, replicaID, hostID, m.ConfigChangeID)
 	}
 	if err != nil {
 		return
 	}
-	return
+	return replicaID, nil
 }
 
 func (a *Agent) parseMeta(nhid string) (meta []byte, apiAddr string, err error) {
@@ -674,6 +671,17 @@ func (a *Agent) primeAddReplica(nhid string, isNonVoting bool) (id uint64, err e
 	res, err := a.primePropose(newCmdReplicaPost(nhid, a.replicaConfig.ShardID, isNonVoting))
 	if err == nil {
 		id = res.Value
+	}
+	return
+}
+
+// primeAddReplica proposes addition of replica metadata to the prime shard state
+func (a *Agent) findLocalReplicaID(shardID uint64) (id uint64) {
+	nhInfo := a.host.GetNodeHostInfo(dragonboat.NodeHostInfoOption{false})
+	for _, info := range nhInfo.LogInfo {
+		if info.ShardID == shardID {
+			return info.ReplicaID
+		}
 	}
 	return
 }

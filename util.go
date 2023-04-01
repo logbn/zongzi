@@ -41,7 +41,6 @@ var (
 		WALDir:         "/var/lib/zongzi/wal",
 	}
 	DefaultReplicaConfig = ReplicaConfig{
-		PreVote:                 true,
 		CheckQuorum:             true,
 		CompactionOverhead:      1000,
 		ElectionRTT:             100,
@@ -54,6 +53,8 @@ var (
 )
 
 type (
+	nodeHostInfoOption = dragonboat.NodeHostInfoOption
+
 	HostConfig    = config.NodeHostConfig
 	ReplicaConfig = config.Config
 	GossipConfig  = config.GossipConfig
@@ -100,9 +101,11 @@ const (
 	ShardStatus_New         = ShardStatus("new")
 	ShardStatus_Unavailable = ShardStatus("unavailable")
 
-	ReplicaStatus_Active = ReplicaStatus("active")
-	ReplicaStatus_Closed = ReplicaStatus("closed")
-	ReplicaStatus_New    = ReplicaStatus("new")
+	ReplicaStatus_Active        = ReplicaStatus("active")
+	ReplicaStatus_Closed        = ReplicaStatus("closed")
+	ReplicaStatus_Bootstrapping = ReplicaStatus("bootstrapping")
+	ReplicaStatus_Joining       = ReplicaStatus("joining")
+	ReplicaStatus_New           = ReplicaStatus("new")
 )
 
 var (
@@ -205,6 +208,12 @@ func releaseResult(r *Result) {
 // returned to the pool to reduce allocation overhead.
 func GetResult() *Result {
 	return resultPool.Get().(*Result)
+}
+
+var requestStatePool = sync.Pool{New: func() any { return &dragonboat.RequestState{} }}
+
+func getRequestState() *dragonboat.RequestState {
+	return requestStatePool.Get().(*dragonboat.RequestState)
 }
 
 func mustBase36Decode(name string) uint64 {

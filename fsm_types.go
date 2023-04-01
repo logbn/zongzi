@@ -131,15 +131,19 @@ func newCmdShardDel(shardID uint64) (b []byte) {
 }
 
 func newCmdReplicaPost(nhid string, shardID uint64, isNonVoting bool) (b []byte) {
-	b, _ = json.Marshal(commandReplica{command{
-		Action: command_action_post,
-		Type:   command_type_replica,
-	}, Replica{
+	r := Replica{
 		HostID:      nhid,
 		IsNonVoting: isNonVoting,
 		ShardID:     shardID,
 		Status:      ReplicaStatus_New,
-	}})
+	}
+	if isNonVoting {
+		r.Status = ReplicaStatus_Joining
+	}
+	b, _ = json.Marshal(commandReplica{command{
+		Action: command_action_post,
+		Type:   command_type_replica,
+	}, r})
 	return
 }
 
