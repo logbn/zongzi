@@ -22,15 +22,15 @@ func newController() *controller {
 
 type controller struct {
 	agent       *zongzi.Agent
-	cancel      context.CancelFunc
 	ctx         context.Context
+	ctxCancel   context.CancelFunc
 	clock       clock.Clock
 	isLeader    bool
 	index       uint64
 	leaderIndex uint64
 	shard       zongzi.Shard
-	members     []*zongzi.ReplicaClient
-	clients     []*zongzi.ReplicaClient
+	members     []*zongzi.Client
+	clients     []*zongzi.Client
 	mutex       sync.RWMutex
 	wg          sync.WaitGroup
 }
@@ -38,7 +38,7 @@ type controller struct {
 func (c *controller) Start() (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	c.ctx, c.cancel = context.WithCancel(context.Background())
+	c.ctx, c.ctxCancel = context.WithCancel(context.Background())
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
@@ -46,10 +46,11 @@ func (c *controller) Start() (err error) {
 		defer t.Stop()
 		for {
 			select {
+			case <-c.ctx.Done():
+				log.Println("example: Controller stopped")
+				return
 			case <-t.C:
 				err = c.tick()
-			case <-c.ctx.Done():
-				return
 			}
 			if err != nil {
 				log.Printf("ERROR: %v", err)
@@ -72,7 +73,7 @@ func (c *controller) tick() (err error) {
 	var ok bool
 	var done bool
 	if c.shard.ID == 0 {
-		c.agent.Read(func(state zongzi.State) {
+		c.agent.Read(c.ctx, func(state zongzi.State) {
 			state.ShardIterate(func(s zongzi.Shard) bool {
 				if s.Type == stateMachineUri && s.Status != zongzi.ShardStatus_Closed {
 					c.shard = s
@@ -82,7 +83,7 @@ func (c *controller) tick() (err error) {
 			})
 			// Shard does not yet exist. Create it.
 			if c.shard.ID == 0 {
-				c.shard, err = c.agent.CreateShard(stateMachineUri, stateMachineVersion)
+				c.shard, err = c.agent.ShardCreate(stateMachineUri)
 				if err != nil {
 					return
 				}
@@ -91,8 +92,8 @@ func (c *controller) tick() (err error) {
 		})
 	}
 	if c.isLeader {
-		c.agent.Read(func(state zongzi.State) {
-			if c.shard, ok = state.ShardGet(c.shard.ID); !ok {
+		c.agent.Read(c.ctx, func(state zongzi.State) {
+			if c.shard, ok = state.Shard(c.shard.ID); !ok {
 				return
 			}
 			if c.shard.Updated <= c.leaderIndex {
@@ -130,9 +131,9 @@ func (c *controller) tick() (err error) {
 			})
 			for _, item := range toAdd {
 				if _, ok := zones[item.Meta.Zone]; !ok {
-					_, err = c.agent.CreateReplica(c.shard.ID, item.Host.ID, false)
+					_, err = c.agent.ReplicaCreate(item.Host.ID, c.shard.ID, false)
 				} else {
-					_, err = c.agent.CreateReplica(c.shard.ID, item.Host.ID, true)
+					_, err = c.agent.ReplicaCreate(item.Host.ID, c.shard.ID, true)
 				}
 				if err != nil {
 					log.Println(err)
@@ -147,8 +148,8 @@ func (c *controller) tick() (err error) {
 	}
 	if c.shard.ID > 0 {
 		// Resolve replica clients
-		c.agent.Read(func(state zongzi.State) {
-			if c.shard, ok = state.ShardGet(c.shard.ID); !ok {
+		c.agent.Read(c.ctx, func(state zongzi.State) {
+			if c.shard, ok = state.Shard(c.shard.ID); !ok {
 				return
 			}
 			if c.shard.Updated <= c.index {
@@ -157,10 +158,10 @@ func (c *controller) tick() (err error) {
 			if done {
 				return
 			}
-			var members []*zongzi.ReplicaClient
-			var clients []*zongzi.ReplicaClient
+			var members []*zongzi.Client
+			var clients []*zongzi.Client
 			state.ReplicaIterateByShardID(c.shard.ID, func(r zongzi.Replica) bool {
-				rc := c.agent.GetReplicaClient(r.ID)
+				rc := c.agent.Client(r.HostID)
 				clients = append(clients, rc)
 				if !r.IsNonVoting {
 					members = append(members, rc)
@@ -176,12 +177,8 @@ func (c *controller) tick() (err error) {
 }
 
 func (c *controller) Stop() {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	if c.isLeader {
-		c.cancel()
-		// c.wg.Wait()
-	}
+	c.ctxCancel()
+	c.wg.Wait()
 }
 
 func (c *controller) LeaderUpdated(info zongzi.LeaderInfo) {
@@ -197,10 +194,12 @@ func (c *controller) LeaderUpdated(info zongzi.LeaderInfo) {
 	}
 }
 
-func (c *controller) getRandClient(member bool) (rc *zongzi.ReplicaClient) {
+func (c *controller) getClient(random, member bool) (rc *zongzi.Client) {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
-	if member {
+	if !random {
+		rc = c.agent.Client(c.agent.HostID())
+	} else if member {
 		if len(c.members) > 0 {
 			rc = c.members[rand.Intn(len(c.members))]
 		}

@@ -39,10 +39,12 @@ type ZongziClient interface {
 	// ShardJoin takes a replica ID and host ID and returns success
 	// Used during replica creation to request replica's addition to the shard
 	ShardJoin(ctx context.Context, in *ShardJoinRequest, opts ...grpc.CallOption) (*ShardJoinResponse, error)
-	// Propose provides unary request/response command forwarding
-	Propose(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Response, error)
+	// Apply provides unary request/response command forwarding
+	Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error)
+	// Commit provides unary request/response command forwarding
+	Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*CommitResponse, error)
 	// Query provides unary request/response query forwarding
-	Query(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Response, error)
+	Query(ctx context.Context, in *QueryRequest, opts ...grpc.CallOption) (*QueryResponse, error)
 }
 
 type zongziClient struct {
@@ -107,17 +109,26 @@ func (c *zongziClient) ShardJoin(ctx context.Context, in *ShardJoinRequest, opts
 	return out, nil
 }
 
-func (c *zongziClient) Propose(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Response, error) {
-	out := new(Response)
-	err := c.cc.Invoke(ctx, "/Zongzi/Propose", in, out, opts...)
+func (c *zongziClient) Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error) {
+	out := new(ApplyResponse)
+	err := c.cc.Invoke(ctx, "/Zongzi/Apply", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *zongziClient) Query(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Response, error) {
-	out := new(Response)
+func (c *zongziClient) Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*CommitResponse, error) {
+	out := new(CommitResponse)
+	err := c.cc.Invoke(ctx, "/Zongzi/Commit", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zongziClient) Query(ctx context.Context, in *QueryRequest, opts ...grpc.CallOption) (*QueryResponse, error) {
+	out := new(QueryResponse)
 	err := c.cc.Invoke(ctx, "/Zongzi/Query", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -146,10 +157,12 @@ type ZongziServer interface {
 	// ShardJoin takes a replica ID and host ID and returns success
 	// Used during replica creation to request replica's addition to the shard
 	ShardJoin(context.Context, *ShardJoinRequest) (*ShardJoinResponse, error)
-	// Propose provides unary request/response command forwarding
-	Propose(context.Context, *Request) (*Response, error)
+	// Apply provides unary request/response command forwarding
+	Apply(context.Context, *ApplyRequest) (*ApplyResponse, error)
+	// Commit provides unary request/response command forwarding
+	Commit(context.Context, *CommitRequest) (*CommitResponse, error)
 	// Query provides unary request/response query forwarding
-	Query(context.Context, *Request) (*Response, error)
+	Query(context.Context, *QueryRequest) (*QueryResponse, error)
 	mustEmbedUnimplementedZongziServer()
 }
 
@@ -175,10 +188,13 @@ func (UnimplementedZongziServer) Join(context.Context, *JoinRequest) (*JoinRespo
 func (UnimplementedZongziServer) ShardJoin(context.Context, *ShardJoinRequest) (*ShardJoinResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ShardJoin not implemented")
 }
-func (UnimplementedZongziServer) Propose(context.Context, *Request) (*Response, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Propose not implemented")
+func (UnimplementedZongziServer) Apply(context.Context, *ApplyRequest) (*ApplyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Apply not implemented")
 }
-func (UnimplementedZongziServer) Query(context.Context, *Request) (*Response, error) {
+func (UnimplementedZongziServer) Commit(context.Context, *CommitRequest) (*CommitResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Commit not implemented")
+}
+func (UnimplementedZongziServer) Query(context.Context, *QueryRequest) (*QueryResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Query not implemented")
 }
 func (UnimplementedZongziServer) mustEmbedUnimplementedZongziServer() {}
@@ -302,26 +318,44 @@ func _Zongzi_ShardJoin_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Zongzi_Propose_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Request)
+func _Zongzi_Apply_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApplyRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ZongziServer).Propose(ctx, in)
+		return srv.(ZongziServer).Apply(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/Zongzi/Propose",
+		FullMethod: "/Zongzi/Apply",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZongziServer).Propose(ctx, req.(*Request))
+		return srv.(ZongziServer).Apply(ctx, req.(*ApplyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Zongzi_Commit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CommitRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZongziServer).Commit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Zongzi/Commit",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZongziServer).Commit(ctx, req.(*CommitRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _Zongzi_Query_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Request)
+	in := new(QueryRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -333,7 +367,7 @@ func _Zongzi_Query_Handler(srv interface{}, ctx context.Context, dec func(interf
 		FullMethod: "/Zongzi/Query",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZongziServer).Query(ctx, req.(*Request))
+		return srv.(ZongziServer).Query(ctx, req.(*QueryRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -370,8 +404,12 @@ var Zongzi_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Zongzi_ShardJoin_Handler,
 		},
 		{
-			MethodName: "Propose",
-			Handler:    _Zongzi_Propose_Handler,
+			MethodName: "Apply",
+			Handler:    _Zongzi_Apply_Handler,
+		},
+		{
+			MethodName: "Commit",
+			Handler:    _Zongzi_Commit_Handler,
 		},
 		{
 			MethodName: "Query",

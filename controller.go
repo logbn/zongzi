@@ -10,11 +10,11 @@ import (
 )
 
 type controller struct {
-	agent  *Agent
-	ctx    context.Context
-	cancel context.CancelFunc
-	mutex  sync.RWMutex
-	index  uint64
+	agent     *Agent
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+	mutex     sync.RWMutex
+	index     uint64
 }
 
 func newController(a *Agent) *controller {
@@ -25,8 +25,7 @@ func newController(a *Agent) *controller {
 
 func (c *controller) Start() (err error) {
 	c.mutex.Lock()
-	var ctx context.Context
-	ctx, c.cancel = context.WithCancel(context.Background())
+	c.ctx, c.ctxCancel = context.WithCancel(context.Background())
 	go func() {
 		t := time.NewTicker(waitPeriod)
 		defer t.Stop()
@@ -34,7 +33,7 @@ func (c *controller) Start() (err error) {
 			select {
 			case <-t.C:
 				err = c.tick()
-			case <-ctx.Done():
+			case <-c.ctx.Done():
 				return
 			}
 			if err != nil {
@@ -52,8 +51,8 @@ func (c *controller) tick() (err error) {
 	var index uint64
 	var hadErr bool
 	var shard Shard
-	c.agent.Read(func(state State) {
-		host, ok := state.HostGet(c.agent.HostID())
+	c.agent.Read(c.ctx, func(state State) {
+		host, ok := state.Host(c.agent.HostID())
 		if !ok {
 			hadErr = true
 			c.agent.log.Warningf("Host not found %s", c.agent.HostID())
@@ -72,7 +71,7 @@ func (c *controller) tick() (err error) {
 		})
 		hostInfo := c.agent.host.GetNodeHostInfo(nodeHostInfoOption{})
 		for _, info := range hostInfo.ShardInfoList {
-			if replica, ok := state.ReplicaGet(info.ReplicaID); ok {
+			if replica, ok := state.Replica(info.ReplicaID); ok {
 				found[replica.ID] = true
 				if replica.Status == ReplicaStatus_Closed {
 					// Remove replica
@@ -91,13 +90,13 @@ func (c *controller) tick() (err error) {
 			if ok {
 				continue
 			}
-			replica, ok := state.ReplicaGet(id)
+			replica, ok := state.Replica(id)
 			if !ok {
 				hadErr = true
 				c.agent.log.Warningf("Replica not found")
 				continue
 			}
-			shard, ok = state.ShardGet(replica.ShardID)
+			shard, ok = state.Shard(replica.ShardID)
 			if !ok {
 				hadErr = true
 				c.agent.log.Warningf("Shard not found")
@@ -165,7 +164,7 @@ func (c *controller) tick() (err error) {
 				c.agent.log.Warningf("Failed to update replica status: %v", err)
 			}
 		}
-	}, true)
+	})
 	if !hadErr && index > c.index {
 		c.agent.log.Debugf("%s Finished processing %d", c.agent.HostID(), index)
 		c.index = index
@@ -183,9 +182,9 @@ func (c *controller) requestShardJoin(members map[uint64]string, shardID, replic
 	var ok bool
 	var err error
 	for _, hostID := range members {
-		c.agent.Read(func(s State) {
-			host, ok = s.HostGet(hostID)
-		}, true)
+		c.agent.Read(c.ctx, func(s State) {
+			host, ok = s.Host(hostID)
+		})
 		if !ok {
 			c.agent.log.Warningf(`Host not found %s`, hostID)
 			continue
@@ -214,11 +213,11 @@ func (c *controller) requestShardJoin(members map[uint64]string, shardID, replic
 }
 
 func (c *controller) Stop() {
+	defer c.agent.log.Infof(`Stopped controller`)
+	if c.ctxCancel != nil {
+		c.ctxCancel()
+	}
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	defer c.agent.log.Infof(`Stopped controller`)
 	c.index = 0
-	if c.cancel != nil {
-		c.cancel()
-	}
 }

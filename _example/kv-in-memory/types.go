@@ -5,8 +5,7 @@ import (
 )
 
 const (
-	stateMachineUri     = "github.com/logbn/zongzi-examples/kv-in-memory"
-	stateMachineVersion = "v0.0.1"
+	stateMachineUri = "github.com/logbn/zongzi-examples/kv-in-memory"
 
 	ResultCodeFailure = iota
 	ResultCodeSuccess

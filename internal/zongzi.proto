@@ -27,11 +27,14 @@ service Zongzi {
 	// Used during replica creation to request replica's addition to the shard
 	rpc ShardJoin(ShardJoinRequest) returns (ShardJoinResponse) {}
 
-	// Propose provides unary request/response command forwarding
-	rpc Propose(Request) returns (Response) {}
+	// Apply provides unary request/response command forwarding
+	rpc Apply(ApplyRequest) returns (ApplyResponse) {}
+
+	// Commit provides unary request/response command forwarding
+	rpc Commit(CommitRequest) returns (CommitResponse) {}
 
 	// Query provides unary request/response query forwarding
-	rpc Query(Request) returns (Response) {}
+	rpc Query(QueryRequest) returns (QueryResponse) {}
 
 	// Stream provides streaming proposal forwarding
 	// rpc Stream(stream Request) returns (stream Response) {}
@@ -79,12 +82,27 @@ message ShardJoinResponse {
     string error = 2;
 }
 
-message Request {
+message ApplyRequest {
     uint64 shard_id = 1;
-	bool linear = 2;
     bytes data = 15;
 }
-message Response {
+message ApplyResponse {
+    uint64 value = 1;
+    bytes data = 15;
+}
+
+message CommitRequest {
+    uint64 shard_id = 1;
+    bytes data = 15;
+}
+message CommitResponse {}
+
+message QueryRequest {
+    uint64 shard_id = 1;
+	bool stale = 2;
+    bytes data = 15;
+}
+message QueryResponse {
     uint64 value = 1;
     bytes data = 15;
 }

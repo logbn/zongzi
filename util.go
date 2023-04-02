@@ -15,13 +15,12 @@ import (
 )
 
 const (
-	minReplicas  = 3
-	raftTimeout  = time.Second
-	joinTimeout  = 5 * time.Second
-	waitPeriod   = 500 * time.Millisecond
-	projectName  = "zongzi"
-	shardUri     = "github.com/logbn/zongzi/prime"
-	shardVersion = "v0.0.1"
+	minReplicas = 3
+	raftTimeout = time.Second
+	joinTimeout = 5 * time.Second
+	waitPeriod  = 500 * time.Millisecond
+	projectName = "zongzi"
+	shardName   = "github.com/logbn/zongzi/prime"
 )
 
 const (
@@ -141,8 +140,7 @@ type (
 		Config                        ReplicaConfig
 		StateMachineFactory           StateMachineFactory
 		PersistentStateMachineFactory PersistentStateMachineFactory
-		Uri                           string
-		Version                       string
+		Name                          string
 	}
 	lookupQuery struct {
 		ctx  context.Context

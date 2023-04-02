@@ -16,29 +16,6 @@ const (
 	command_action_status_update = "status-update"
 )
 
-type Host struct {
-	ID      string     `json:"id"`
-	Meta    []byte     `json:"meta"`
-	Status  HostStatus `json:"status"`
-	Created uint64     `json:"created"`
-	Updated uint64     `json:"updated"`
-
-	ApiAddress  string   `json:"apiAddress"`
-	RaftAddress string   `json:"raftAddress"`
-	ShardTypes  []string `json:"shardTypes"`
-}
-
-type Shard struct {
-	ID      uint64      `json:"id"`
-	Meta    []byte      `json:"meta"`
-	Status  ShardStatus `json:"status"`
-	Created uint64      `json:"created"`
-	Updated uint64      `json:"updated"`
-
-	Type    string `json:"type"`
-	Version string `json:"version"`
-}
-
 type Replica struct {
 	ID      uint64        `json:"id"`
 	Meta    []byte        `json:"meta"`
@@ -97,27 +74,25 @@ func newCmdHostDel(nhid string) (b []byte) {
 	return
 }
 
-func newCmdShardPost(shardType, shardVersion string) (b []byte) {
+func newCmdShardPost(shardType string) (b []byte) {
 	b, _ = json.Marshal(commandShard{command{
 		Action: command_action_post,
 		Type:   command_type_shard,
 	}, Shard{
-		Status:  ShardStatus_New,
-		Type:    shardType,
-		Version: shardVersion,
+		Status: ShardStatus_New,
+		Type:   shardType,
 	}})
 	return
 }
 
-func newCmdShardPut(shardID uint64, shardType, shardVersion string) (b []byte) {
+func newCmdShardPut(shardID uint64, shardType string) (b []byte) {
 	b, _ = json.Marshal(commandShard{command{
 		Action: command_action_put,
 		Type:   command_type_shard,
 	}, Shard{
-		ID:      shardID,
-		Status:  ShardStatus_New,
-		Type:    shardType,
-		Version: shardVersion,
+		ID:     shardID,
+		Status: ShardStatus_New,
+		Type:   shardType,
 	}})
 	return
 }

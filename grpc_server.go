@@ -62,9 +62,11 @@ func (s *grpcServer) ShardJoin(ctx context.Context, req *internal.ShardJoinReque
 	return
 }
 
-func (s *grpcServer) Propose(ctx context.Context, req *internal.Request) (res *internal.Response, err error) {
+var emptyCommitResponse = &internal.CommitResponse{}
+
+func (s *grpcServer) Commit(ctx context.Context, req *internal.CommitRequest) (res *internal.CommitResponse, err error) {
 	// s.agent.log.Debugf(`gRPC Req Propose: %#v`, req)
-	if !req.Linear && !s.agent.hostConfig.NotifyCommit {
+	if !s.agent.hostConfig.NotifyCommit {
 		s.agent.log.Warningf(`%v`, ErrNotifyCommitDisabled)
 	}
 	if s.agent.Status() != AgentStatus_Ready {
@@ -79,17 +81,11 @@ func (s *grpcServer) Propose(ctx context.Context, req *internal.Request) (res *i
 	for {
 		select {
 		case r := <-rs.ResultC():
-			if r.Aborted() {
+			if r.Committed() {
+				res = emptyCommitResponse
+				return
+			} else if r.Aborted() {
 				err = ErrAborted
-				return
-			} else if r.Committed() && !req.Linear {
-				res = &internal.Response{}
-				return
-			} else if r.Completed() {
-				res = &internal.Response{
-					Value: r.GetResult().Value,
-					Data:  r.GetResult().Data,
-				}
 				return
 			} else if r.Dropped() {
 				err = ErrShardNotReady
@@ -117,18 +113,68 @@ func (s *grpcServer) Propose(ctx context.Context, req *internal.Request) (res *i
 	return
 }
 
-func (s *grpcServer) Query(ctx context.Context, req *internal.Request) (res *internal.Response, err error) {
+func (s *grpcServer) Apply(ctx context.Context, req *internal.ApplyRequest) (res *internal.ApplyResponse, err error) {
+	// s.agent.log.Debugf(`gRPC Req Propose: %#v`, req)
+	if s.agent.Status() != AgentStatus_Ready {
+		err = ErrAgentNotReady
+		return
+	}
+	rs, err := s.agent.host.Propose(s.agent.host.GetNoOPSession(req.ShardId), req.Data, raftTimeout)
+	if err != nil {
+		return
+	}
+	defer rs.Release()
+	for {
+		select {
+		case r := <-rs.ResultC():
+			if r.Completed() {
+				res = &internal.ApplyResponse{
+					Value: r.GetResult().Value,
+					Data:  r.GetResult().Data,
+				}
+				return
+			} else if r.Aborted() {
+				err = ErrAborted
+				return
+			} else if r.Dropped() {
+				err = ErrShardNotReady
+				return
+			} else if r.Rejected() {
+				err = ErrRejected
+				return
+			} else if r.Terminated() {
+				err = ErrShardClosed
+				return
+			} else if r.Timeout() {
+				err = ErrTimeout
+				return
+			}
+		case <-ctx.Done():
+			if ctx.Err() == context.Canceled {
+				err = ErrCanceled
+				return
+			} else if ctx.Err() == context.DeadlineExceeded {
+				err = ErrTimeout
+				return
+			}
+		}
+	}
+	return
+}
+
+func (s *grpcServer) Query(ctx context.Context, req *internal.QueryRequest) (res *internal.QueryResponse, err error) {
 	// s.agent.log.Debugf(`gRPC Req Query: %#v`, req)
-	res = &internal.Response{}
+	res = &internal.QueryResponse{}
 	query := getLookupQuery()
 	query.ctx = ctx
 	query.data = req.Data
 	defer query.Release()
 	var r any
-	if req.Linear {
-		r, err = s.agent.host.SyncRead(raftCtx(), req.ShardId, query)
-	} else {
+	if req.Stale {
 		r, err = s.agent.host.StaleRead(req.ShardId, query)
+	} else {
+		ctx, _ := context.WithTimeout(ctx, raftTimeout)
+		r, err = s.agent.host.SyncRead(ctx, req.ShardId, query)
 	}
 	if result, ok := r.(*Result); ok && result != nil {
 		res.Value = result.Value

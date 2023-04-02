@@ -73,7 +73,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 		switch cmd.Action {
 		// Put
 		case command_action_put:
-			if old, ok := state.HostGet(cmd.Host.ID); ok {
+			if old, ok := state.Host(cmd.Host.ID); ok {
 				cmd.Host.Created = old.Created
 			} else {
 				cmd.Host.Created = entry.Index
@@ -87,7 +87,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			entry.Result.Value = 1
 		// Delete
 		case command_action_del:
-			host, ok := state.HostGet(cmd.Host.ID)
+			host, ok := state.Host(cmd.Host.ID)
 			if !ok {
 				fsm.log.Warningf("%v: %#v", ErrHostNotFound, cmd)
 				break
@@ -115,7 +115,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			entry.Result.Value = cmd.Shard.ID
 		// Put
 		case command_action_put:
-			if old, ok := state.ShardGet(cmd.Shard.ID); ok {
+			if old, ok := state.Shard(cmd.Shard.ID); ok {
 				cmd.Shard.Created = old.Created
 			} else if cmd.Shard.ID == 0 && state.metaGet(`shardIndex`) == 0 {
 				cmd.Shard.Created = entry.Index
@@ -132,7 +132,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			entry.Result.Value = 1
 		// Delete
 		case command_action_del:
-			shard, ok := state.ShardGet(cmd.Shard.ID)
+			shard, ok := state.Shard(cmd.Shard.ID)
 			if !ok {
 				fsm.log.Warningf("%v: %#v", ErrShardNotFound, cmd)
 				break
@@ -167,7 +167,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			entry.Result.Value = cmd.Replica.ID
 		// Status Update
 		case command_action_status_update:
-			replica, ok := state.ReplicaGet(cmd.Replica.ID)
+			replica, ok := state.Replica(cmd.Replica.ID)
 			if !ok {
 				fsm.log.Warningf("%v: %#v %#v", ErrReplicaNotFound, cmd, replica)
 				break
@@ -179,7 +179,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			entry.Result.Value = 1
 		// Put
 		case command_action_put:
-			if old, ok := state.ReplicaGet(cmd.Replica.ID); ok {
+			if old, ok := state.Replica(cmd.Replica.ID); ok {
 				cmd.Replica.Created = old.Created
 			} else {
 				fsm.log.Errorf("%s: %s - %#v", ErrReplicaNotFound, cmd.Action, cmd)
@@ -192,7 +192,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			entry.Result.Value = 1
 		// Delete
 		case command_action_del:
-			replica, ok := state.ReplicaGet(cmd.Replica.ID)
+			replica, ok := state.Replica(cmd.Replica.ID)
 			if !ok {
 				fsm.log.Warningf("%v: %#v", ErrReplicaNotFound, cmd)
 				break

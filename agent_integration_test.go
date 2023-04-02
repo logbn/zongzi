@@ -21,6 +21,7 @@ func TestAgent(t *testing.T) {
 	basedir := `/tmp/zongzi-test`
 	agents := []*Agent{}
 	var err error
+	var ctx = context.Background()
 	os.RemoveAll(basedir)
 	start := func(t *testing.T, peers []string, notifyCommit bool, addresses ...[]string) {
 		for _, addr := range addresses {
@@ -37,8 +38,8 @@ func TestAgent(t *testing.T) {
 			require.Nil(t, err)
 			// a.log.SetLevel(LogLevelDebug)
 			agents = append(agents, a)
-			a.RegisterStateMachine(`concurrent`, `v0.0.1`, mockConcurrentSM)
-			a.RegisterPersistentStateMachine(`persistent`, `v0.0.1`, mockPersistentSM)
+			a.ShardTypeRegister(`concurrent`, mockConcurrentSM)
+			a.ShardTypeRegisterPersistent(`persistent`, mockPersistentSM)
 			go func(a *Agent) {
 				err = a.Start()
 				require.Nil(t, err, `%+v`, err)
@@ -78,7 +79,7 @@ func TestAgent(t *testing.T) {
 			var replicaCount = 0
 			replicas = replicas[:0]
 			for j, a := range agents {
-				agents[j].Read(func(s State) {
+				agents[j].Read(ctx, func(s State) {
 					s.ReplicaIterateByHostID(a.HostID(), func(r Replica) bool {
 						replicas = append(replicas, r)
 						if r.Status == ReplicaStatus_Active {
@@ -86,7 +87,7 @@ func TestAgent(t *testing.T) {
 						}
 						return true
 					})
-				}, true)
+				})
 			}
 			return replicaCount == len(agents)
 		}), `%+v`, replicas)
@@ -94,13 +95,13 @@ func TestAgent(t *testing.T) {
 	for _, sm := range []string{`concurrent`, `persistent`} {
 		var shard Shard
 		t.Run(sm+` shard create`, func(t *testing.T) {
-			shard, err = agents[0].CreateShard(sm, `v0.0.1`)
+			shard, err = agents[0].ShardCreate(sm)
 			require.Nil(t, err)
 		})
 		t.Run(sm+` replica create`, func(t *testing.T) {
 			var replicaID uint64
 			for i := 0; i < len(agents); i++ {
-				replicaID, err = agents[0].CreateReplica(shard.ID, agents[i].HostID(), i > 2)
+				replicaID, err = agents[0].ReplicaCreate(agents[i].HostID(), shard.ID, i > 2)
 				require.Nil(t, err)
 				require.NotEqual(t, 0, replicaID)
 			}
@@ -109,7 +110,7 @@ func TestAgent(t *testing.T) {
 			require.True(t, await(10, 100, func() bool {
 				var replicaCount = 0
 				replicas = replicas[:0]
-				agents[0].Read(func(s State) {
+				agents[0].Read(ctx, func(s State) {
 					s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
 						replicas = append(replicas, r)
 						if r.Status == ReplicaStatus_Active {
@@ -117,17 +118,17 @@ func TestAgent(t *testing.T) {
 						}
 						return true
 					})
-				}, true)
+				})
 				return replicaCount == len(agents)
 			}), `%+v`, replicas)
 		})
 		for _, a := range agents {
-			require.Nil(t, a.readIndex(shard.ID))
+			require.Nil(t, a.readIndex(ctx, shard.ID))
 		}
 		for _, op := range []string{"update", "query"} {
 			for _, linearity := range []string{"linear", "non-linear"} {
 				t.Run(fmt.Sprintf(`%s %s %s`, sm, op, linearity), func(t *testing.T) {
-					runAgentSubTest(t, agents, shard, sm, op, linearity == "linear")
+					runAgentSubTest(t, agents, shard, sm, op, linearity != "linear")
 				})
 			}
 		}
@@ -147,8 +148,8 @@ func TestAgent(t *testing.T) {
 				return agents[0].Status() == AgentStatus_Ready
 			}), `%#v`, *agents[0])
 			require.True(t, await(5, 100, func() (success bool) {
-				agents[0].Read(func(s State) {
-					host, ok := s.HostGet(agents[0].HostID())
+				agents[0].Read(ctx, func(s State) {
+					host, ok := s.Host(agents[0].HostID())
 					success = ok && host.Status == HostStatus_Active
 				})
 				return
@@ -162,26 +163,29 @@ func mustJson(in any) string {
 	return string(b)
 }
 
-func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, sm, op string, linear bool) {
+func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, sm, op string, stale bool) {
 	var i = 0
 	var err error
 	var val uint64
 	var nonvoting = 0
-	agents[0].Read(func(s State) {
+	agents[0].Read(context.Background(), func(s State) {
 		s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
 			if op == "update" && r.IsNonVoting {
 				nonvoting++
 				return true
 			}
-			replicaClient := agents[0].GetReplicaClient(r.ID)
-			require.NotNil(t, replicaClient)
-			if op == "update" {
-				val, _, err = replicaClient.Propose(raftCtx(), bytes.Repeat([]byte("test"), i+1), linear)
+			val = 0
+			client := agents[0].Client(r.HostID)
+			require.NotNil(t, client)
+			if op == "update" && stale {
+				err = client.Commit(raftCtx(), shard.ID, bytes.Repeat([]byte("test"), i+1))
+			} else if op == "update" && !stale {
+				val, _, err = client.Apply(raftCtx(), shard.ID, bytes.Repeat([]byte("test"), i+1))
 			} else {
-				val, _, err = replicaClient.Query(raftCtx(), bytes.Repeat([]byte("test"), i+1), linear)
+				val, _, err = client.Query(raftCtx(), shard.ID, bytes.Repeat([]byte("test"), i+1), stale)
 			}
-			require.Nil(t, err, `%v, %v, %#v`, i, err, replicaClient)
-			if op == "update" && !linear {
+			require.Nil(t, err, `%v, %v, %#v`, i, err, client)
+			if op == "update" && stale {
 				assert.Equal(t, uint64(0), val)
 			} else {
 				assert.Equal(t, uint64((i+1)*4), val)
@@ -189,7 +193,7 @@ func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, sm, op string, 
 			i++
 			return true
 		})
-	}, true)
+	})
 	if op == "update" {
 		assert.Equal(t, 3, nonvoting)
 	}

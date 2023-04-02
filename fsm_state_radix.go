@@ -30,12 +30,13 @@ type State interface {
 	recover(r io.Reader) error
 
 	Index() uint64
-	HostGet(id string) (h Host, ok bool)
+	Host(id string) (h Host, ok bool)
 	HostIterate(fn func(h Host) bool)
-	ShardGet(id uint64) (s Shard, ok bool)
+	HostIterateByShardType(shardType string, fn func(h Host) bool)
+	Shard(id uint64) (s Shard, ok bool)
 	ShardIterate(fn func(s Shard) bool)
 	ShardMembers(id uint64) map[uint64]string
-	ReplicaGet(id uint64) (r Replica, ok bool)
+	Replica(id uint64) (r Replica, ok bool)
 	ReplicaIterate(fn func(r Replica) bool)
 	ReplicaIterateByHostID(hostID string, fn func(r Replica) bool)
 	ReplicaIterateByShardID(shardID uint64, fn func(r Replica) bool)
@@ -172,7 +173,7 @@ func (fsm *fsmStateRadix) Index() (val uint64) {
 	return
 }
 
-func (fsm *fsmStateRadix) HostGet(id string) (h Host, ok bool) {
+func (fsm *fsmStateRadix) Host(id string) (h Host, ok bool) {
 	res, err := fsm.txn.First(`host`, `id`, id)
 	if err != nil {
 		panic(err)
@@ -212,7 +213,7 @@ func (fsm *fsmStateRadix) hostDelete(h Host) {
 }
 
 func (fsm *fsmStateRadix) hostTouch(id string, index uint64) {
-	h, ok := fsm.HostGet(id)
+	h, ok := fsm.Host(id)
 	if !ok {
 		fsm.HostIterate(func(h Host) bool {
 			fmt.Println(h.ID, h.Updated)
@@ -249,7 +250,7 @@ func (fsm *fsmStateRadix) HostIterate(fn func(h Host) bool) {
 	}
 }
 
-func (fsm *fsmStateRadix) ShardGet(id uint64) (s Shard, ok bool) {
+func (fsm *fsmStateRadix) Shard(id uint64) (s Shard, ok bool) {
 	res, err := fsm.txn.First(`shard`, `id`, id)
 	if err != nil {
 		panic(err)
@@ -276,7 +277,7 @@ func (fsm *fsmStateRadix) shardDelete(s Shard) {
 }
 
 func (fsm *fsmStateRadix) shardTouch(id, index uint64) {
-	if s, ok := fsm.ShardGet(id); ok {
+	if s, ok := fsm.Shard(id); ok {
 		s.Updated = index
 		fsm.shardPut(s)
 	}
@@ -313,7 +314,7 @@ func (fsm *fsmStateRadix) ShardMembers(id uint64) map[uint64]string {
 	return members
 }
 
-func (fsm *fsmStateRadix) ReplicaGet(id uint64) (r Replica, ok bool) {
+func (fsm *fsmStateRadix) Replica(id uint64) (r Replica, ok bool) {
 	res, err := fsm.txn.First(`replica`, `id`, id)
 	if err != nil {
 		panic(err)
@@ -340,7 +341,7 @@ func (fsm *fsmStateRadix) replicaDelete(r Replica) {
 }
 
 func (fsm *fsmStateRadix) replicaTouch(id, index uint64) {
-	if r, ok := fsm.ReplicaGet(id); ok {
+	if r, ok := fsm.Replica(id); ok {
 		r.Updated = index
 		fsm.replicaPut(r)
 	}

@@ -48,16 +48,17 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	agent.RegisterStateMachine(
+	agent.ShardTypeRegister(
 		stateMachineUri,
-		stateMachineVersion,
 		stateMachineFactory(),
 	)
+	ctrl.agent = agent
 	if err = agent.Start(); err != nil {
 		panic(err)
 	}
-	ctrl.agent = agent
-	ctrl.Start()
+	if err = ctrl.Start(); err != nil {
+		panic(err)
+	}
 	// Start HTTP API
 	go func(s *http.Server) {
 		log.Fatal(s.ListenAndServe())

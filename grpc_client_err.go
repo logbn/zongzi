@@ -36,10 +36,14 @@ func (c *grpcClientErr) ShardJoin(ctx context.Context, in *internal.ShardJoinReq
 	return nil, c.err
 }
 
-func (c *grpcClientErr) Propose(ctx context.Context, in *internal.Request, opts ...grpc.CallOption) (*internal.Response, error) {
+func (c *grpcClientErr) Commit(ctx context.Context, in *internal.CommitRequest, opts ...grpc.CallOption) (*internal.CommitResponse, error) {
 	return nil, c.err
 }
 
-func (c *grpcClientErr) Query(ctx context.Context, in *internal.Request, opts ...grpc.CallOption) (*internal.Response, error) {
+func (c *grpcClientErr) Apply(ctx context.Context, in *internal.ApplyRequest, opts ...grpc.CallOption) (*internal.ApplyResponse, error) {
+	return nil, c.err
+}
+
+func (c *grpcClientErr) Query(ctx context.Context, in *internal.QueryRequest, opts ...grpc.CallOption) (*internal.QueryResponse, error) {
 	return nil, c.err
 }
