@@ -216,6 +216,7 @@ func (c *controller) requestShardJoin(members map[uint64]string, shardID, replic
 func (c *controller) Stop() {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
+	defer c.agent.log.Infof(`Stopped controller`)
 	c.index = 0
 	if c.cancel != nil {
 		c.cancel()

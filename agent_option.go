@@ -39,9 +39,6 @@ func WithHostConfig(cfg HostConfig) AgentOption {
 		if len(cfg.Gossip.BindAddress) == 0 && len(a.hostConfig.Gossip.BindAddress) > 0 {
 			cfg.Gossip.BindAddress = a.hostConfig.Gossip.BindAddress
 		}
-		if len(cfg.Gossip.Meta) == 0 && len(a.hostConfig.Gossip.Meta) > 0 {
-			cfg.Gossip.Meta = a.hostConfig.Gossip.Meta
-		}
 		a.hostConfig = cfg
 		return nil
 	}
@@ -49,7 +46,7 @@ func WithHostConfig(cfg HostConfig) AgentOption {
 
 func WithMeta(meta []byte) AgentOption {
 	return func(a *Agent) error {
-		a.hostConfig.Gossip.Meta = meta
+		a.hostMeta = meta
 		return nil
 	}
 }

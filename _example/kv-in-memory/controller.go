@@ -88,7 +88,7 @@ func (c *controller) tick() (err error) {
 				}
 				c.isLeader = true
 			}
-		}, true)
+		})
 	}
 	if c.isLeader {
 		c.agent.Read(func(state zongzi.State) {
@@ -143,7 +143,7 @@ func (c *controller) tick() (err error) {
 			buf := bytes.NewBufferString("")
 			state.Save(buf)
 			log.Print(buf.String())
-		}, true)
+		})
 	}
 	if c.shard.ID > 0 {
 		// Resolve replica clients
@@ -170,7 +170,7 @@ func (c *controller) tick() (err error) {
 			c.members = members
 			c.clients = clients
 			c.index = c.shard.Updated
-		}, true)
+		})
 	}
 	return
 }
@@ -180,7 +180,7 @@ func (c *controller) Stop() {
 	defer c.mutex.Unlock()
 	if c.isLeader {
 		c.cancel()
-		c.wg.Wait()
+		// c.wg.Wait()
 	}
 }
 

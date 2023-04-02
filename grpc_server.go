@@ -3,6 +3,7 @@ package zongzi
 import (
 	"context"
 	"net"
+	"time"
 
 	"google.golang.org/grpc"
 
@@ -156,7 +157,6 @@ func (s *grpcServer) Start(a *Agent) error {
 	}()
 	select {
 	case <-a.ctx.Done():
-		s.server.GracefulStop()
 	case <-done:
 	}
 	return err
@@ -164,6 +164,15 @@ func (s *grpcServer) Start(a *Agent) error {
 
 func (s *grpcServer) Stop() {
 	if s.server != nil {
-		s.server.GracefulStop()
+		var ch = make(chan bool)
+		go func() {
+			s.server.GracefulStop()
+			close(ch)
+		}()
+		select {
+		case <-ch:
+		case <-time.After(5 * time.Second):
+			s.server.Stop()
+		}
 	}
 }

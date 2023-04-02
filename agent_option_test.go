@@ -54,25 +54,27 @@ func TestWithHostConfig(t *testing.T) {
 			Gossip: GossipConfig{
 				AdvertiseAddress: `127.0.0.1:80001`,
 				BindAddress:      `127.0.0.1:80002`,
-				Meta:             []byte(`test2`),
 			},
 		})
 		o(a)
+		o = WithMeta([]byte(`test2`))
+		o(a)
 		assert.Equal(t, `127.0.0.1:80001`, string(a.hostConfig.Gossip.AdvertiseAddress))
 		assert.Equal(t, `127.0.0.1:80002`, string(a.hostConfig.Gossip.BindAddress))
-		assert.Equal(t, `test2`, string(a.hostConfig.Gossip.Meta))
+		assert.Equal(t, `test2`, string(a.hostMeta))
 	})
 	t.Run(`no-gossip`, func(t *testing.T) {
 		a, err := NewAgent(`test001`, nil)
-		a.hostConfig.Gossip.Meta = []byte(`test`)
+		o := WithMeta([]byte(`test`))
+		o(a)
 		require.Nil(t, err)
 		aa := a.hostConfig.Gossip.AdvertiseAddress
 		ba := a.hostConfig.Gossip.BindAddress
-		o := WithHostConfig(HostConfig{})
+		o = WithHostConfig(HostConfig{})
 		o(a)
 		assert.Equal(t, aa, string(a.hostConfig.Gossip.AdvertiseAddress))
 		assert.Equal(t, ba, string(a.hostConfig.Gossip.BindAddress))
-		assert.Equal(t, `test`, string(a.hostConfig.Gossip.Meta))
+		assert.Equal(t, `test`, string(a.hostMeta))
 	})
 }
 
@@ -83,7 +85,7 @@ func TestWithMeta(t *testing.T) {
 		a.hostConfig.Gossip.Meta = []byte(`test1`)
 		o := WithMeta([]byte(`test2`))
 		o(a)
-		assert.Equal(t, `test2`, string(a.hostConfig.Gossip.Meta))
+		assert.Equal(t, `test2`, string(a.hostMeta))
 	})
 }
 

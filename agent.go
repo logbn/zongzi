@@ -27,6 +27,7 @@ type Agent struct {
 	grpcServer       *grpcServer
 	host             *dragonboat.NodeHost
 	hostConfig       HostConfig
+	hostMeta         []byte
 	log              logger.ILogger
 	members          map[uint64]string
 	peers            []string
@@ -69,7 +70,7 @@ func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent
 	a.replicaConfig.ShardID = ZongziShardID
 	a.hostConfig.DeploymentID = mustBase36Decode(clusterName)
 	a.hostConfig.AddressByNodeHostID = true
-	a.hostConfig.Gossip.Meta = append(a.hostConfig.Gossip.Meta, []byte(`|`+a.advertiseAddress)...)
+	a.hostConfig.Gossip.Meta = []byte(a.advertiseAddress)
 	a.grpcClientPool = newGrpcClientPool(1e4, a.secrets)
 	a.grpcServer = newGrpcServer(a.bindAddress, a.secrets)
 	return a, nil
@@ -87,7 +88,6 @@ func (a *Agent) Start() (err error) {
 	// Start gRPC server
 	a.wg.Add(1)
 	go func() {
-		defer a.grpcServer.Stop()
 		defer a.wg.Done()
 		defer a.log.Debugf("Stopped gRPC Server")
 		for {
@@ -308,12 +308,13 @@ func (a *Agent) GetReplicaClient(replicaID uint64) (c *ReplicaClient) {
 
 // Stop stops the agent
 func (a *Agent) Stop() {
+	a.grpcServer.Stop()
 	a.controller.Stop()
 	a.ctxCancel()
-	a.wg.Wait()
 	if a.host != nil {
 		a.host.Close()
 	}
+	// a.wg.Wait()
 	a.setStatus(AgentStatus_Stopped)
 }
 
@@ -485,13 +486,13 @@ func (a *Agent) joinPrimeShard() (replicaID uint64, err error) {
 
 // updateHost adds host info to prime shard
 func (a *Agent) updateHost() (err error) {
-	meta, apiAddr, err := a.parseMeta(a.HostID())
+	apiAddr, err := a.parseMeta(a.HostID())
 	if err != nil {
 		return
 	}
 	shardTypes := keys(a.shardTypes)
 	sort.Strings(shardTypes)
-	cmd := newCmdHostPut(a.HostID(), apiAddr, a.hostConfig.RaftAddress, meta, HostStatus_Active, shardTypes)
+	cmd := newCmdHostPut(a.HostID(), apiAddr, a.hostConfig.RaftAddress, a.hostMeta, HostStatus_Active, shardTypes)
 	a.log.Debugf("Updating host: %s", string(cmd))
 	_, err = a.primePropose(cmd)
 	return
@@ -583,20 +584,19 @@ func (a *Agent) joinShardReplica(hostID string, shardID, replicaID uint64, isNon
 	return replicaID, nil
 }
 
-func (a *Agent) parseMeta(nhid string) (meta []byte, apiAddr string, err error) {
+func (a *Agent) parseMeta(nhid string) (apiAddr string, err error) {
 	reg, ok := a.host.GetNodeHostRegistry()
 	if !ok {
 		err = fmt.Errorf("Unable to retrieve HostRegistry")
 		return
 	}
-	meta, ok = reg.GetMeta(nhid)
+	meta, ok := reg.GetMeta(nhid)
 	if !ok {
 		err = fmt.Errorf("Unable to retrieve node host meta (%s)", nhid)
 		return
 	}
-	i := bytes.LastIndexByte(meta, '|')
-	apiAddr = string(meta[i+1:])
-	meta = meta[:i]
+	parts := bytes.Split(meta, []byte(`|`))
+	apiAddr = string(parts[0])
 	return
 }
 
@@ -647,18 +647,17 @@ func (a *Agent) primeInitAwait() (err error) {
 
 // primeAddHost proposes addition of host metadata to the prime shard state
 func (a *Agent) primeAddHost(nhid string) (host Host, err error) {
-	meta, addr, err := a.parseMeta(nhid)
+	addr, err := a.parseMeta(nhid)
 	if err != nil {
 		return
 	}
-	cmd := newCmdHostPut(nhid, addr, "", meta, HostStatus_New, nil)
+	cmd := newCmdHostPut(nhid, addr, "", nil, HostStatus_New, nil)
 	_, err = a.primePropose(cmd)
 	if err != nil {
 		return
 	}
 	host = Host{
 		ID:     nhid,
-		Meta:   meta,
 		Status: HostStatus_New,
 	}
 	return
