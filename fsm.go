@@ -27,7 +27,7 @@ type fsm struct {
 	log       logger.ILogger
 	replicaID uint64
 	shardID   uint64
-	state     State
+	state     *State
 }
 
 func (fsm *fsm) Update(entry Entry) (Result, error) {
@@ -75,8 +75,10 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 		case command_action_put:
 			if old, ok := state.Host(cmd.Host.ID); ok {
 				cmd.Host.Created = old.Created
+				fsm.tagsSetNX(cmd.Host.Tags, old.Tags)
 			} else {
 				cmd.Host.Created = entry.Index
+				state.setLastHostID(cmd.Host.ID)
 			}
 			cmd.Host.Updated = entry.Index
 			state.ReplicaIterateByHostID(cmd.Host.ID, func(r Replica) bool {
@@ -99,6 +101,13 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			})
 			state.hostDelete(host)
 			entry.Result.Value = 1
+		// Tags
+		case command_action_tags_set:
+			entry.Result.Value = fsm.hostTagAction(fsm.tagsSet, state, entry, cmd)
+		case command_action_tags_setnx:
+			entry.Result.Value = fsm.hostTagAction(fsm.tagsSetNX, state, entry, cmd)
+		case command_action_tags_remove:
+			entry.Result.Value = fsm.hostTagAction(fsm.tagsRemove, state, entry, cmd)
 		default:
 			fsm.log.Errorf("Unrecognized host action: %s - %#v", cmd.Action, cmd)
 		}
@@ -117,7 +126,9 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 		case command_action_put:
 			if old, ok := state.Shard(cmd.Shard.ID); ok {
 				cmd.Shard.Created = old.Created
-			} else if cmd.Shard.ID == 0 && state.metaGet(`shardIndex`) == 0 {
+				fsm.tagsSetNX(cmd.Shard.Tags, old.Tags)
+			} else if cmd.Shard.ID == 0 && state.LastShardID() == 0 {
+				// Special case for prime shard (0)
 				cmd.Shard.Created = entry.Index
 			} else {
 				fsm.log.Errorf("%s: %s - %#v", ErrShardNotFound, cmd.Action, cmd)
@@ -144,6 +155,13 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			})
 			state.shardDelete(shard)
 			entry.Result.Value = 1
+		// Tags
+		case command_action_tags_set:
+			entry.Result.Value = fsm.shardTagAction(fsm.tagsSet, state, entry, cmd)
+		case command_action_tags_setnx:
+			entry.Result.Value = fsm.shardTagAction(fsm.tagsSetNX, state, entry, cmd)
+		case command_action_tags_remove:
+			entry.Result.Value = fsm.shardTagAction(fsm.tagsRemove, state, entry, cmd)
 		default:
 			fsm.log.Errorf("Unrecognized shard action: %s - %#v", cmd.Action, cmd)
 		}
@@ -181,6 +199,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 		case command_action_put:
 			if old, ok := state.Replica(cmd.Replica.ID); ok {
 				cmd.Replica.Created = old.Created
+				fsm.tagsSetNX(cmd.Replica.Tags, old.Tags)
 			} else {
 				fsm.log.Errorf("%s: %s - %#v", ErrReplicaNotFound, cmd.Action, cmd)
 				break
@@ -201,6 +220,13 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			state.shardTouch(replica.ShardID, entry.Index)
 			state.replicaDelete(replica)
 			entry.Result.Value = 1
+		// Tags
+		case command_action_tags_set:
+			entry.Result.Value = fsm.replicaTagAction(fsm.tagsSet, state, entry, cmd)
+		case command_action_tags_setnx:
+			entry.Result.Value = fsm.replicaTagAction(fsm.tagsSetNX, state, entry, cmd)
+		case command_action_tags_remove:
+			entry.Result.Value = fsm.replicaTagAction(fsm.tagsRemove, state, entry, cmd)
 		default:
 			fsm.log.Errorf("Unrecognized replica action: %s - %#v", cmd.Action, cmd)
 		}
@@ -222,3 +248,78 @@ func (fsm *fsm) RecoverFromSnapshot(r io.Reader, _ []statemachine.SnapshotFile, 
 
 func (fsm *fsm) Lookup(interface{}) (res interface{}, err error) { return }
 func (fsm *fsm) Close() (err error)                              { return }
+
+func (fsm *fsm) hostTagAction(fn func(map[string]string, map[string]string) bool, state *State, entry Entry, cmd commandHost) (val uint64) {
+	host, ok := state.Host(cmd.Host.ID)
+	if !ok {
+		fsm.log.Warningf("%v: %#v", ErrHostNotFound, cmd)
+		return
+	}
+	if fn(host.Tags, cmd.Host.Tags) {
+		state.ReplicaIterateByHostID(cmd.Host.ID, func(r Replica) bool {
+			state.shardTouch(r.ShardID, entry.Index)
+			return true
+		})
+		state.hostPut(host)
+		val = 1
+	}
+	return
+}
+
+func (fsm *fsm) shardTagAction(fn func(map[string]string, map[string]string) bool, state *State, entry Entry, cmd commandShard) (val uint64) {
+	shard, ok := state.Shard(cmd.Shard.ID)
+	if !ok {
+		fsm.log.Warningf("%v: %#v", ErrShardNotFound, cmd)
+		return
+	}
+	if fn(shard.Tags, cmd.Shard.Tags) {
+		state.ReplicaIterateByShardID(cmd.Shard.ID, func(r Replica) bool {
+			state.hostTouch(r.HostID, entry.Index)
+			return true
+		})
+		state.shardPut(shard)
+		val = 1
+	}
+	return
+}
+
+func (fsm *fsm) replicaTagAction(fn func(map[string]string, map[string]string) bool, state *State, entry Entry, cmd commandReplica) (val uint64) {
+	replica, ok := state.Replica(cmd.Replica.ID)
+	if !ok {
+		fsm.log.Warningf("%v: %#v", ErrReplicaNotFound, cmd)
+		return
+	}
+	if fn(replica.Tags, cmd.Replica.Tags) {
+		state.hostTouch(replica.HostID, entry.Index)
+		state.shardTouch(replica.ShardID, entry.Index)
+		state.replicaPut(replica)
+		val = 1
+	}
+	return
+}
+
+func (fsm *fsm) tagsSet(new, old map[string]string) (written bool) {
+	for k, v := range old {
+		new[k] = v
+		written = true
+	}
+	return
+}
+
+func (fsm *fsm) tagsSetNX(new, old map[string]string) (written bool) {
+	for k, v := range old {
+		if _, ok := new[k]; !ok {
+			new[k] = v
+			written = true
+		}
+	}
+	return
+}
+
+func (fsm *fsm) tagsRemove(new, old map[string]string) (written bool) {
+	for k, _ := range old {
+		delete(new, k)
+		written = true
+	}
+	return
+}

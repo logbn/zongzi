@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"log"
 	"net/http"
@@ -13,36 +12,36 @@ import (
 	"github.com/logbn/zongzi"
 )
 
+var (
+	clusterName = flag.String("n", "test001", "Cluster name (base36 maxlen 12)")
+	dataDir     = flag.String("d", "/var/lib/zongzi", "Base data directory")
+	apiAddr     = flag.String("a", "10.0.0.1:17001", "Internal gRPC api address")
+	raftAddr    = flag.String("r", "10.0.0.1:17002", "Dragonboat raft address")
+	gossipAddr  = flag.String("g", "10.0.0.1:17003", "Memberlist gossip address")
+	httpAddr    = flag.String("h", "10.0.0.1:8000", "HTTP address")
+	zone        = flag.String("z", "us-west-1a", "Zone")
+	peers       = flag.String("p", "10.0.0.1:17001, 10.0.0.2:17001, 10.0.0.3:17001", "Peer node api addresses")
+	secret      = flag.String("s", "", "Shared secrets (csv)")
+)
+
 func main() {
-	var (
-		clusterName = flag.String("n", "test001", "Cluster name (base36 maxlen 12)")
-		dataDir     = flag.String("d", "/var/lib/zongzi", "Base data directory")
-		peers       = flag.String("p", "127.0.0.1:17001", "Peer nodes")
-		listenAddr  = flag.String("l", "127.0.0.1:17001", "Listen address")
-		gossipAddr  = flag.String("g", "127.0.0.1:17002", "Gossip address")
-		raftAddr    = flag.String("r", "127.0.0.1:17003", "Raft address")
-		httpAddr    = flag.String("h", "127.0.0.1:8000", "HTTP address")
-		zone        = flag.String("z", "us-west-1a", "Zone")
-		secret      = flag.String("s", "", "Shared secrets (csv)")
-	)
 	flag.Parse()
 	zongzi.SetLogLevelDebug()
 	ctrl := newController()
-	meta, _ := json.Marshal(map[string]any{"zone": *zone})
 	agent, err := zongzi.NewAgent(
 		*clusterName,
 		strings.Split(*peers, ","),
-		zongzi.WithApiAddress(*listenAddr),
+		zongzi.WithApiAddress(*apiAddr),
 		zongzi.WithGossipAddress(*gossipAddr),
 		zongzi.WithHostConfig(zongzi.HostConfig{
 			NodeHostDir:       *dataDir + "/raft",
 			NotifyCommit:      true,
 			RaftAddress:       *raftAddr,
 			RaftEventListener: ctrl,
-			RTTMillisecond:    10,
+			RTTMillisecond:    2,
 			WALDir:            *dataDir + "/wal",
 		}),
-		zongzi.WithMeta(meta),
+		zongzi.WithHostTags("geo:zone="+*zone),
 		zongzi.WithSecrets(strings.Split(*secret, ",")),
 	)
 	if err != nil {

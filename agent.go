@@ -27,7 +27,7 @@ type Agent struct {
 	grpcServer       *grpcServer
 	host             *dragonboat.NodeHost
 	hostConfig       HostConfig
-	hostMeta         []byte
+	hostTags         []string
 	log              logger.ILogger
 	members          map[uint64]string
 	peers            []string
@@ -198,7 +198,7 @@ func (a *Agent) Start() (err error) {
 
 // Client returns a Client for a specific host.
 func (a *Agent) Client(hostID string) (c *Client) {
-	a.Read(a.ctx, func(s State) {
+	a.Read(a.ctx, func(s *State) {
 		host, ok := s.Host(hostID)
 		if ok {
 			c = newClient(host, a)
@@ -229,7 +229,7 @@ func (a *Agent) Status() AgentStatus {
 // Pass a timeout context to avoid blocking indefinitely.
 //
 // Read is thread safe.
-func (a *Agent) Read(ctx context.Context, fn func(State), stale ...bool) (err error) {
+func (a *Agent) Read(ctx context.Context, fn func(*State), stale ...bool) (err error) {
 	if len(stale) == 0 || stale[0] == false {
 		err = a.readIndex(ctx, a.replicaConfig.ShardID)
 		if err != nil {
@@ -242,7 +242,7 @@ func (a *Agent) Read(ctx context.Context, fn func(State), stale ...bool) (err er
 
 // ShardCreate creates a new shard
 func (a *Agent) ShardCreate(typeName string) (shard Shard, err error) {
-	res, err := a.primePropose(newCmdShardPost(typeName))
+	res, err := a.primePropose(newCmdShardPost(typeName, nil))
 	if err != nil {
 		return
 	}
@@ -308,6 +308,24 @@ func (a *Agent) Stop() {
 	}
 	a.wg.Wait()
 	a.setStatus(AgentStatus_Stopped)
+}
+
+// TagsSet sets tags on an item (Host, Shard or Replica). Overwrites if tag is already present.
+func (a *Agent) TagsSet(item any, tags ...string) (err error) {
+	_, err = a.primePropose(newCmdTagsSet(item, tags...))
+	return
+}
+
+// TagsSetNX sets tags on an item (Host, Shard or Replica). Does nothing if tag is already present.
+func (a *Agent) TagsSetNX(item any, tags ...string) (err error) {
+	_, err = a.primePropose(newCmdTagsSetNX(item, tags...))
+	return
+}
+
+// TagsRemove remove tags from an item (Host, Shard or Replica).
+func (a *Agent) TagsRemove(item any, tags ...string) (err error) {
+	_, err = a.primePropose(newCmdTagsRemove(item, tags...))
+	return
 }
 
 func (a *Agent) setStatus(s AgentStatus) {
@@ -484,7 +502,7 @@ func (a *Agent) updateHost() (err error) {
 	}
 	shardTypes := keys(a.shardTypes)
 	sort.Strings(shardTypes)
-	cmd := newCmdHostPut(a.HostID(), apiAddr, a.hostConfig.RaftAddress, a.hostMeta, HostStatus_Active, shardTypes)
+	cmd := newCmdHostPut(a.HostID(), apiAddr, a.hostConfig.RaftAddress, a.hostTags, HostStatus_Active, shardTypes)
 	a.log.Debugf("Updating host: %s", string(cmd))
 	_, err = a.primePropose(cmd)
 	return
@@ -532,7 +550,7 @@ func (a *Agent) readIndex(ctx context.Context, shardID uint64) (err error) {
 func (a *Agent) joinPrimeReplica(hostID string, shardID uint64, isNonVoting bool) (replicaID uint64, err error) {
 	var ok bool
 	var host Host
-	a.Read(a.ctx, func(s State) {
+	a.Read(a.ctx, func(s *State) {
 		host, ok = s.Host(hostID)
 		if !ok {
 			return
@@ -544,7 +562,7 @@ func (a *Agent) joinPrimeReplica(hostID string, shardID uint64, isNonVoting bool
 			return
 		}
 	}
-	a.Read(a.ctx, func(s State) {
+	a.Read(a.ctx, func(s *State) {
 		s.ReplicaIterateByHostID(host.ID, func(r Replica) bool {
 			if r.ShardID == shardID {
 				replicaID = r.ID
@@ -605,7 +623,7 @@ func (a *Agent) primePropose(cmd []byte) (Result, error) {
 
 // primeInit proposes addition of initial cluster state to prime shard
 func (a *Agent) primeInit(members map[uint64]string) (err error) {
-	_, err = a.primePropose(newCmdShardPut(a.replicaConfig.ShardID, shardName))
+	_, err = a.primePropose(newCmdShardPut(a.replicaConfig.ShardID, projectUri))
 	if err != nil {
 		return
 	}
@@ -630,7 +648,7 @@ func (a *Agent) primeInit(members map[uint64]string) (err error) {
 func (a *Agent) primeInitAwait() (err error) {
 	for {
 		var found bool
-		err = a.Read(a.ctx, func(s State) {
+		err = a.Read(a.ctx, func(s *State) {
 			s.ReplicaIterateByHostID(a.HostID(), func(r Replica) bool {
 				found = true
 				return false

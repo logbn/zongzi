@@ -2,6 +2,7 @@ package zongzi
 
 import (
 	"encoding/json"
+	"strings"
 )
 
 const (
@@ -14,20 +15,10 @@ const (
 	command_action_put           = "put"
 	command_action_post          = "post"
 	command_action_status_update = "status-update"
+	command_action_tags_set      = "tags-set"
+	command_action_tags_setnx    = "tags-setnx"
+	command_action_tags_remove   = "tags-remove"
 )
-
-type Replica struct {
-	ID      uint64        `json:"id"`
-	Meta    []byte        `json:"meta"`
-	Status  ReplicaStatus `json:"status"`
-	Created uint64        `json:"created"`
-	Updated uint64        `json:"updated"`
-
-	HostID      string `json:"hostID"`
-	IsNonVoting bool   `json:"isNonVoting"`
-	IsWitness   bool   `json:"isWitness"`
-	ShardID     uint64 `json:"shardID"`
-}
 
 type command struct {
 	Action string `json:"action"`
@@ -49,14 +40,14 @@ type commandReplica struct {
 	Replica Replica `json:"replica"`
 }
 
-func newCmdHostPut(nhid, apiAddr, raftAddr string, meta []byte, status HostStatus, shardTypes []string) (b []byte) {
+func newCmdHostPut(nhid, apiAddr, raftAddr string, tagList []string, status HostStatus, shardTypes []string) (b []byte) {
 	b, _ = json.Marshal(commandHost{command{
 		Action: command_action_put,
 		Type:   command_type_host,
 	}, Host{
 		ApiAddress:  apiAddr,
 		ID:          nhid,
-		Meta:        meta,
+		Tags:        tagMapFromList(tagList),
 		RaftAddress: raftAddr,
 		ShardTypes:  shardTypes,
 		Status:      status,
@@ -74,13 +65,14 @@ func newCmdHostDel(nhid string) (b []byte) {
 	return
 }
 
-func newCmdShardPost(shardType string) (b []byte) {
+func newCmdShardPost(shardType string, tags map[string]string) (b []byte) {
 	b, _ = json.Marshal(commandShard{command{
 		Action: command_action_post,
 		Type:   command_type_shard,
 	}, Shard{
 		Status: ShardStatus_New,
 		Type:   shardType,
+		Tags:   tags,
 	}})
 	return
 }
@@ -108,19 +100,15 @@ func newCmdShardDel(shardID uint64) (b []byte) {
 }
 
 func newCmdReplicaPost(nhid string, shardID uint64, isNonVoting bool) (b []byte) {
-	r := Replica{
+	b, _ = json.Marshal(commandReplica{command{
+		Action: command_action_post,
+		Type:   command_type_replica,
+	}, Replica{
 		HostID:      nhid,
 		IsNonVoting: isNonVoting,
 		ShardID:     shardID,
 		Status:      ReplicaStatus_New,
-	}
-	if isNonVoting {
-		r.Status = ReplicaStatus_Joining
-	}
-	b, _ = json.Marshal(commandReplica{command{
-		Action: command_action_post,
-		Type:   command_type_replica,
-	}, r})
+	}})
 	return
 }
 
@@ -156,4 +144,61 @@ func newCmdReplicaUpdateStatus(replicaID uint64, status ReplicaStatus) (b []byte
 		Status: status,
 	}})
 	return
+}
+
+func newCmdTagsSetNX(subject any, tagList ...string) []byte {
+	return newCmdTags(command_action_tags_setnx, subject, tagList)
+}
+
+func newCmdTagsSet(subject any, tagList ...string) []byte {
+	return newCmdTags(command_action_tags_set, subject, tagList)
+}
+
+func newCmdTagsRemove(subject any, tagList ...string) []byte {
+	return newCmdTags(command_action_tags_remove, subject, tagList)
+}
+
+func newCmdTags(action string, subject any, tagList []string) (b []byte) {
+	switch subject.(type) {
+	case Host:
+		b, _ = json.Marshal(commandHost{command{
+			Action: action,
+			Type:   command_type_host,
+		}, Host{
+			ID:   subject.(Host).ID,
+			Tags: tagMapFromList(tagList),
+		}})
+	case Shard:
+		b, _ = json.Marshal(commandShard{command{
+			Action: action,
+			Type:   command_type_shard,
+		}, Shard{
+			ID:   subject.(Shard).ID,
+			Tags: tagMapFromList(tagList),
+		}})
+	case Replica:
+		b, _ = json.Marshal(commandReplica{command{
+			Action: action,
+			Type:   command_type_replica,
+		}, Replica{
+			ID:   subject.(Replica).ID,
+			Tags: tagMapFromList(tagList),
+		}})
+	}
+	return
+}
+
+// tagMapFromList converts a list of tags to a map of key (namespace:predicate) and value
+//
+//	["geo:region=us-west-1"] -> {"geo:region": "us-west-1"}
+func tagMapFromList(tagList []string) map[string]string {
+	var m = map[string]string{}
+	for _, ts := range tagList {
+		if i := strings.Index(ts, "="); i >= 0 {
+			m[ts[:i]] = ts[i:]
+		} else {
+			m[ts] = ""
+		}
+	}
+	return m
 }

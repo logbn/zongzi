@@ -15,18 +15,18 @@ import (
 )
 
 const (
+	projectName = "zongzi"
+	projectUri  = "zongzi://github.com/logbn/zongzi"
 	minReplicas = 3
 	raftTimeout = time.Second
 	joinTimeout = 5 * time.Second
 	waitPeriod  = 500 * time.Millisecond
-	projectName = "zongzi"
-	shardName   = "github.com/logbn/zongzi/prime"
 )
 
 const (
 	DefaultApiAddress    = "127.0.0.1:17001"
-	DefaultGossipAddress = "127.0.0.1:17002"
-	DefaultRaftAddress   = "127.0.0.1:17003"
+	DefaultRaftAddress   = "127.0.0.1:17002"
+	DefaultGossipAddress = "127.0.0.1:17003"
 
 	ZongziShardID = 0
 )
@@ -35,7 +35,7 @@ var (
 	DefaultHostConfig = HostConfig{
 		NodeHostDir:    "/var/lib/zongzi/raft",
 		RaftAddress:    DefaultRaftAddress,
-		RTTMillisecond: 5,
+		RTTMillisecond: 10,
 		NotifyCommit:   true,
 		WALDir:         "/var/lib/zongzi/wal",
 	}
@@ -47,7 +47,7 @@ var (
 		OrderedConfigChange:     true,
 		Quiesce:                 false,
 		SnapshotCompressionType: config.Snappy,
-		SnapshotEntries:         10,
+		SnapshotEntries:         1000,
 	}
 )
 

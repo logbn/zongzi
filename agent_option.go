@@ -44,9 +44,9 @@ func WithHostConfig(cfg HostConfig) AgentOption {
 	}
 }
 
-func WithMeta(meta []byte) AgentOption {
+func WithHostTags(tags ...string) AgentOption {
 	return func(a *Agent) error {
-		a.hostMeta = meta
+		a.hostTags = tags
 		return nil
 	}
 }

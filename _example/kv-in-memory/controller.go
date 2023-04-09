@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"log"
 	"math/rand"
 	"sync"
@@ -14,10 +13,16 @@ import (
 	"github.com/logbn/zongzi"
 )
 
-func newController() *controller {
-	return &controller{
-		clock: clock.New(),
-	}
+type hostTags map[string]string
+
+func (ht hostTags) Zone() (zone string) {
+	zone, _ = ht["geo:zone"]
+	return
+}
+
+type hostMeta struct {
+	Host zongzi.Host
+	Tags hostTags
 }
 
 type controller struct {
@@ -27,12 +32,19 @@ type controller struct {
 	clock       clock.Clock
 	isLeader    bool
 	index       uint64
+	lastHostID  string
 	leaderIndex uint64
 	shard       zongzi.Shard
 	members     []*zongzi.Client
 	clients     []*zongzi.Client
 	mutex       sync.RWMutex
 	wg          sync.WaitGroup
+}
+
+func newController() *controller {
+	return &controller{
+		clock: clock.New(),
+	}
 }
 
 func (c *controller) Start() (err error) {
@@ -60,20 +72,13 @@ func (c *controller) Start() (err error) {
 	return
 }
 
-type hostMeta struct {
-	Host zongzi.Host
-	Meta struct {
-		Zone string `json:"zone"`
-	}
-}
-
 func (c *controller) tick() (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	var ok bool
 	var done bool
 	if c.shard.ID == 0 {
-		c.agent.Read(c.ctx, func(state zongzi.State) {
+		c.agent.Read(c.ctx, func(state *zongzi.State) {
 			state.ShardIterate(func(s zongzi.Shard) bool {
 				if s.Type == stateMachineUri && s.Status != zongzi.ShardStatus_Closed {
 					c.shard = s
@@ -92,11 +97,11 @@ func (c *controller) tick() (err error) {
 		})
 	}
 	if c.isLeader {
-		c.agent.Read(c.ctx, func(state zongzi.State) {
+		c.agent.Read(c.ctx, func(state *zongzi.State) {
 			if c.shard, ok = state.Shard(c.shard.ID); !ok {
 				return
 			}
-			if c.shard.Updated <= c.leaderIndex {
+			if c.leaderIndex >= c.shard.Updated && c.lastHostID == state.LastHostID() {
 				done = true
 			}
 			if done {
@@ -107,17 +112,19 @@ func (c *controller) tick() (err error) {
 			var toAdd []hostMeta
 			var zones = map[string]bool{}
 			state.HostIterate(func(h zongzi.Host) bool {
-				var item = hostMeta{Host: h}
-				json.Unmarshal(h.Meta, &item.Meta)
-				if len(item.Meta.Zone) == 0 {
-					log.Println("Invalid host meta %s", string(h.Meta))
+				var item = hostMeta{
+					Host: h,
+					Tags: hostTags(h.Tags),
+				}
+				if len(item.Tags.Zone()) == 0 {
+					log.Printf("Invalid host meta %+v\n", h.Tags)
 					return true
 				}
 				var hasReplica bool
 				state.ReplicaIterateByHostID(h.ID, func(r zongzi.Replica) bool {
 					if r.ShardID == c.shard.ID {
 						if !r.IsNonVoting {
-							zones[item.Meta.Zone] = true
+							zones[item.Tags.Zone()] = true
 						}
 						hasReplica = true
 						return false
@@ -130,7 +137,7 @@ func (c *controller) tick() (err error) {
 				return true
 			})
 			for _, item := range toAdd {
-				if _, ok := zones[item.Meta.Zone]; !ok {
+				if _, ok := zones[item.Tags.Zone()]; !ok {
 					_, err = c.agent.ReplicaCreate(item.Host.ID, c.shard.ID, false)
 				} else {
 					_, err = c.agent.ReplicaCreate(item.Host.ID, c.shard.ID, true)
@@ -140,6 +147,7 @@ func (c *controller) tick() (err error) {
 				}
 			}
 			c.leaderIndex = c.shard.Updated
+			c.lastHostID = state.LastHostID()
 			// Print snapshot
 			buf := bytes.NewBufferString("")
 			state.Save(buf)
@@ -148,11 +156,11 @@ func (c *controller) tick() (err error) {
 	}
 	if c.shard.ID > 0 {
 		// Resolve replica clients
-		c.agent.Read(c.ctx, func(state zongzi.State) {
+		c.agent.Read(c.ctx, func(state *zongzi.State) {
 			if c.shard, ok = state.Shard(c.shard.ID); !ok {
 				return
 			}
-			if c.shard.Updated <= c.index {
+			if c.shard.Updated <= c.index && c.lastHostID == state.LastHostID() {
 				done = true
 			}
 			if done {

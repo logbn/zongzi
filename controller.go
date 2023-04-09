@@ -51,7 +51,7 @@ func (c *controller) tick() (err error) {
 	var index uint64
 	var hadErr bool
 	var shard Shard
-	c.agent.Read(c.ctx, func(state State) {
+	c.agent.Read(c.ctx, func(state *State) {
 		host, ok := state.Host(c.agent.HostID())
 		if !ok {
 			hadErr = true
@@ -165,12 +165,12 @@ func (c *controller) tick() (err error) {
 			}
 		}
 	})
-	if !hadErr && index > c.index {
-		c.agent.log.Debugf("%s Finished processing %d", c.agent.HostID(), index)
-		c.index = index
-	} else {
+	if index <= c.index || hadErr {
 		err = nil
+		return
 	}
+	c.agent.log.Debugf("%s Finished processing %d", c.agent.HostID(), index)
+	c.index = index
 	return
 }
 
@@ -182,7 +182,7 @@ func (c *controller) requestShardJoin(members map[uint64]string, shardID, replic
 	var ok bool
 	var err error
 	for _, hostID := range members {
-		c.agent.Read(c.ctx, func(s State) {
+		c.agent.Read(c.ctx, func(s *State) {
 			host, ok = s.Host(hostID)
 		})
 		if !ok {

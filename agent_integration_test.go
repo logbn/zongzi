@@ -79,7 +79,7 @@ func TestAgent(t *testing.T) {
 			var replicaCount = 0
 			replicas = replicas[:0]
 			for j, a := range agents {
-				agents[j].Read(ctx, func(s State) {
+				agents[j].Read(ctx, func(s *State) {
 					s.ReplicaIterateByHostID(a.HostID(), func(r Replica) bool {
 						replicas = append(replicas, r)
 						if r.Status == ReplicaStatus_Active {
@@ -110,7 +110,7 @@ func TestAgent(t *testing.T) {
 			require.True(t, await(10, 100, func() bool {
 				var replicaCount = 0
 				replicas = replicas[:0]
-				agents[0].Read(ctx, func(s State) {
+				agents[0].Read(ctx, func(s *State) {
 					s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
 						replicas = append(replicas, r)
 						if r.Status == ReplicaStatus_Active {
@@ -148,7 +148,7 @@ func TestAgent(t *testing.T) {
 				return agents[0].Status() == AgentStatus_Ready
 			}), `%#v`, *agents[0])
 			require.True(t, await(5, 100, func() (success bool) {
-				agents[0].Read(ctx, func(s State) {
+				agents[0].Read(ctx, func(s *State) {
 					host, ok := s.Host(agents[0].HostID())
 					success = ok && host.Status == HostStatus_Active
 				})
@@ -168,7 +168,7 @@ func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, sm, op string, 
 	var err error
 	var val uint64
 	var nonvoting = 0
-	agents[0].Read(context.Background(), func(s State) {
+	agents[0].Read(context.Background(), func(s *State) {
 		s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
 			if op == "update" && r.IsNonVoting {
 				nonvoting++

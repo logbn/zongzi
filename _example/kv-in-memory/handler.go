@@ -53,22 +53,28 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				Val: r.FormValue("val"),
 			},
 		}
-		code, data, err := h.ctrl.getClient(false, true).Apply(ctx, h.ctrl.shard.ID, cmd.MustMarshalBinary())
+		var code uint64
+		var data []byte
+		if r.FormValue("stale") == "true" {
+			err = h.ctrl.getClient(r.FormValue("local") != "true", true).Commit(ctx, h.ctrl.shard.ID, cmd.MustMarshalBinary())
+		} else {
+			code, data, err = h.ctrl.getClient(r.FormValue("local") != "true", true).Apply(ctx, h.ctrl.shard.ID, cmd.MustMarshalBinary())
+			if code == ResultCodeFailure {
+				w.WriteHeader(400)
+				w.Write(data)
+				return
+			}
+			if code == ResultCodeVersionMismatch {
+				var record kvRecord
+				json.Unmarshal(data, &record)
+				w.WriteHeader(409)
+				w.Write([]byte(fmt.Sprintf("Version mismatch (%d != %d)", cmd.Record.Ver, record.Ver)))
+				return
+			}
+		}
 		if err != nil {
 			w.WriteHeader(500)
 			w.Write([]byte(err.Error()))
-			return
-		}
-		if code == ResultCodeFailure {
-			w.WriteHeader(400)
-			w.Write(data)
-			return
-		}
-		if code == ResultCodeVersionMismatch {
-			var record kvRecord
-			json.Unmarshal(data, &record)
-			w.WriteHeader(409)
-			w.Write([]byte(fmt.Sprintf("Version mismatch (%d != %d)", cmd.Record.Ver, record.Ver)))
 			return
 		}
 		w.WriteHeader(200)
