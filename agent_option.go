@@ -44,6 +44,20 @@ func WithHostConfig(cfg HostConfig) AgentOption {
 	}
 }
 
+func WithRaftEventListener(listener RaftEventListener) AgentOption {
+	return func(a *Agent) error {
+		a.hostConfig.RaftEventListener = listener
+		return nil
+	}
+}
+
+func WithSystemEventListener(listener SystemEventListener) AgentOption {
+	return func(a *Agent) error {
+		a.hostConfig.SystemEventListener = listener
+		return nil
+	}
+}
+
 func WithHostTags(tags ...string) AgentOption {
 	return func(a *Agent) error {
 		a.hostTags = tags
@@ -54,13 +68,6 @@ func WithHostTags(tags ...string) AgentOption {
 func WithReplicaConfig(cfg ReplicaConfig) AgentOption {
 	return func(a *Agent) error {
 		a.replicaConfig = cfg
-		return nil
-	}
-}
-
-func WithSecrets(secrets []string) AgentOption {
-	return func(a *Agent) error {
-		a.secrets = secrets
 		return nil
 	}
 }

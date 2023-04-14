@@ -12,7 +12,7 @@ type Client struct {
 	hostID         string
 }
 
-func newClient(host Host, a *Agent) *Client {
+func newClient(a *Agent, host Host) *Client {
 	return &Client{
 		agent:          a,
 		hostApiAddress: host.ApiAddress,

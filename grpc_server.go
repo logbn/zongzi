@@ -16,13 +16,13 @@ type grpcServer struct {
 	agent      *Agent
 	server     *grpc.Server
 	listenAddr string
-	secrets    []string
+	serverOpts []grpc.ServerOption
 }
 
-func newGrpcServer(listenAddr string, secrets []string) *grpcServer {
+func newGrpcServer(listenAddr string, opts ...grpc.ServerOption) *grpcServer {
 	return &grpcServer{
 		listenAddr: listenAddr,
-		secrets:    secrets,
+		serverOpts: opts,
 	}
 }
 
@@ -191,10 +191,9 @@ func (s *grpcServer) Start(a *Agent) error {
 	if err != nil {
 		return err
 	}
-	var opts []grpc.ServerOption
 	// https://github.com/grpc/grpc-go/tree/master/examples/features/authentication
 	// opts = append(opts, grpc.UnaryInterceptor(ensureValidToken))
-	s.server = grpc.NewServer(opts...)
+	s.server = grpc.NewServer(s.serverOpts...)
 	internal.RegisterZongziServer(s.server, s)
 	var done = make(chan bool)
 	go func() {

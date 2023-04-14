@@ -9,8 +9,8 @@ import (
 )
 
 type grpcClientPool struct {
-	clients *lru.Cache[string, grpcClientPoolEntry]
-	secrets []string
+	clients  *lru.Cache[string, grpcClientPoolEntry]
+	dialOpts []grpc.DialOption
 }
 
 type grpcClientPoolEntry struct {
@@ -22,11 +22,11 @@ func grpcClientPoolEvictFunc(addr string, e grpcClientPoolEntry) {
 	e.conn.Close()
 }
 
-func newGrpcClientPool(size int, secrets []string) *grpcClientPool {
+func newGrpcClientPool(size int, dialOpts ...grpc.DialOption) *grpcClientPool {
 	clients, _ := lru.NewWithEvict[string, grpcClientPoolEntry](size, grpcClientPoolEvictFunc)
 	return &grpcClientPool{
-		clients: clients,
-		secrets: secrets,
+		clients:  clients,
+		dialOpts: dialOpts,
 	}
 }
 
@@ -35,11 +35,11 @@ func (c *grpcClientPool) get(addr string) (client internal.ZongziClient) {
 	if ok {
 		return e.client
 	}
-	var opts []grpc.DialOption
 	// https://github.com/grpc/grpc-go/tree/master/examples/features/authentication
 	// opts = append(opts, grpc.WithPerRPCCredentials(perRPC))
-	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	conn, err := grpc.Dial(addr, opts...)
+	conn, err := grpc.Dial(addr, append([]grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	}, c.dialOpts...)...)
 	if err != nil {
 		return &grpcClientErr{err}
 	}

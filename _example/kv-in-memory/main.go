@@ -21,7 +21,6 @@ var (
 	httpAddr    = flag.String("h", "10.0.0.1:8000", "HTTP address")
 	zone        = flag.String("z", "us-west-1a", "Zone")
 	peers       = flag.String("p", "10.0.0.1:17001, 10.0.0.2:17001, 10.0.0.3:17001", "Peer node api addresses")
-	secret      = flag.String("s", "", "Shared secrets (csv)")
 )
 
 func main() {
@@ -42,7 +41,6 @@ func main() {
 			WALDir:            *dataDir + "/wal",
 		}),
 		zongzi.WithHostTags("geo:zone="+*zone),
-		zongzi.WithSecrets(strings.Split(*secret, ",")),
 	)
 	if err != nil {
 		panic(err)

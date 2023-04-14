@@ -2,6 +2,7 @@ package zongzi
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 
 	"github.com/lni/dragonboat/v4/logger"
@@ -117,6 +118,14 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 		switch cmd.Action {
 		// Post
 		case command_action_post:
+			if cmd.Shard.Name != "" {
+				if _, ok := state.ShardFindByName(cmd.Shard.Name); ok {
+					err := fmt.Errorf("%s: %s", ErrShardExists, cmd.Shard.Name)
+					fsm.log.Errorf(err.Error())
+					entry.Result.Data = []byte(err.Error())
+					break
+				}
+			}
 			cmd.Shard.ID = state.shardIncr()
 			cmd.Shard.Created = entry.Index
 			cmd.Shard.Updated = entry.Index

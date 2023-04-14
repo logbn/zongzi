@@ -9,7 +9,7 @@ import (
 	"github.com/logbn/zongzi/internal"
 )
 
-type controller struct {
+type hostController struct {
 	agent     *Agent
 	ctx       context.Context
 	ctxCancel context.CancelFunc
@@ -17,13 +17,13 @@ type controller struct {
 	index     uint64
 }
 
-func newController(a *Agent) *controller {
-	return &controller{
+func newHostController(a *Agent) *hostController {
+	return &hostController{
 		agent: a,
 	}
 }
 
-func (c *controller) Start() (err error) {
+func (c *hostController) Start() (err error) {
 	c.mutex.Lock()
 	c.ctx, c.ctxCancel = context.WithCancel(context.Background())
 	go func() {
@@ -37,7 +37,7 @@ func (c *controller) Start() (err error) {
 				return
 			}
 			if err != nil {
-				c.agent.log.Errorf("controller: %v", err)
+				c.agent.log.Errorf("hostController: %v", err)
 			}
 		}
 	}()
@@ -45,7 +45,7 @@ func (c *controller) Start() (err error) {
 	return c.tick()
 }
 
-func (c *controller) tick() (err error) {
+func (c *hostController) tick() (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	var index uint64
@@ -175,7 +175,7 @@ func (c *controller) tick() (err error) {
 }
 
 // requestShardJoin requests host replica be added to a shard
-func (c *controller) requestShardJoin(members map[uint64]string, shardID, replicaID uint64, isNonVoting bool) (v uint64) {
+func (c *hostController) requestShardJoin(members map[uint64]string, shardID, replicaID uint64, isNonVoting bool) (v uint64) {
 	c.agent.log.Debugf("[%05d:%05d] Joining shard (isNonVoting: %v)", shardID, replicaID, isNonVoting)
 	var res *internal.ShardJoinResponse
 	var host Host
@@ -212,8 +212,8 @@ func (c *controller) requestShardJoin(members map[uint64]string, shardID, replic
 	return
 }
 
-func (c *controller) Stop() {
-	defer c.agent.log.Infof(`Stopped controller`)
+func (c *hostController) Stop() {
+	defer c.agent.log.Infof(`Stopped hostController`)
 	if c.ctxCancel != nil {
 		c.ctxCancel()
 	}

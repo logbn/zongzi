@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,23 +24,27 @@ func TestAgent(t *testing.T) {
 	var err error
 	var ctx = context.Background()
 	os.RemoveAll(basedir)
-	start := func(t *testing.T, peers []string, notifyCommit bool, addresses ...[]string) {
+	start := func(t *testing.T, peers []string, class string, notifyCommit bool, addresses ...[]string) {
 		for _, addr := range addresses {
 			a, err := NewAgent(`test001`, peers,
 				WithApiAddress(addr[0]),
-				WithGossipAddress(addr[1]),
+				WithGossipAddress(addr[2]),
 				WithHostConfig(HostConfig{
 					WALDir:         fmt.Sprintf(basedir+`/agent-%d/wal`, len(agents)),
 					NodeHostDir:    fmt.Sprintf(basedir+`/agent-%d/raft`, len(agents)),
-					RaftAddress:    addr[2],
+					RaftAddress:    addr[1],
 					RTTMillisecond: 5,
 					NotifyCommit:   notifyCommit,
-				}))
+				}),
+				WithHostTags(
+					`node:class=`+class,
+					`test:tag=1234`,
+				))
 			require.Nil(t, err)
 			// a.log.SetLevel(LogLevelDebug)
 			agents = append(agents, a)
-			a.ShardTypeRegister(`concurrent`, mockConcurrentSM)
-			a.ShardTypeRegisterPersistent(`persistent`, mockPersistentSM)
+			a.RegisterStateMachine(`concurrent`, mockConcurrentSM)
+			a.RegisterPersistentStateMachine(`persistent`, mockPersistentSM)
 			go func(a *Agent) {
 				err = a.Start()
 				require.Nil(t, err, `%+v`, err)
@@ -61,14 +66,14 @@ func TestAgent(t *testing.T) {
 		`127.0.0.1:18031`,
 	}
 	t.Run(`start`, func(t *testing.T) {
-		start(t, peers, false,
+		start(t, peers, `concurrent`, false,
 			[]string{`127.0.0.1:18011`, `127.0.0.1:18012`, `127.0.0.1:18013`},
 			[]string{`127.0.0.1:18021`, `127.0.0.1:18022`, `127.0.0.1:18023`},
 			[]string{`127.0.0.1:18031`, `127.0.0.1:18032`, `127.0.0.1:18033`},
 		)
 	})
 	t.Run(`join`, func(t *testing.T) {
-		start(t, peers, true,
+		start(t, peers, `persistent`, true,
 			[]string{`127.0.0.1:18041`, `127.0.0.1:18042`, `127.0.0.1:18043`},
 			[]string{`127.0.0.1:18051`, `127.0.0.1:18052`, `127.0.0.1:18053`},
 			[]string{`127.0.0.1:18061`, `127.0.0.1:18062`, `127.0.0.1:18063`},
@@ -94,17 +99,33 @@ func TestAgent(t *testing.T) {
 	})
 	for _, sm := range []string{`concurrent`, `persistent`} {
 		var shard Shard
+		var created bool
+		var othersm = `persistent`
+		if sm == `persistent` {
+			othersm = `concurrent`
+		}
 		t.Run(sm+` shard create`, func(t *testing.T) {
-			shard, err = agents[0].ShardCreate(sm)
+			shard, created, err = agents[0].RegisterShard(ctx, sm,
+				WithPlacementMembers(3, `node:class=`+sm),
+				WithPlacementReplicas(othersm, 3, `node:class=`+othersm),
+				WithName(sm))
 			require.Nil(t, err)
-		})
-		t.Run(sm+` replica create`, func(t *testing.T) {
+			require.True(t, created)
 			var replicaID uint64
 			for i := 0; i < len(agents); i++ {
 				replicaID, err = agents[0].ReplicaCreate(agents[i].HostID(), shard.ID, i > 2)
 				require.Nil(t, err)
 				require.NotEqual(t, 0, replicaID)
 			}
+			/*
+				shard, err = agents[0].ShardCreate(sm)
+				var replicaID uint64
+				for i := 0; i < len(agents); i++ {
+					replicaID, err = agents[0].ReplicaCreate(agents[i].HostID(), shard.ID, i > 2)
+					require.Nil(t, err)
+					require.NotEqual(t, 0, replicaID)
+				}
+			*/
 			var replicas []Replica
 			// 10 seconds for replicas to be active on all hosts
 			require.True(t, await(10, 100, func() bool {
@@ -236,6 +257,7 @@ var mockConcurrentSM = func(shardID uint64, replicaID uint64) StateMachine {
 }
 
 var idx = map[string]uint64{}
+var mutex sync.Mutex
 
 var mockPersistentSM = func(shardID uint64, replicaID uint64) PersistentStateMachine {
 	var id = fmt.Sprintf(`%d-%d`, shardID, replicaID)
@@ -246,7 +268,9 @@ var mockPersistentSM = func(shardID uint64, replicaID uint64) PersistentStateMac
 		mockUpdate: func(e []Entry) []Entry {
 			for i := range e {
 				e[i].Result.Value = uint64(len(e[i].Cmd))
+				mutex.Lock()
 				idx[id] = e[i].Index
+				mutex.Unlock()
 			}
 			return e
 		},

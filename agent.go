@@ -21,7 +21,8 @@ type Agent struct {
 	advertiseAddress string
 	bindAddress      string
 	clusterName      string
-	controller       *controller
+	hostController   *hostController
+	shardController  *shardController
 	fsm              *fsm
 	grpcClientPool   *grpcClientPool
 	grpcServer       *grpcServer
@@ -32,7 +33,6 @@ type Agent struct {
 	members          map[uint64]string
 	peers            []string
 	replicaConfig    ReplicaConfig
-	secrets          []string
 	shardTypes       map[string]shardType
 	status           AgentStatus
 
@@ -41,6 +41,13 @@ type Agent struct {
 	ctxCancel context.CancelFunc
 	mutex     sync.RWMutex
 	wg        sync.WaitGroup
+}
+
+type shardType struct {
+	Config                        ReplicaConfig
+	StateMachineFactory           StateMachineFactory
+	PersistentStateMachineFactory PersistentStateMachineFactory
+	Uri                           string
 }
 
 func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent, err error) {
@@ -66,13 +73,15 @@ func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent
 	}, opts...) {
 		opt(a)
 	}
-	a.controller = newController(a)
+	a.hostController = newHostController(a)
+	a.shardController = newShardController(a)
+	a.hostConfig.RaftEventListener = newCompositeRaftEventListener(a.shardController, a.hostConfig.RaftEventListener)
 	a.replicaConfig.ShardID = ZongziShardID
 	a.hostConfig.DeploymentID = mustBase36Decode(clusterName)
 	a.hostConfig.AddressByNodeHostID = true
 	a.hostConfig.Gossip.Meta = []byte(a.advertiseAddress)
-	a.grpcClientPool = newGrpcClientPool(1e4, a.secrets)
-	a.grpcServer = newGrpcServer(a.bindAddress, a.secrets)
+	a.grpcClientPool = newGrpcClientPool(1e4)
+	a.grpcServer = newGrpcServer(a.bindAddress)
 	return a, nil
 }
 
@@ -80,7 +89,8 @@ func (a *Agent) Start() (err error) {
 	var init bool
 	defer func() {
 		if err == nil {
-			a.controller.Start()
+			a.hostController.Start()
+			a.shardController.Start()
 			a.setStatus(AgentStatus_Ready)
 		}
 	}()
@@ -201,7 +211,7 @@ func (a *Agent) Client(hostID string) (c *Client) {
 	a.Read(a.ctx, func(s *State) {
 		host, ok := s.Host(hostID)
 		if ok {
-			c = newClient(host, a)
+			c = newClient(a, host)
 		}
 	})
 	return
@@ -214,7 +224,7 @@ func (a *Agent) Status() AgentStatus {
 	return a.status
 }
 
-// Read executes a callback function passing a reference to the state machine's internal cluster state.
+// Read executes a callback function passing a snapshot of the cluster state.
 //
 //	err := agent.Read(ctx, func(s *State) error {
 //	    log.Println(s.Index())
@@ -228,7 +238,7 @@ func (a *Agent) Status() AgentStatus {
 // Read will block indefinitely if the prime shard is unavailable. This may prevent the agent from stopping gracefully.
 // Pass a timeout context to avoid blocking indefinitely.
 //
-// Read is thread safe.
+// Read is thread safe and will not block writes.
 func (a *Agent) Read(ctx context.Context, fn func(*State), stale ...bool) (err error) {
 	if len(stale) == 0 || stale[0] == false {
 		err = a.readIndex(ctx, a.replicaConfig.ShardID)
@@ -240,18 +250,46 @@ func (a *Agent) Read(ctx context.Context, fn func(*State), stale ...bool) (err e
 	return
 }
 
-// ShardCreate creates a new shard
-func (a *Agent) ShardCreate(typeName string) (shard Shard, err error) {
-	res, err := a.primePropose(newCmdShardPost(typeName, nil))
+// RegisterShard creates a new shard. If shard name option is provided and shard already exists,
+// found shard is updated and returned.
+func (a *Agent) RegisterShard(ctx context.Context, uri string, opts ...ShardOption) (shard Shard, created bool, err error) {
+	shard = Shard{
+		Status: ShardStatus_New,
+		Type:   uri,
+		Tags:   map[string]string{},
+	}
+	for _, opt := range opts {
+		opt(shard)
+	}
+	var res Result
+	if len(shard.Name) > 0 {
+		var found Shard
+		a.Read(ctx, func(state *State) {
+			found, _ = state.ShardFindByName(shard.Name)
+		})
+		// found.ID > 0 is not just a validity check. It also guards the prime shard.
+		if found.ID > 0 {
+			for _, opt := range opts {
+				opt(found)
+			}
+			shard = found
+			res, err = a.primePropose(newCmdShardPut(shard))
+			if err != nil {
+				return
+			}
+			shard.ID = res.Value
+			a.log.Infof("Shard found %s, %d, %s", uri, shard.ID, shard.Name)
+			return
+		}
+	}
+	res, err = a.primePropose(newCmdShardPost(shard))
 	if err != nil {
 		return
 	}
-	a.log.Infof("Shard created %s", typeName)
-	return Shard{
-		ID:     res.Value,
-		Type:   typeName,
-		Status: ShardStatus_New,
-	}, nil
+	shard.ID = res.Value
+	created = true
+	a.log.Infof("Shard created %s", uri)
+	return
 }
 
 // ReplicaCreate creates a replica
@@ -259,34 +297,43 @@ func (a *Agent) ReplicaCreate(hostID string, shardID uint64, isNonVoting bool) (
 	res, err := a.primePropose(newCmdReplicaPost(hostID, shardID, isNonVoting))
 	if err == nil {
 		id = res.Value
+		a.log.Infof("[%05d:%05d] Replica created %s, %v", shardID, id, hostID, isNonVoting)
 	}
-	a.log.Infof("[%05d:%05d] Replica created %s, %v", shardID, id, hostID, isNonVoting)
+	return
+}
+
+// ReplicaDelete deletes a replica
+func (a *Agent) ReplicaDelete(replicaID uint64) (err error) {
+	_, err = a.primePropose(newCmdReplicaDelete(replicaID))
+	if err == nil {
+		a.log.Infof("[%05d:%05d] Replica deleted %s, %v", replicaID)
+	}
 	return
 }
 
 // RegisterStateMachine registers a non-persistent shard type. Call before Starting agent.
-func (a *Agent) ShardTypeRegister(name string, factory StateMachineFactory, config ...ReplicaConfig) {
+func (a *Agent) RegisterStateMachine(uri string, factory StateMachineFactory, config ...ReplicaConfig) {
 	cfg := DefaultReplicaConfig
 	if len(config) > 0 {
 		cfg = config[0]
 	}
-	a.shardTypes[name] = shardType{
+	a.shardTypes[uri] = shardType{
 		Config:              cfg,
 		StateMachineFactory: factory,
-		Name:                name,
+		Uri:                 uri,
 	}
 }
 
-// ShardTypeRegisterPersistent registers a persistent shard type. Call before Starting agent.
-func (a *Agent) ShardTypeRegisterPersistent(name string, factory PersistentStateMachineFactory, config ...ReplicaConfig) {
+// RegisterPersistentStateMachine registers a persistent shard type. Call before Starting agent.
+func (a *Agent) RegisterPersistentStateMachine(uri string, factory PersistentStateMachineFactory, config ...ReplicaConfig) {
 	cfg := DefaultReplicaConfig
 	if len(config) > 0 {
 		cfg = config[0]
 	}
-	a.shardTypes[name] = shardType{
+	a.shardTypes[uri] = shardType{
 		Config:                        cfg,
 		PersistentStateMachineFactory: factory,
-		Name:                          name,
+		Uri:                           uri,
 	}
 }
 
@@ -300,7 +347,8 @@ func (a *Agent) HostID() (id string) {
 
 // Stop stops the agent
 func (a *Agent) Stop() {
-	a.controller.Stop()
+	a.shardController.Stop()
+	a.hostController.Stop()
 	a.grpcServer.Stop()
 	a.ctxCancel()
 	if a.host != nil {
@@ -623,7 +671,11 @@ func (a *Agent) primePropose(cmd []byte) (Result, error) {
 
 // primeInit proposes addition of initial cluster state to prime shard
 func (a *Agent) primeInit(members map[uint64]string) (err error) {
-	_, err = a.primePropose(newCmdShardPut(a.replicaConfig.ShardID, projectUri))
+	_, err = a.primePropose(newCmdShardPut(Shard{
+		ID:   a.replicaConfig.ShardID,
+		Name: "zongzi",
+		Type: projectUri,
+	}))
 	if err != nil {
 		return
 	}

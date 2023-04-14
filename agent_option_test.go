@@ -82,14 +82,3 @@ func TestWithHostTags(t *testing.T) {
 		assert.Equal(t, []string{`test:tag=2`}, a.hostTags)
 	})
 }
-
-func TestWithSecrets(t *testing.T) {
-	t.Run(`success`, func(t *testing.T) {
-		a, err := NewAgent(`test001`, nil)
-		require.Nil(t, err)
-		o := WithSecrets([]string{`test2`})
-		o(a)
-		require.Equal(t, 1, len(a.secrets))
-		assert.Equal(t, `test2`, a.secrets[0])
-	})
-}

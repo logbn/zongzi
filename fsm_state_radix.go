@@ -44,6 +44,12 @@ func newFsmStateRadix() *State {
 				AllowMissing: true,
 				Indexer:      &memdb.StringMapFieldIndex{Field: "Tags"},
 			},
+			"Updated": &memdb.IndexSchema{
+				Name:         "Updated",
+				Unique:       false,
+				AllowMissing: true,
+				Indexer:      &memdb.UintFieldIndex{Field: "Updated"},
+			},
 		},
 	}
 	shardSchema := &memdb.TableSchema{
@@ -54,11 +60,23 @@ func newFsmStateRadix() *State {
 				Unique:  true,
 				Indexer: &memdb.UintFieldIndex{Field: "ID"},
 			},
+			"Name": &memdb.IndexSchema{
+				Name:         "Name",
+				Unique:       true,
+				AllowMissing: true,
+				Indexer:      &memdb.StringFieldIndex{Field: "Name"},
+			},
 			"Tags": &memdb.IndexSchema{
 				Name:         "Tags",
 				Unique:       false,
 				AllowMissing: true,
 				Indexer:      &memdb.StringMapFieldIndex{Field: "Tags"},
+			},
+			"Updated": &memdb.IndexSchema{
+				Name:         "Updated",
+				Unique:       false,
+				AllowMissing: true,
+				Indexer:      &memdb.UintFieldIndex{Field: "Updated"},
 			},
 		},
 	}
@@ -205,7 +223,7 @@ func (fsm *State) Host(id string) (h Host, ok bool) {
 	return
 }
 
-// HostIterate executes a callback for every host in the cluster ordered by host id ascending.
+// HostIterate executes a callback for every host in the cluster.
 // Return true to continue iterating, false to stop.
 //
 //	var hostCount int
@@ -310,6 +328,19 @@ func (fsm *State) Shard(id uint64) (s Shard, ok bool) {
 	return
 }
 
+// ShardFindByName returns the shard with the specified name or ok false if not found.
+func (fsm *State) ShardFindByName(name string) (s Shard, ok bool) {
+	res, err := fsm.txn.First(`shard`, `Name`, name)
+	if err != nil {
+		panic(err)
+	}
+	if res != nil {
+		s = res.(Shard)
+		ok = true
+	}
+	return
+}
+
 func (fsm *State) shardPut(s Shard) {
 	err := fsm.txn.Insert(`shard`, s)
 	if err != nil {
@@ -350,6 +381,21 @@ func (fsm *State) ShardIterate(fn func(s Shard) bool) {
 // ordered by shard id ascending. Return true to continue iterating, false to stop.
 func (fsm *State) ShardIterateByTag(tag string, fn func(r Shard) bool) {
 	iter, err := fsm.txn.Get(`shard`, `Tags`, tag)
+	if err != nil {
+		panic(err)
+	}
+	for {
+		res := iter.Next()
+		if res == nil || !fn(res.(Shard)) {
+			break
+		}
+	}
+}
+
+// ShardIterateUpdatedAfter executes a callback for every shard in the cluster having an updated index
+// greater than the supplied index
+func (fsm *State) ShardIterateUpdatedAfter(index uint64, fn func(r Shard) bool) {
+	iter, err := fsm.txn.LowerBound(`shard`, `Updated`, index)
 	if err != nil {
 		panic(err)
 	}
