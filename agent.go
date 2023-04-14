@@ -259,7 +259,7 @@ func (a *Agent) RegisterShard(ctx context.Context, uri string, opts ...ShardOpti
 		Tags:   map[string]string{},
 	}
 	for _, opt := range opts {
-		opt(shard)
+		opt(&shard)
 	}
 	var res Result
 	if len(shard.Name) > 0 {
@@ -270,7 +270,7 @@ func (a *Agent) RegisterShard(ctx context.Context, uri string, opts ...ShardOpti
 		// found.ID > 0 is not just a validity check. It also guards the prime shard.
 		if found.ID > 0 {
 			for _, opt := range opts {
-				opt(found)
+				opt(&found)
 			}
 			shard = found
 			res, err = a.primePropose(newCmdShardPut(shard))
@@ -306,7 +306,7 @@ func (a *Agent) ReplicaCreate(hostID string, shardID uint64, isNonVoting bool) (
 func (a *Agent) ReplicaDelete(replicaID uint64) (err error) {
 	_, err = a.primePropose(newCmdReplicaDelete(replicaID))
 	if err == nil {
-		a.log.Infof("[%05d:%05d] Replica deleted %s, %v", replicaID)
+		a.log.Infof("Replica deleted %05d", replicaID)
 	}
 	return
 }

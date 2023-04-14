@@ -187,7 +187,7 @@ func tagMapFromList(tagList []string) map[string]string {
 	var m = map[string]string{}
 	for _, ts := range tagList {
 		if i := strings.Index(ts, "="); i >= 0 {
-			m[ts[:i]] = ts[i:]
+			m[ts[:i]] = ts[i+1:]
 		} else {
 			m[ts] = ""
 		}

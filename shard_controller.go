@@ -18,6 +18,7 @@ import (
 //	zongzi:vary=geo:zone
 type shardController struct {
 	agent       *Agent
+	cluster     cluster
 	ctx         context.Context
 	ctxCancel   context.CancelFunc
 	clock       clock.Clock
@@ -31,9 +32,14 @@ type shardController struct {
 
 func newShardController(agent *Agent) *shardController {
 	return &shardController{
-		clock: clock.New(),
-		agent: agent,
+		clock:   clock.New(),
+		agent:   agent,
+		cluster: agent,
 	}
+}
+
+type cluster interface {
+	ReplicaCreate(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error)
 }
 
 func (c *shardController) Start() (err error) {
@@ -59,7 +65,6 @@ func (c *shardController) Start() (err error) {
 }
 
 func (c *shardController) tick() {
-	c.agent.log.Debugf("A")
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	var err error
@@ -67,13 +72,19 @@ func (c *shardController) tick() {
 	var index uint64
 	var updated = true
 	if c.isLeader {
-		c.agent.log.Debugf("B")
 		for updated {
 			updated = false
 			err = c.agent.Read(c.ctx, func(state *State) {
-				c.agent.log.Debugf("C")
 				index = state.Index()
 				state.ShardIterateUpdatedAfter(c.index, func(shard Shard) bool {
+					select {
+					case <-c.ctx.Done():
+						return false
+					default:
+					}
+					if shard.ID == 0 {
+						return true
+					}
 					updated, err = c.reconcile(state, shard)
 					if err != nil {
 						hadErr = true
@@ -126,7 +137,7 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 		}
 		if tagKey == `placement:vary` {
 			// ex: placement:vary=geo:zone
-			vary[tagKey] = true
+			vary[tagValue] = true
 		} else if tagKey == `placement:member` {
 			// ex: placement:member=3;geo:region=us-central1
 			parts := strings.Split(tagValue, ";")
@@ -163,7 +174,7 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 	var groups []string
 	state.ReplicaIterateByShardID(shard.ID, func(replica Replica) bool {
 		host, _ := state.Host(replica.HostID)
-		groups = groups[0:]
+		groups = groups[:0]
 		for group := range desired {
 			if c.matchTagFilter(host.Tags, filters[group]) {
 				varies = true
@@ -183,11 +194,12 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 					found[group]++
 				}
 			}
-			if len(groups) > 0 {
+			if len(groups) > 1 {
 				c.agent.log.Infof(`Replica matched multiple groups [%05d:%05d]: %v`, shard.ID, replica.ID, groups)
 			}
 		}
 		if len(groups) == 0 {
+			c.agent.log.Debugf(`[%05d:%05d] Undesired \n%#v\n%#v`, shard.ID, replica.ID, shard.Tags, host.Tags)
 			undesired = append(undesired, replica.ID)
 		} else {
 			occupiedHosts[replica.HostID] = true
@@ -229,11 +241,13 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 	}
 	// Delete undesired replicas
 	for _, replicaID := range undesired {
-		updated = true
 		if err = c.agent.ReplicaDelete(replicaID); err != nil {
 			c.agent.log.Errorf(`Error deleting replica: %s`, err.Error())
 			return
 		}
+		updated = true
+		// Early exit just simplifies the logic
+		return
 	}
 	// Find matching hosts for each group
 	state.HostIterate(func(host Host) bool {
@@ -248,6 +262,9 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 				matches[group] = append(matches[group], host)
 				for tag := range vary {
 					v, _ := host.Tags[tag]
+					if _, ok := varyMatch[group]; !ok {
+						varyMatch[group] = map[string]int{}
+					}
 					varyMatch[group][fmt.Sprintf(`%s=%s`, tag, v)]++
 				}
 			}
@@ -257,7 +274,7 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 	// TODO - Rebalance (maybe belongs in its own controller)
 	// for group := range requiresRebalance {}
 
-	// TODO - Remove excess replicas
+	// TODO - Remove excess replicas (deciding which to remove while retaining balance)
 	// for group, n := range excessReplicaCount {}
 
 	// Add missing replicas
@@ -305,11 +322,11 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 			var replicaID uint64
 			for j, host := range matches[group] {
 				if c.matchTagFilter(host.Tags, varyTags) {
-					updated = true
-					replicaID, err = c.agent.ReplicaCreate(host.ID, shard.ID, group == `member`)
+					replicaID, err = c.cluster.ReplicaCreate(host.ID, shard.ID, group != `member`)
 					if err != nil {
 						return
 					}
+					updated = true
 					for _, varyTag := range varyTags {
 						tagKey, _, _ := c.parseTag(varyTag)
 						varyMatch[group][tagKey]--
@@ -328,7 +345,7 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 			}
 		}
 		if err != nil {
-			c.agent.log.Warningf("[%d] (%s/%s) %s", shard.ID, shard.Name, group, err.Error())
+			c.agent.log.Warningf("[%05d] (%s/%s) %s", shard.ID, shard.Name, group, err.Error())
 			err = nil
 		}
 	}

@@ -37,7 +37,7 @@ func (c *hostController) Start() (err error) {
 				return
 			}
 			if err != nil {
-				c.agent.log.Errorf("hostController: %v", err)
+				c.agent.log.Errorf("Host Controller: %v", err)
 			}
 		}
 	}()
@@ -112,7 +112,7 @@ func (c *hostController) tick() (err error) {
 			item.Config.ShardID = shard.ID
 			item.Config.ReplicaID = replica.ID
 			item.Config.IsNonVoting = replica.IsNonVoting
-			c.agent.log.Infof("[%05d:%05d] Controller: Starting replica: %s", shard.ID, replica.ID, shard.Type)
+			c.agent.log.Infof("[%05d:%05d] Host Controller: Starting replica: %s", shard.ID, replica.ID, shard.Type)
 			if item.StateMachineFactory != nil {
 				shim := stateMachineFactoryShim(item.StateMachineFactory)
 				switch replica.Status {

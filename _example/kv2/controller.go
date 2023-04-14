@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"log"
 	"math/rand"
@@ -55,6 +56,17 @@ func (c *controller) tick() (err error) {
 	defer c.mutex.Unlock()
 	var ok bool
 	var done bool
+	if c.shard.ID == 0 {
+		c.agent.Read(c.ctx, func(state *zongzi.State) {
+			state.ShardIterate(func(s zongzi.Shard) bool {
+				if s.Type == uri {
+					c.shard = s
+					return false
+				}
+				return true
+			})
+		})
+	}
 	if c.shard.ID > 0 {
 		// Resolve replica clients
 		c.agent.Read(c.ctx, func(state *zongzi.State) {
@@ -80,6 +92,12 @@ func (c *controller) tick() (err error) {
 			c.members = members
 			c.clients = clients
 			c.index = c.shard.Updated
+			c.lastHostID = state.LastHostID()
+
+			// Print snapshot
+			buf := bytes.NewBufferString("")
+			state.Save(buf)
+			log.Print(buf.String())
 		})
 	}
 	return

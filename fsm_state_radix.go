@@ -395,7 +395,7 @@ func (fsm *State) ShardIterateByTag(tag string, fn func(r Shard) bool) {
 // ShardIterateUpdatedAfter executes a callback for every shard in the cluster having an updated index
 // greater than the supplied index
 func (fsm *State) ShardIterateUpdatedAfter(index uint64, fn func(r Shard) bool) {
-	iter, err := fsm.txn.LowerBound(`shard`, `Updated`, index)
+	iter, err := fsm.txn.LowerBound(`shard`, `Updated`, index+1)
 	if err != nil {
 		panic(err)
 	}

@@ -4,7 +4,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	// "log"
+	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -22,6 +23,7 @@ var (
 	apiAddr    = flag.String("a", "10.0.0.1:17001", "Internal gRPC api address")
 	raftAddr   = flag.String("r", "10.0.0.1:17002", "Dragonboat raft address")
 	gossipAddr = flag.String("g", "10.0.0.1:17003", "Memberlist gossip address")
+	httpAddr   = flag.String("h", "10.0.0.1:8000", "HTTP address")
 	dataDir    = flag.String("d", "/var/lib/zongzi", "Base data directory")
 )
 
@@ -54,10 +56,10 @@ func main() {
 	// var clients = make([]zongzi.ShardClient, *shards)
 	for i := 0; i < *shards; i++ {
 		_, _, err := agent.RegisterShard(ctx, uri,
-			zongzi.WithName(fmt.Sprintf(`%s-%05d`, name, i)),
+			zongzi.WithName(fmt.Sprintf(`%s-%05d`, *name, i)),
 			zongzi.WithPlacementVary(`geo:zone`),
-			zongzi.WithPlacementMembers(3, `geo:region=`+*region),
-			zongzi.WithPlacementReplicas(*region, 3, `geo:region=`+*region)) // Place 3 read replicas in this region
+			zongzi.WithPlacementMembers(3, `geo:region=`+*region))
+		// zongzi.WithPlacementReplicas(*region, 3, `geo:region=`+*region)) // Place 3 read replicas in this region
 		if err != nil {
 			panic(err)
 		}
@@ -66,6 +68,13 @@ func main() {
 	if err = ctrl.Start(agent); err != nil {
 		panic(err)
 	}
+	// Start HTTP API
+	go func(s *http.Server) {
+		log.Fatal(s.ListenAndServe())
+	}(&http.Server{
+		Addr:    *httpAddr,
+		Handler: &handler{ctrl},
+	})
 
 	stop := make(chan os.Signal)
 	signal.Notify(stop, os.Interrupt)
