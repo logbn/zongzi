@@ -55,33 +55,30 @@ make test-node-4
 Additional nodes added with duplicate zone should be added as non voting.
 
 ```json
-{"index":60,"hosts":3,"shards":5,"replicas":18,"lastReplicaID":18,"lastShardID":4,"lastHostID":"e15b7e9d-6a74-4bcb-b43f-6a4cadb4615d"}
-{"id":"77a67fd5-a460-4379-80d3-3ebdcaff9a28","created":7,"updated":53,"status":"active","tags":{"geo:region":"us-central1","geo:zone":"us-west-1a"},"apiAddress":"127.0.0.1:17011","raftAddress":"127.0.0.1:17012","shardTypes":["zongzi://github.com/logbn/zongzi/_examples/kv1"]}
-{"id":"a06c2f96-0075-4d4b-98a6-83f8246c8d70","created":9,"updated":60,"status":"active","tags":{"geo:region":"us-central1","geo:zone":"us-west-1c"},"apiAddress":"127.0.0.1:17021","raftAddress":"127.0.0.1:17022","shardTypes":["zongzi://github.com/logbn/zongzi/_examples/kv1"]}
-{"id":"e15b7e9d-6a74-4bcb-b43f-6a4cadb4615d","created":10,"updated":58,"status":"active","tags":{"geo:region":"us-central1","geo:zone":"us-west-1f"},"apiAddress":"127.0.0.1:17031","raftAddress":"127.0.0.1:17032","shardTypes":["zongzi://github.com/logbn/zongzi/_examples/kv1"]}
-{"id":0,"created":5,"updated":32,"status":"","tags":null,"type":"zongzi://github.com/logbn/zongzi","name":"zongzi"}
-{"id":1,"created":20,"updated":56,"status":"new","tags":{"placement:member":"3;geo:region=us-central1","placement:vary":"geo:zone"},"type":"zongzi://github.com/logbn/zongzi/_examples/kv1","name":"kv1-00000"}
-{"id":2,"created":23,"updated":58,"status":"new","tags":{"placement:member":"3;geo:region=us-central1","placement:vary":"geo:zone"},"type":"zongzi://github.com/logbn/zongzi/_examples/kv1","name":"kv1-00001"}
-{"id":3,"created":25,"updated":59,"status":"new","tags":{"placement:member":"3;geo:region=us-central1","placement:vary":"geo:zone"},"type":"zongzi://github.com/logbn/zongzi/_examples/kv1","name":"kv1-00002"}
-{"id":4,"created":26,"updated":60,"status":"new","tags":{"placement:member":"3;geo:region=us-central1","placement:vary":"geo:zone"},"type":"zongzi://github.com/logbn/zongzi/_examples/kv1","name":"kv1-00003"}
-{"id":1,"created":12,"updated":12,"status":"active","tags":null,"hostID":"77a67fd5-a460-4379-80d3-3ebdcaff9a28","isNonVoting":false,"isWitness":false,"shardID":0}
-{"id":2,"created":13,"updated":13,"status":"active","tags":null,"hostID":"a06c2f96-0075-4d4b-98a6-83f8246c8d70","isNonVoting":false,"isWitness":false,"shardID":0}
-{"id":3,"created":15,"updated":15,"status":"active","tags":null,"hostID":"e15b7e9d-6a74-4bcb-b43f-6a4cadb4615d","isNonVoting":false,"isWitness":false,"shardID":0}
-{"id":4,"created":17,"updated":17,"status":"joining","tags":null,"hostID":"77a67fd5-a460-4379-80d3-3ebdcaff9a28","isNonVoting":false,"isWitness":false,"shardID":0}
-{"id":5,"created":19,"updated":19,"status":"joining","tags":null,"hostID":"a06c2f96-0075-4d4b-98a6-83f8246c8d70","isNonVoting":false,"isWitness":false,"shardID":0}
-{"id":6,"created":21,"updated":21,"status":"joining","tags":null,"hostID":"e15b7e9d-6a74-4bcb-b43f-6a4cadb4615d","isNonVoting":false,"isWitness":false,"shardID":0}
-{"id":7,"created":37,"updated":37,"status":"active","tags":null,"hostID":"77a67fd5-a460-4379-80d3-3ebdcaff9a28","isNonVoting":false,"isWitness":false,"shardID":1}
-{"id":8,"created":38,"updated":38,"status":"active","tags":null,"hostID":"a06c2f96-0075-4d4b-98a6-83f8246c8d70","isNonVoting":false,"isWitness":false,"shardID":1}
-{"id":9,"created":39,"updated":39,"status":"active","tags":null,"hostID":"e15b7e9d-6a74-4bcb-b43f-6a4cadb4615d","isNonVoting":false,"isWitness":false,"shardID":1}
-{"id":10,"created":40,"updated":40,"status":"active","tags":null,"hostID":"77a67fd5-a460-4379-80d3-3ebdcaff9a28","isNonVoting":false,"isWitness":false,"shardID":2}
-{"id":11,"created":41,"updated":41,"status":"active","tags":null,"hostID":"a06c2f96-0075-4d4b-98a6-83f8246c8d70","isNonVoting":false,"isWitness":false,"shardID":2}
-{"id":12,"created":42,"updated":42,"status":"active","tags":null,"hostID":"e15b7e9d-6a74-4bcb-b43f-6a4cadb4615d","isNonVoting":false,"isWitness":false,"shardID":2}
-{"id":13,"created":43,"updated":43,"status":"active","tags":null,"hostID":"77a67fd5-a460-4379-80d3-3ebdcaff9a28","isNonVoting":false,"isWitness":false,"shardID":3}
-{"id":14,"created":44,"updated":44,"status":"active","tags":null,"hostID":"a06c2f96-0075-4d4b-98a6-83f8246c8d70","isNonVoting":false,"isWitness":false,"shardID":3}
-{"id":15,"created":45,"updated":45,"status":"active","tags":null,"hostID":"e15b7e9d-6a74-4bcb-b43f-6a4cadb4615d","isNonVoting":false,"isWitness":false,"shardID":3}
-{"id":16,"created":47,"updated":47,"status":"active","tags":null,"hostID":"77a67fd5-a460-4379-80d3-3ebdcaff9a28","isNonVoting":false,"isWitness":false,"shardID":4}
-{"id":17,"created":48,"updated":48,"status":"active","tags":null,"hostID":"a06c2f96-0075-4d4b-98a6-83f8246c8d70","isNonVoting":false,"isWitness":false,"shardID":4}
-{"id":18,"created":49,"updated":49,"status":"active","tags":null,"hostID":"e15b7e9d-6a74-4bcb-b43f-6a4cadb4615d","isNonVoting":false,"isWitness":false,"shardID":4}
+{"index":54,"hosts":3,"shards":5,"replicas":15,"lastReplicaID":15,"lastShardID":4,"lastHostID":"69f63dd0-50cb-4410-bebc-6442d2c151af"}
+{"id":"69f63dd0-50cb-4410-bebc-6442d2c151af","created":9,"updated":50,"status":"active","tags":{"geo:region":"us-central1","geo:zone":"us-west-1a"},"apiAddress":"127.0.0.1:17011","raftAddress":"127.0.0.1:17012","shardTypes":["zongzi://github.com/logbn/zongzi/_examples/kv1"]}
+{"id":"bd789e7c-aa86-4e71-8aeb-f64f7d3ebf93","created":7,"updated":54,"status":"active","tags":{"geo:region":"us-central1","geo:zone":"us-west-1c"},"apiAddress":"127.0.0.1:17021","raftAddress":"127.0.0.1:17022","shardTypes":["zongzi://github.com/logbn/zongzi/_examples/kv1"]}
+{"id":"dd2872e7-28ae-443c-8277-72e5b6883ca7","created":8,"updated":46,"status":"active","tags":{"geo:region":"us-central1","geo:zone":"us-west-1f"},"apiAddress":"127.0.0.1:17031","raftAddress":"127.0.0.1:17032","shardTypes":["zongzi://github.com/logbn/zongzi/_examples/kv1"]}
+{"id":0,"created":6,"updated":26,"status":"","tags":null,"type":"zongzi://github.com/logbn/zongzi","name":"zongzi"}
+{"id":1,"created":15,"updated":51,"status":"new","tags":{"placement:member":"3;geo:region=us-central1","placement:vary":"geo:zone"},"type":"zongzi://github.com/logbn/zongzi/_examples/kv1","name":"kv1-00001"}
+{"id":2,"created":16,"updated":52,"status":"new","tags":{"placement:member":"3;geo:region=us-central1","placement:vary":"geo:zone"},"type":"zongzi://github.com/logbn/zongzi/_examples/kv1","name":"kv1-00002"}
+{"id":3,"created":17,"updated":53,"status":"new","tags":{"placement:member":"3;geo:region=us-central1","placement:vary":"geo:zone"},"type":"zongzi://github.com/logbn/zongzi/_examples/kv1","name":"kv1-00003"}
+{"id":4,"created":18,"updated":54,"status":"new","tags":{"placement:member":"3;geo:region=us-central1","placement:vary":"geo:zone"},"type":"zongzi://github.com/logbn/zongzi/_examples/kv1","name":"kv1-00004"}
+{"id":1,"created":10,"updated":10,"status":"active","tags":null,"hostID":"69f63dd0-50cb-4410-bebc-6442d2c151af","isNonVoting":false,"isWitness":false,"shardID":0}
+{"id":2,"created":11,"updated":11,"status":"active","tags":null,"hostID":"bd789e7c-aa86-4e71-8aeb-f64f7d3ebf93","isNonVoting":false,"isWitness":false,"shardID":0}
+{"id":3,"created":12,"updated":12,"status":"active","tags":null,"hostID":"dd2872e7-28ae-443c-8277-72e5b6883ca7","isNonVoting":false,"isWitness":false,"shardID":0}
+{"id":4,"created":31,"updated":31,"status":"active","tags":null,"hostID":"69f63dd0-50cb-4410-bebc-6442d2c151af","isNonVoting":false,"isWitness":false,"shardID":1}
+{"id":5,"created":32,"updated":32,"status":"active","tags":null,"hostID":"bd789e7c-aa86-4e71-8aeb-f64f7d3ebf93","isNonVoting":false,"isWitness":false,"shardID":1}
+{"id":6,"created":33,"updated":33,"status":"active","tags":null,"hostID":"dd2872e7-28ae-443c-8277-72e5b6883ca7","isNonVoting":false,"isWitness":false,"shardID":1}
+{"id":7,"created":34,"updated":34,"status":"active","tags":null,"hostID":"69f63dd0-50cb-4410-bebc-6442d2c151af","isNonVoting":false,"isWitness":false,"shardID":2}
+{"id":8,"created":35,"updated":35,"status":"active","tags":null,"hostID":"bd789e7c-aa86-4e71-8aeb-f64f7d3ebf93","isNonVoting":false,"isWitness":false,"shardID":2}
+{"id":9,"created":36,"updated":36,"status":"active","tags":null,"hostID":"dd2872e7-28ae-443c-8277-72e5b6883ca7","isNonVoting":false,"isWitness":false,"shardID":2}
+{"id":10,"created":37,"updated":37,"status":"active","tags":null,"hostID":"69f63dd0-50cb-4410-bebc-6442d2c151af","isNonVoting":false,"isWitness":false,"shardID":3}
+{"id":11,"created":38,"updated":38,"status":"active","tags":null,"hostID":"bd789e7c-aa86-4e71-8aeb-f64f7d3ebf93","isNonVoting":false,"isWitness":false,"shardID":3}
+{"id":12,"created":39,"updated":39,"status":"active","tags":null,"hostID":"dd2872e7-28ae-443c-8277-72e5b6883ca7","isNonVoting":false,"isWitness":false,"shardID":3}
+{"id":13,"created":40,"updated":40,"status":"active","tags":null,"hostID":"69f63dd0-50cb-4410-bebc-6442d2c151af","isNonVoting":false,"isWitness":false,"shardID":4}
+{"id":14,"created":41,"updated":41,"status":"active","tags":null,"hostID":"bd789e7c-aa86-4e71-8aeb-f64f7d3ebf93","isNonVoting":false,"isWitness":false,"shardID":4}
+{"id":15,"created":42,"updated":42,"status":"active","tags":null,"hostID":"dd2872e7-28ae-443c-8277-72e5b6883ca7","isNonVoting":false,"isWitness":false,"shardID":4}
 ```
 
 ## Read Benchmark
