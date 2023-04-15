@@ -751,3 +751,12 @@ func (a *Agent) findLocalReplicaID(shardID uint64) (id uint64) {
 	}
 	return
 }
+
+func (a *Agent) dumpState() {
+	a.Read(a.ctx, func(state *State) {
+		// Print snapshot
+		buf := bytes.NewBufferString("")
+		state.Save(buf)
+		a.log.Debugf(buf.String())
+	}, true)
+}

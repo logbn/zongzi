@@ -62,6 +62,10 @@ func (s *grpcServer) Join(ctx context.Context, req *internal.JoinRequest) (res *
 func (s *grpcServer) ShardJoin(ctx context.Context, req *internal.ShardJoinRequest) (res *internal.ShardJoinResponse, err error) {
 	// s.agent.log.Debugf(`gRPC Req Join: %#v`, req)
 	res = &internal.ShardJoinResponse{}
+	if s.agent.Status() != AgentStatus_Ready {
+		err = ErrAgentNotReady
+		return
+	}
 	res.Value, err = s.agent.joinShardReplica(req.HostId, req.ShardId, req.ReplicaId, req.IsNonVoting)
 	return
 }

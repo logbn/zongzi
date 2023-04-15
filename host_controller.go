@@ -196,9 +196,9 @@ func (c *hostController) requestShardJoin(members map[uint64]string, shardID, re
 			IsNonVoting: isNonVoting,
 		})
 		if err != nil {
-			c.agent.log.Warningf(`[%05d:%05d] %s Unable to join shard (%v): %v`, shardID, replicaID, c.agent.HostID(), isNonVoting, err)
+			c.agent.log.Warningf(`[%05d:%05d] %s | %s Unable to join shard (%v): %v`, shardID, replicaID, c.agent.HostID(), hostID, isNonVoting, err)
 		}
-		if res != nil && res.Value > 0 {
+		if err == nil && res != nil && res.Value > 0 {
 			v = res.Value
 			break
 		}

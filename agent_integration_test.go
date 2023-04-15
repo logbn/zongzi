@@ -37,7 +37,7 @@ func TestAgent(t *testing.T) {
 					NotifyCommit:   notifyCommit,
 				}),
 				WithHostTags(
-					fmt.Sprintf(`geo:zone=%d`, i),
+					fmt.Sprintf(`geo:zone=%d`, i%3),
 					`node:class=`+class,
 					`test:tag=1234`,
 				))
@@ -71,6 +71,9 @@ func TestAgent(t *testing.T) {
 			[]string{`127.0.0.1:18011`, `127.0.0.1:18012`, `127.0.0.1:18013`},
 			[]string{`127.0.0.1:18021`, `127.0.0.1:18022`, `127.0.0.1:18023`},
 			[]string{`127.0.0.1:18031`, `127.0.0.1:18032`, `127.0.0.1:18033`},
+			[]string{`127.0.0.1:18111`, `127.0.0.1:18112`, `127.0.0.1:18113`},
+			[]string{`127.0.0.1:18121`, `127.0.0.1:18122`, `127.0.0.1:18123`},
+			[]string{`127.0.0.1:18131`, `127.0.0.1:18132`, `127.0.0.1:18133`},
 		)
 	})
 	t.Run(`join`, func(t *testing.T) {
@@ -78,6 +81,9 @@ func TestAgent(t *testing.T) {
 			[]string{`127.0.0.1:18041`, `127.0.0.1:18042`, `127.0.0.1:18043`},
 			[]string{`127.0.0.1:18051`, `127.0.0.1:18052`, `127.0.0.1:18053`},
 			[]string{`127.0.0.1:18061`, `127.0.0.1:18062`, `127.0.0.1:18063`},
+			[]string{`127.0.0.1:18071`, `127.0.0.1:18072`, `127.0.0.1:18073`},
+			[]string{`127.0.0.1:18081`, `127.0.0.1:18082`, `127.0.0.1:18083`},
+			[]string{`127.0.0.1:18091`, `127.0.0.1:18092`, `127.0.0.1:18093`},
 		)
 		// 5 seconds for all hosts to see themselves with at least one active replica
 		var replicas []Replica
@@ -109,7 +115,8 @@ func TestAgent(t *testing.T) {
 			shard, created, err = agents[0].RegisterShard(ctx, sm,
 				WithPlacementVary(`geo:zone`),
 				WithPlacementMembers(3, `node:class=`+sm),
-				WithPlacementReplicas(othersm, 3, `node:class=`+othersm),
+				WithPlacementReplicas(sm, 3, `node:class=`+sm),
+				WithPlacementReplicas(othersm, 6, `node:class=`+othersm),
 				WithName(sm))
 			require.Nil(t, err)
 			require.True(t, created)
@@ -203,7 +210,7 @@ func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, sm, op string, 
 		})
 	})
 	if op == "update" {
-		assert.Equal(t, 3, nonvoting)
+		assert.Equal(t, 9, nonvoting)
 	}
 }
 

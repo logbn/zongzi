@@ -85,7 +85,7 @@ is delegated to the developer. See [ADR: Raft Sessions](/docs/adr/raft_sessions.
 
 # Project Status
 
-This library is in alpha (v0.0.X). Expect regular breaking changes to interfaces and serious defects outside the green
-path. When the API is stable and the code is well tested, beta releases will begin (v0.1.0). General availability
+This library is in alpha (`v0.0.x`). Expect regular breaking changes to interfaces and serious defects outside the green
+path. When the API is stable and the code is well tested, beta releases will begin (`v0.1.0`). General availability
 will come after the library has been thoroughly tested in at least one production deployment for an extended period of
-time (v1.0.0).
+time (`v1.0.0`).

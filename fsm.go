@@ -181,6 +181,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 		// Post
 		case command_action_post:
 			cmd.Replica.ID = state.replicaIncr()
+			fsm.log.Infof(`command_action_post - %d - %s - %v`, cmd.Replica.ID, cmd.Replica.HostID, cmd.Replica.IsNonVoting)
 			cmd.Replica.Created = entry.Index
 			cmd.Replica.Updated = entry.Index
 			if !cmd.Replica.IsNonVoting && len(state.ShardMembers(cmd.Replica.ShardID)) < 3 {

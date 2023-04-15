@@ -205,12 +205,19 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 	})
 	var excessReplicaCount = map[string]int{}
 	var missingReplicaCount = map[string]int{}
+	groups = groups[:0]
 	for group, n := range desired {
 		if found[group] > n {
 			excessReplicaCount[group] = found[group] - n
 		}
 		if found[group] < n {
 			missingReplicaCount[group] = n - found[group]
+		}
+		if group == `member` {
+			// Always process the member group first
+			groups = append([]string{group}, groups...)
+		} else {
+			groups = append(groups, group)
 		}
 	}
 	var requiresRebalance = map[string]bool{}
@@ -275,7 +282,8 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 	// for group, n := range excessReplicaCount {}
 
 	// Add missing replicas
-	for group, n := range missingReplicaCount {
+	for _, group := range groups {
+		var n = missingReplicaCount[group]
 		for i := 0; i < n; i++ {
 			if len(matches[group]) == 0 {
 				err = fmt.Errorf(`No more matching hosts`)
@@ -318,6 +326,10 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 			var success bool
 			var replicaID uint64
 			for j, host := range matches[group] {
+				if _, ok := occupiedHosts[host.ID]; ok {
+					// Host already occupied
+					continue
+				}
 				if c.matchTagFilter(host.Tags, varyTags) {
 					replicaID, err = c.cluster.replicaCreate(host.ID, shard.ID, group != `member`)
 					if err != nil {
