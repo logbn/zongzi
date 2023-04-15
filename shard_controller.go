@@ -35,7 +35,8 @@ func newShardController(agent *Agent) *shardController {
 }
 
 type cluster interface {
-	ReplicaCreate(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error)
+	replicaCreate(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error)
+	replicaDelete(replicaID uint64) (err error)
 }
 
 func (c *shardController) Start() (err error) {
@@ -85,9 +86,9 @@ func (c *shardController) tick() {
 					if err != nil {
 						hadErr = true
 						c.agent.log.Warningf("Error resolving shard %d %s %s", shard.ID, shard.Name, err.Error())
-						c.agent.TagsSet(shard, fmt.Sprintf(`placement:error=%s`, err.Error()))
+						c.agent.tagsSet(shard, fmt.Sprintf(`placement:error=%s`, err.Error()))
 					} else if _, ok := shard.Tags[`placement:error`]; ok {
-						c.agent.TagsRemove(shard, `placement:error`)
+						c.agent.tagsRemove(shard, `placement:error`)
 					}
 					if updated {
 						// We break the iterator on update in order to catch a fresh snapshot for the next shard.
@@ -237,7 +238,7 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 	}
 	// Delete undesired replicas
 	for _, replicaID := range undesired {
-		if err = c.agent.ReplicaDelete(replicaID); err != nil {
+		if err = c.cluster.replicaDelete(replicaID); err != nil {
 			c.agent.log.Errorf(`Error deleting replica: %s`, err.Error())
 			return
 		}
@@ -318,7 +319,7 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 			var replicaID uint64
 			for j, host := range matches[group] {
 				if c.matchTagFilter(host.Tags, varyTags) {
-					replicaID, err = c.cluster.ReplicaCreate(host.ID, shard.ID, group != `member`)
+					replicaID, err = c.cluster.replicaCreate(host.ID, shard.ID, group != `member`)
 					if err != nil {
 						return
 					}

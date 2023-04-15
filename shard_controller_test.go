@@ -133,8 +133,13 @@ func testHelperFillHosts(state *State, n uint64) {
 
 type mockCluster struct {
 	mockReplicaCreate func(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error)
+	mockReplicaDelete func(replicaID uint64) (err error)
 }
 
-func (m *mockCluster) ReplicaCreate(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error) {
+func (m *mockCluster) replicaCreate(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error) {
 	return m.mockReplicaCreate(hostID, shardID, isNonVoting)
+}
+
+func (m *mockCluster) replicaDelete(replicaID uint64) (err error) {
+	return m.mockReplicaDelete(replicaID)
 }

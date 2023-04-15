@@ -45,7 +45,7 @@ func TestAgent(t *testing.T) {
 			// a.log.SetLevel(LogLevelDebug)
 			agents = append(agents, a)
 			a.RegisterStateMachine(`concurrent`, mockConcurrentSM)
-			a.RegisterPersistentStateMachine(`persistent`, mockPersistentSM)
+			a.RegisterStateMachinePersistent(`persistent`, mockPersistentSM)
 			go func(a *Agent) {
 				err = a.Start()
 				require.Nil(t, err, `%+v`, err)
@@ -113,12 +113,6 @@ func TestAgent(t *testing.T) {
 				WithName(sm))
 			require.Nil(t, err)
 			require.True(t, created)
-			var replicaID uint64
-			for i := 0; i < len(agents); i++ {
-				replicaID, err = agents[0].ReplicaCreate(agents[i].HostID(), shard.ID, i > 2)
-				require.Nil(t, err)
-				require.NotEqual(t, 0, replicaID)
-			}
 			var replicas []Replica
 			// 10 seconds for replicas to be active on all hosts
 			require.True(t, await(10, 100, func() bool {

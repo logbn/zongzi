@@ -292,25 +292,6 @@ func (a *Agent) RegisterShard(ctx context.Context, uri string, opts ...ShardOpti
 	return
 }
 
-// ReplicaCreate creates a replica
-func (a *Agent) ReplicaCreate(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error) {
-	res, err := a.primePropose(newCmdReplicaPost(hostID, shardID, isNonVoting))
-	if err == nil {
-		id = res.Value
-		a.log.Infof("[%05d:%05d] Replica created %s, %v", shardID, id, hostID, isNonVoting)
-	}
-	return
-}
-
-// ReplicaDelete deletes a replica
-func (a *Agent) ReplicaDelete(replicaID uint64) (err error) {
-	_, err = a.primePropose(newCmdReplicaDelete(replicaID))
-	if err == nil {
-		a.log.Infof("Replica deleted %05d", replicaID)
-	}
-	return
-}
-
 // RegisterStateMachine registers a non-persistent shard type. Call before Starting agent.
 func (a *Agent) RegisterStateMachine(uri string, factory StateMachineFactory, config ...ReplicaConfig) {
 	cfg := DefaultReplicaConfig
@@ -324,8 +305,8 @@ func (a *Agent) RegisterStateMachine(uri string, factory StateMachineFactory, co
 	}
 }
 
-// RegisterPersistentStateMachine registers a persistent shard type. Call before Starting agent.
-func (a *Agent) RegisterPersistentStateMachine(uri string, factory PersistentStateMachineFactory, config ...ReplicaConfig) {
+// RegisterStateMachinePersistent registers a persistent shard type. Call before Starting agent.
+func (a *Agent) RegisterStateMachinePersistent(uri string, factory PersistentStateMachineFactory, config ...ReplicaConfig) {
 	cfg := DefaultReplicaConfig
 	if len(config) > 0 {
 		cfg = config[0]
@@ -358,21 +339,40 @@ func (a *Agent) Stop() {
 	a.setStatus(AgentStatus_Stopped)
 }
 
-// TagsSet sets tags on an item (Host, Shard or Replica). Overwrites if tag is already present.
-func (a *Agent) TagsSet(item any, tags ...string) (err error) {
+// tagsSet sets tags on an item (Host, Shard or Replica). Overwrites if tag is already present.
+func (a *Agent) tagsSet(item any, tags ...string) (err error) {
 	_, err = a.primePropose(newCmdTagsSet(item, tags...))
 	return
 }
 
-// TagsSetNX sets tags on an item (Host, Shard or Replica). Does nothing if tag is already present.
-func (a *Agent) TagsSetNX(item any, tags ...string) (err error) {
+// tagsSetNX sets tags on an item (Host, Shard or Replica). Does nothing if tag is already present.
+func (a *Agent) tagsSetNX(item any, tags ...string) (err error) {
 	_, err = a.primePropose(newCmdTagsSetNX(item, tags...))
 	return
 }
 
-// TagsRemove remove tags from an item (Host, Shard or Replica).
-func (a *Agent) TagsRemove(item any, tags ...string) (err error) {
+// tagsRemove remove tags from an item (Host, Shard or Replica).
+func (a *Agent) tagsRemove(item any, tags ...string) (err error) {
 	_, err = a.primePropose(newCmdTagsRemove(item, tags...))
+	return
+}
+
+// replicaCreate creates a replica
+func (a *Agent) replicaCreate(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error) {
+	res, err := a.primePropose(newCmdReplicaPost(hostID, shardID, isNonVoting))
+	if err == nil {
+		id = res.Value
+		a.log.Infof("[%05d:%05d] Replica created %s, %v", shardID, id, hostID, isNonVoting)
+	}
+	return
+}
+
+// replicaDelete deletes a replica
+func (a *Agent) replicaDelete(replicaID uint64) (err error) {
+	_, err = a.primePropose(newCmdReplicaDelete(replicaID))
+	if err == nil {
+		a.log.Infof("Replica deleted %05d", replicaID)
+	}
 	return
 }
 
