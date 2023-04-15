@@ -11,17 +11,18 @@ import (
 	"github.com/logbn/zongzi"
 )
 
-func stateMachineFactory() zongzi.StateMachineFactory {
-	return zongzi.StateMachineFactory(func(shardID, replicaID uint64) zongzi.StateMachine {
-		return &stateMachine{
+var (
+	uri     = `zongzi://github.com/logbn/zongzi/_examples/kv1`
+	factory = func(shardID, replicaID uint64) zongzi.StateMachine {
+		return &StateMachine{
 			shardID:   shardID,
 			replicaID: replicaID,
 			data:      map[string]kvRecord{},
 		}
-	})
-}
+	}
+)
 
-type stateMachine struct {
+type StateMachine struct {
 	zongzi.StateMachine
 
 	replicaID uint64
@@ -30,7 +31,7 @@ type stateMachine struct {
 	mutex     sync.RWMutex
 }
 
-func (fsm *stateMachine) Update(entries []zongzi.Entry) []zongzi.Entry {
+func (fsm *StateMachine) Update(entries []zongzi.Entry) []zongzi.Entry {
 	fsm.mutex.Lock()
 	defer fsm.mutex.Unlock()
 	for i, entry := range entries {
@@ -74,7 +75,7 @@ func (fsm *stateMachine) Update(entries []zongzi.Entry) []zongzi.Entry {
 	return entries
 }
 
-func (fsm *stateMachine) Query(ctx context.Context, data []byte) (result *zongzi.Result) {
+func (fsm *StateMachine) Query(ctx context.Context, data []byte) (result *zongzi.Result) {
 	fsm.mutex.RLock()
 	defer fsm.mutex.RUnlock()
 	var query kvQuery
@@ -96,9 +97,9 @@ func (fsm *stateMachine) Query(ctx context.Context, data []byte) (result *zongzi
 	return
 }
 
-func (fsm *stateMachine) PrepareSnapshot() (cursor any, err error) { return }
+func (fsm *StateMachine) PrepareSnapshot() (cursor any, err error) { return }
 
-func (fsm *stateMachine) SaveSnapshot(cursor any, w io.Writer, c zongzi.SnapshotFileCollection, close <-chan struct{}) (err error) {
+func (fsm *StateMachine) SaveSnapshot(cursor any, w io.Writer, c zongzi.SnapshotFileCollection, close <-chan struct{}) (err error) {
 	fsm.mutex.RLock()
 	defer fsm.mutex.RUnlock()
 	b, err := json.Marshal(fsm.data)
@@ -108,7 +109,7 @@ func (fsm *stateMachine) SaveSnapshot(cursor any, w io.Writer, c zongzi.Snapshot
 	return
 }
 
-func (fsm *stateMachine) RecoverFromSnapshot(r io.Reader, f []zongzi.SnapshotFile, close <-chan struct{}) (err error) {
+func (fsm *StateMachine) RecoverFromSnapshot(r io.Reader, f []zongzi.SnapshotFile, close <-chan struct{}) (err error) {
 	fsm.mutex.Lock()
 	defer fsm.mutex.Unlock()
 	data, err := io.ReadAll(r)
@@ -119,4 +120,49 @@ func (fsm *stateMachine) RecoverFromSnapshot(r io.Reader, f []zongzi.SnapshotFil
 	return json.Unmarshal(data, &fsm.data)
 }
 
-func (fsm *stateMachine) Close() (err error) { return }
+func (fsm *StateMachine) Close() (err error) { return }
+
+const (
+	ResultCodeFailure = iota
+	ResultCodeSuccess
+	ResultCodeVersionMismatch
+	ResultCodeInvalidRecord
+	ResultCodeNotFound
+
+	cmdOpSet = iota
+	cmdOpDel
+
+	queryOpRead = iota
+)
+
+type kvQuery struct {
+	Op  uint64 `json:"op"`
+	Key string `json:"key"`
+}
+
+func (q *kvQuery) MustMarshalBinary() []byte {
+	b, err := json.Marshal(q)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+type kvCmd struct {
+	Op     uint64 `json:"op"`
+	Key    string `json:"key"`
+	Record kvRecord
+}
+
+func (c *kvCmd) MustMarshalBinary() []byte {
+	b, err := json.Marshal(c)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+type kvRecord struct {
+	Ver uint64 `json:"ver"`
+	Val string `json:"val"`
+}

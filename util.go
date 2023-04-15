@@ -58,14 +58,17 @@ type (
 	ReplicaConfig = config.Config
 	GossipConfig  = config.GossipConfig
 
-	LeaderInfo = raftio.LeaderInfo
+	LeaderInfo          = raftio.LeaderInfo
+	RaftEventListener   = raftio.IRaftEventListener
+	SystemEventListener = raftio.ISystemEventListener
 
 	Entry                  = statemachine.Entry
 	Result                 = statemachine.Result
 	SnapshotFile           = statemachine.SnapshotFile
 	SnapshotFileCollection = statemachine.ISnapshotFileCollection
 
-	LogLevel = logger.LogLevel
+	LogLevel  = logger.LogLevel
+	GetLogger = logger.ILogger
 
 	AgentStatus   string
 	HostStatus    string
@@ -117,11 +120,12 @@ var (
 
 	ErrHostNotFound      = fmt.Errorf(`Host not found`)
 	ErrIDOutOfRange      = fmt.Errorf(`ID out of range`)
+	ErrInvalidFactory    = fmt.Errorf(`Invalid Factory`)
 	ErrReplicaNotActive  = fmt.Errorf("Replica not active")
 	ErrReplicaNotAllowed = fmt.Errorf("Replica not allowed")
 	ErrReplicaNotFound   = fmt.Errorf("Replica not found")
+	ErrShardExists       = fmt.Errorf(`Shard already exists`)
 	ErrShardNotFound     = fmt.Errorf(`Shard not found`)
-	ErrInvalidFactory    = fmt.Errorf(`Invalid Factory`)
 
 	// ErrClusterNameInvalid indicates that the clusterName is invalid
 	// Base36 supports only lowercase alphanumeric characters
@@ -136,12 +140,6 @@ var (
 )
 
 type (
-	shardType struct {
-		Config                        ReplicaConfig
-		StateMachineFactory           StateMachineFactory
-		PersistentStateMachineFactory PersistentStateMachineFactory
-		Name                          string
-	}
 	lookupQuery struct {
 		ctx  context.Context
 		data []byte
@@ -239,6 +237,22 @@ func raftCtx(ctxs ...context.Context) (ctx context.Context) {
 	return
 }
 
+type compositeRaftEventListener struct {
+	listeners []raftio.IRaftEventListener
+}
+
+func newCompositeRaftEventListener(listeners ...raftio.IRaftEventListener) raftio.IRaftEventListener {
+	return &compositeRaftEventListener{listeners}
+}
+
+func (c *compositeRaftEventListener) LeaderUpdated(info LeaderInfo) {
+	for _, listener := range c.listeners {
+		if listener != nil {
+			listener.LeaderUpdated(info)
+		}
+	}
+}
+
 // SetLogLevel sets log level for all zongzi and dragonboat loggers.
 //
 // Recommend [LogLevelWarning] for production.
@@ -253,17 +267,17 @@ func SetLogLevel(level LogLevel) {
 	logger.GetLogger("zongzi").SetLevel(level)
 }
 
-// SetLogLevelDebug sets a debug log level for most loggers
-// but filters out loggers having tons of debug output
+// SetLogLevelDebug sets a debug log level for most loggers.
+// but filters out loggers having tons of debug output.
 func SetLogLevelDebug() {
 	SetLogLevel(logger.DEBUG)
-	logger.GetLogger("gossip").SetLevel(logger.ERROR)
 	logger.GetLogger("dragonboat").SetLevel(logger.WARNING)
+	logger.GetLogger("gossip").SetLevel(logger.ERROR)
 	logger.GetLogger("raft").SetLevel(logger.WARNING)
 	logger.GetLogger("transport").SetLevel(logger.WARNING)
 }
 
-// SetLogLevelProduction sets a good log level for production
+// SetLogLevelProduction sets a good log level for production (gossip logger is a bit noisy).
 func SetLogLevelProduction() {
 	SetLogLevel(logger.WARNING)
 	logger.GetLogger("gossip").SetLevel(logger.ERROR)

@@ -65,27 +65,19 @@ func newCmdHostDel(nhid string) (b []byte) {
 	return
 }
 
-func newCmdShardPost(shardType string, tags map[string]string) (b []byte) {
+func newCmdShardPost(s Shard) (b []byte) {
 	b, _ = json.Marshal(commandShard{command{
 		Action: command_action_post,
 		Type:   command_type_shard,
-	}, Shard{
-		Status: ShardStatus_New,
-		Type:   shardType,
-		Tags:   tags,
-	}})
+	}, s})
 	return
 }
 
-func newCmdShardPut(shardID uint64, shardType string) (b []byte) {
+func newCmdShardPut(s Shard) (b []byte) {
 	b, _ = json.Marshal(commandShard{command{
 		Action: command_action_put,
 		Type:   command_type_shard,
-	}, Shard{
-		ID:     shardID,
-		Status: ShardStatus_New,
-		Type:   shardType,
-	}})
+	}, s})
 	return
 }
 
@@ -125,7 +117,7 @@ func newCmdReplicaPut(nhid string, shardID, replicaID uint64, isNonVoting bool) 
 	return
 }
 
-func newCmdReplicaDel(replicaID uint64) (b []byte) {
+func newCmdReplicaDelete(replicaID uint64) (b []byte) {
 	b, _ = json.Marshal(commandReplica{command{
 		Action: command_action_del,
 		Type:   command_type_replica,
@@ -195,7 +187,7 @@ func tagMapFromList(tagList []string) map[string]string {
 	var m = map[string]string{}
 	for _, ts := range tagList {
 		if i := strings.Index(ts, "="); i >= 0 {
-			m[ts[:i]] = ts[i:]
+			m[ts[:i]] = ts[i+1:]
 		} else {
 			m[ts] = ""
 		}

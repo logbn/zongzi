@@ -10,8 +10,6 @@ type Host struct {
 	ApiAddress  string   `json:"apiAddress"`
 	RaftAddress string   `json:"raftAddress"`
 	ShardTypes  []string `json:"shardTypes"`
-
-	Ping uint64 `json:"-"`
 }
 
 type Shard struct {
@@ -22,6 +20,7 @@ type Shard struct {
 	Tags    map[string]string `json:"tags"`
 
 	Type string `json:"type"`
+	Name string `json:"name"`
 }
 
 type Replica struct {
