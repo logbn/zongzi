@@ -25,7 +25,7 @@ This package provides a centralized coordination layer for Dragonboat multi-grou
   - Responds automatically to changes in cluster state registry
 - Shard Controller
   - Reads placement policies from shard tags
-  - Creates and destroys replicas in reconcile cluster state
+  - Creates and destroys replicas to reconcile cluster state
 - Host Client
   - Used to make proposals and queries to replicas on specific hosts
   - gRPC over message bus
@@ -83,29 +83,9 @@ is delegated to the developer. See [ADR: Raft Sessions](/docs/adr/raft_sessions.
 1. Install [protoc](https://grpc.io/docs/protoc-installation/)
 2. Install [protoc-gen-go](https://grpc.io/docs/languages/go/quickstart/)
 
-# Roadmap
+# Project Status
 
-## v0.1.0
-
-- [X] Refactor `(*Agent).Read()` and fsm state to use MVCC ([memdb](https://pkg.go.dev/github.com/hashicorp/go-memdb))
-- [X] Refactor fsm snapshots to JSONLines for streaming snapshots
-- [X] Add missing sync.Pools (see TODOs)
-- [ ] Make existing example more useful (see [optimistic-write-lock](https://github.com/lni/dragonboat-example/tree/25d608db03747515d1abb07b95afdb2d5e1cd5ea/optimistic-write-lock))
-- [ ] Add persistent state machine example
-- [X] Add integration tests for non-voting members
-- [X] Add integration tests for user shards and replicas
-- [ ] Move meta from gossip to zero shard
-
-## v0.2.0
-
-- [ ] Add host failure notifications
-- [ ] Add ping-based shard proposal router
-- [ ] Improved audit logging and change data capture
-- [ ] Add security options (mTLS)
-- [ ] Expose prometheus metrics
-
-## v0.3.0
-
-- [ ] 100% test coverage
-- [ ] Comprehensive integration testing (w/ chaos engineering)
-- [ ] Comprehensive documentation
+This library is in alpha (v0.0.X). Expect regular breaking changes to interfaces and serious defects outside the green
+path. When the API is stable and the code is well tested, beta releases will begin (v0.1.0). General availability
+will come after the library has been thoroughly tested in at least one production deployment for an extended period of
+time (v1.0.0).
