@@ -12,10 +12,6 @@ import (
 )
 
 // The shard shardController creates and destroys replicas based on a shard's tags.
-//
-//	zongzi:desired=3
-//	zongzi:require=host:class=default;geo:region=us-central1
-//	zongzi:vary=geo:zone
 type shardController struct {
 	agent       *Agent
 	cluster     cluster

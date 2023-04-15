@@ -54,7 +54,7 @@ func main() {
 		panic(err)
 	}
 	// var clients = make([]zongzi.ShardClient, *shards)
-	for i := 0; i < *shards; i++ {
+	for i := 1; i <= *shards; i++ {
 		_, _, err := agent.RegisterShard(ctx, uri,
 			zongzi.WithName(fmt.Sprintf(`%s-%05d`, *name, i)),
 			zongzi.WithPlacementVary(`geo:zone`),
