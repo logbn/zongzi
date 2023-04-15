@@ -118,6 +118,7 @@ var (
 	ErrShardNotReady = dragonboat.ErrShardNotReady
 	ErrTimeout       = dragonboat.ErrTimeout
 
+	ErrAgentNotReady     = fmt.Errorf("Agent not ready")
 	ErrHostNotFound      = fmt.Errorf(`Host not found`)
 	ErrIDOutOfRange      = fmt.Errorf(`ID out of range`)
 	ErrInvalidFactory    = fmt.Errorf(`Invalid Factory`)
@@ -131,8 +132,6 @@ var (
 	// Base36 supports only lowercase alphanumeric characters
 	ErrClusterNameInvalid = fmt.Errorf("Invalid cluster name (base36 maxlen 12)")
 	ClusterNameRegex      = `^[a-z0-9]{1,12}$`
-
-	ErrAgentNotReady = fmt.Errorf("Agent not ready")
 
 	// ErrNotifyCommitDisabled is logged when non-linearizable writes are requested but disabled.
 	// Set property `NotifyCommit` to `true` in `HostConfig` to add support for non-linearizable writes.

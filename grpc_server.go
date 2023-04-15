@@ -51,6 +51,10 @@ func (s *grpcServer) Members(ctx context.Context, req *internal.MembersRequest) 
 func (s *grpcServer) Join(ctx context.Context, req *internal.JoinRequest) (res *internal.JoinResponse, err error) {
 	// s.agent.log.Debugf(`gRPC Req Join: %#v`, req)
 	res = &internal.JoinResponse{}
+	if s.agent.Status() != AgentStatus_Ready {
+		err = ErrAgentNotReady
+		return
+	}
 	res.Value, err = s.agent.joinPrimeReplica(req.HostId, s.agent.replicaConfig.ShardID, req.IsNonVoting)
 	return
 }
