@@ -25,7 +25,7 @@ func TestAgent(t *testing.T) {
 	var ctx = context.Background()
 	os.RemoveAll(basedir)
 	start := func(t *testing.T, peers []string, class string, notifyCommit bool, addresses ...[]string) {
-		for _, addr := range addresses {
+		for i, addr := range addresses {
 			a, err := NewAgent(`test001`, peers,
 				WithApiAddress(addr[0]),
 				WithGossipAddress(addr[2]),
@@ -37,6 +37,7 @@ func TestAgent(t *testing.T) {
 					NotifyCommit:   notifyCommit,
 				}),
 				WithHostTags(
+					fmt.Sprintf(`geo:zone=%d`, i),
 					`node:class=`+class,
 					`test:tag=1234`,
 				))
@@ -106,6 +107,7 @@ func TestAgent(t *testing.T) {
 		}
 		t.Run(sm+` shard create`, func(t *testing.T) {
 			shard, created, err = agents[0].RegisterShard(ctx, sm,
+				WithPlacementVary(`geo:zone`),
 				WithPlacementMembers(3, `node:class=`+sm),
 				WithPlacementReplicas(othersm, 3, `node:class=`+othersm),
 				WithName(sm))
@@ -117,15 +119,6 @@ func TestAgent(t *testing.T) {
 				require.Nil(t, err)
 				require.NotEqual(t, 0, replicaID)
 			}
-			/*
-				shard, err = agents[0].ShardCreate(sm)
-				var replicaID uint64
-				for i := 0; i < len(agents); i++ {
-					replicaID, err = agents[0].ReplicaCreate(agents[i].HostID(), shard.ID, i > 2)
-					require.Nil(t, err)
-					require.NotEqual(t, 0, replicaID)
-				}
-			*/
 			var replicas []Replica
 			// 10 seconds for replicas to be active on all hosts
 			require.True(t, await(10, 100, func() bool {
