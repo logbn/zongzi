@@ -12,17 +12,27 @@ This package provides a centralized coordination layer for Dragonboat multi-grou
 
 ### Components
 
-- Cluster State Registry
+- Registry
   - Stores desired state of all hosts, shards and replicas in the cluster
   - Cluster state stored in raft shard zero (shardID: 0)
   - All cluster state changes pass through the Zongzi agent
-- Host Controller
-  - Manages replicas on all hosts (start, stop, recover, delete, etc)
-  - Responds automatically to changes in cluster state registry
 - Message Bus
   - Internal gPRC
   - Facilitates cluster boostrap
   - Forwards proposals and queries between nodes
+- Host Controller
+  - Manages replicas on all hosts (start, stop, recover, delete, etc)
+  - Responds automatically to changes in cluster state registry
+- Shard Controller
+  - Reads placement policies from shard tags
+  - Creates and destroys replicas in reconcile cluster state
+- Host Client
+  - Used to make proposals and queries to replicas on specific hosts
+  - gRPC over message bus
+- Shard Client (in progress)
+  - Intelligently routes proposals and queries to active shard replicas
+  - Selects nearest replica based on ping
+  - Load balances across replica groups
 
 ## Usage
 
