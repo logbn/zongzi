@@ -177,37 +177,37 @@ func (fsm *State) Index() (val uint64) {
 	return fsm.metaGetVal(`index`)
 }
 
-func (fsm *State) setLastHostID(id string) {
-	fsm.metaSet(`lastHostID`, 0, []byte(id))
+func (fsm *State) setHostID(id string) {
+	fsm.metaSet(`hostID`, 0, []byte(id))
 }
 
-// LastHostID returns the ID of the last created Host
-func (fsm *State) LastHostID() string {
-	return fsm.metaGetDataString(`lastHostID`)
+// HostID returns the ID of the last created Host
+func (fsm *State) HostID() string {
+	return fsm.metaGetDataString(`hostID`)
 }
 
 func (fsm *State) shardIncr() uint64 {
-	id := fsm.metaGetVal(`lastShardID`)
+	id := fsm.metaGetVal(`shardID`)
 	id++
-	fsm.metaSet(`lastShardID`, id, nil)
+	fsm.metaSet(`shardID`, id, nil)
 	return id
 }
 
-// LastShardID returns the ID of the last created Shard
-func (fsm *State) LastShardID() uint64 {
-	return fsm.metaGetVal(`lastShardID`)
+// ShardID returns the ID of the last created Shard
+func (fsm *State) ShardID() uint64 {
+	return fsm.metaGetVal(`shardID`)
 }
 
 func (fsm *State) replicaIncr() uint64 {
-	id := fsm.metaGetVal(`lastReplicaID`)
+	id := fsm.metaGetVal(`replicaID`)
 	id++
-	fsm.metaSet(`lastReplicaID`, id, nil)
+	fsm.metaSet(`replicaID`, id, nil)
 	return id
 }
 
-// LastReplicaID returns the ID of the last created Replica
-func (fsm *State) LastReplicaID() uint64 {
-	return fsm.metaGetVal(`lastReplicaID`)
+// ReplicaID returns the ID of the last created Replica
+func (fsm *State) ReplicaID() uint64 {
+	return fsm.metaGetVal(`replicaID`)
 }
 
 // Host returns the host with the specified ID or ok false if not found.
@@ -514,22 +514,22 @@ func (fsm *State) ReplicaIterateByTag(tag string, fn func(r Replica) bool) {
 }
 
 type fsmStateMetaHeader struct {
-	Index         uint64 `json:"index"`
-	Hosts         uint64 `json:"hosts"`
-	Shards        uint64 `json:"shards"`
-	Replicas      uint64 `json:"replicas"`
-	LastReplicaID uint64 `json:"lastReplicaID"`
-	LastShardID   uint64 `json:"lastShardID"`
-	LastHostID    string `json:"lastHostID"`
+	Index     uint64 `json:"index"`
+	HostID    string `json:"hostID"`
+	Hosts     uint64 `json:"hosts"`
+	ReplicaID uint64 `json:"replicaID"`
+	Replicas  uint64 `json:"replicas"`
+	ShardID   uint64 `json:"shardID"`
+	Shards    uint64 `json:"shards"`
 }
 
 func (fsm *State) Save(w io.Writer) error {
 	f := fsm.withTxn(false)
 	header := fsmStateMetaHeader{
-		Index:         f.metaGetVal(`index`),
-		LastHostID:    f.metaGetDataString(`lastHostID`),
-		LastShardID:   f.metaGetVal(`lastShardID`),
-		LastReplicaID: f.metaGetVal(`lastReplicaID`),
+		Index:     f.metaGetVal(`index`),
+		HostID:    f.metaGetDataString(`hostID`),
+		ShardID:   f.metaGetVal(`shardID`),
+		ReplicaID: f.metaGetVal(`replicaID`),
 	}
 	f.HostIterate(func(Host) bool {
 		header.Hosts++
@@ -572,9 +572,9 @@ func (fsm *State) recover(r io.Reader) (err error) {
 		return err
 	}
 	f.metaSet(`index`, header.Index, nil)
-	f.metaSet(`lastHostID`, 0, []byte(header.LastHostID))
-	f.metaSet(`lastShardID`, header.LastShardID, nil)
-	f.metaSet(`lastReplicaID`, header.LastReplicaID, nil)
+	f.metaSet(`hostID`, 0, []byte(header.HostID))
+	f.metaSet(`shardID`, header.ShardID, nil)
+	f.metaSet(`replicaID`, header.ReplicaID, nil)
 	var i uint64
 	for i = 0; i < header.Hosts; i++ {
 		var h Host

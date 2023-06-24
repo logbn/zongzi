@@ -55,7 +55,6 @@ func (c *controller) tick() (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	var ok bool
-	var done bool
 	if c.shard.ID == 0 {
 		c.agent.Read(c.ctx, func(state *zongzi.State) {
 			state.ShardIterate(func(s zongzi.Shard) bool {
@@ -73,10 +72,7 @@ func (c *controller) tick() (err error) {
 			if c.shard, ok = state.Shard(c.shard.ID); !ok {
 				return
 			}
-			if c.shard.Updated <= c.index && c.lastHostID == state.LastHostID() {
-				done = true
-			}
-			if done {
+			if c.shard.Updated <= c.index && c.lastHostID == state.HostID() {
 				return
 			}
 			var members []*zongzi.Client
@@ -92,7 +88,7 @@ func (c *controller) tick() (err error) {
 			c.members = members
 			c.clients = clients
 			c.index = c.shard.Updated
-			c.lastHostID = state.LastHostID()
+			c.lastHostID = state.HostID()
 
 			// Print snapshot
 			buf := bytes.NewBufferString("")
@@ -133,11 +129,3 @@ func (c *controller) getClient(random, member bool) (rc *zongzi.Client) {
 	}
 	return
 }
-
-/*
-func (c *controller) getClient(uri string) (rc *zongzi.ShardClient) {
-	h := fnv.New32a()
-	h.Write([]byte(s))
-	return c.clients[h.Sum32()%len(clients)]
-}
-*/

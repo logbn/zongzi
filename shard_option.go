@@ -28,9 +28,9 @@ func WithPlacementReplicas(group string, n int, tags ...string) ShardOption {
 	}
 }
 
-func WithPlacementVary(tags ...string) ShardOption {
+func WithPlacementVary(tagKeys ...string) ShardOption {
 	return func(s *Shard) error {
-		s.Tags[`placement:vary`] = strings.Join(tags, ";")
+		s.Tags[`placement:vary`] = strings.Join(tagKeys, ";")
 		return nil
 	}
 }

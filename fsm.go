@@ -79,7 +79,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 				fsm.tagsSetNX(cmd.Host.Tags, old.Tags)
 			} else {
 				cmd.Host.Created = entry.Index
-				state.setLastHostID(cmd.Host.ID)
+				state.setHostID(cmd.Host.ID)
 			}
 			cmd.Host.Updated = entry.Index
 			state.ReplicaIterateByHostID(cmd.Host.ID, func(r Replica) bool {
@@ -136,7 +136,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			if old, ok := state.Shard(cmd.Shard.ID); ok {
 				cmd.Shard.Created = old.Created
 				fsm.tagsSetNX(cmd.Shard.Tags, old.Tags)
-			} else if cmd.Shard.ID == 0 && state.LastShardID() == 0 {
+			} else if cmd.Shard.ID == 0 && state.ShardID() == 0 {
 				// Special case for prime shard (0)
 				cmd.Shard.Created = entry.Index
 			} else {

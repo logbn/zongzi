@@ -251,7 +251,7 @@ func (a *Agent) Read(ctx context.Context, fn func(*State), stale ...bool) (err e
 }
 
 // RegisterShard creates a new shard. If shard name option is provided and shard already exists,
-// found shard is updated and returned.
+// found shard is updated.
 func (a *Agent) RegisterShard(ctx context.Context, uri string, opts ...ShardOption) (shard Shard, created bool, err error) {
 	shard = Shard{
 		Status: ShardStatus_New,
