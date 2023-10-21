@@ -10,6 +10,7 @@ import (
 	"github.com/lni/dragonboat/v4"
 	"github.com/lni/dragonboat/v4/config"
 	"github.com/lni/dragonboat/v4/logger"
+	"github.com/lni/dragonboat/v4/plugin/tan"
 	"github.com/lni/dragonboat/v4/raftio"
 	"github.com/lni/dragonboat/v4/statemachine"
 )
@@ -38,6 +39,9 @@ var (
 		RTTMillisecond: 10,
 		NotifyCommit:   true,
 		WALDir:         "/var/lib/zongzi/wal",
+		Expert: config.ExpertConfig{
+			LogDBFactory: tan.Factory,
+		},
 	}
 	DefaultReplicaConfig = ReplicaConfig{
 		CheckQuorum:             true,

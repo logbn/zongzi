@@ -39,6 +39,7 @@ func WithHostConfig(cfg HostConfig) AgentOption {
 		if len(cfg.Gossip.BindAddress) == 0 && len(a.hostConfig.Gossip.BindAddress) > 0 {
 			cfg.Gossip.BindAddress = a.hostConfig.Gossip.BindAddress
 		}
+		cfg.Expert.LogDBFactory = DefaultHostConfig.Expert.LogDBFactory
 		a.hostConfig = cfg
 		return nil
 	}
