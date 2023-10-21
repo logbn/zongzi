@@ -19,7 +19,7 @@ import (
 
 func TestAgent(t *testing.T) {
 	// SetLogLevel(LogLevelDebug)
-	basedir := `/tmp/zongzi-test`
+	basedir := `./tmp/zongzi-test`
 	agents := []*Agent{}
 	var err error
 	var ctx = context.Background()
@@ -40,6 +40,7 @@ func TestAgent(t *testing.T) {
 					fmt.Sprintf(`geo:zone=%d`, i%3),
 					`node:class=`+class,
 					`test:tag=1234`,
+					`test:novalue`,
 				))
 			require.Nil(t, err)
 			// a.log.SetLevel(LogLevelDebug)
@@ -148,6 +149,81 @@ func TestAgent(t *testing.T) {
 			}
 		}
 	}
+	t.Run(`shard cover`, func(t *testing.T) {
+		shard, created, err := agents[0].RegisterShard(ctx, `concurrent`,
+			WithPlacementVary(`geo:zone`),
+			WithPlacementMembers(3, `node:class=concurrent`),
+			WithPlacementCover(`test:tag=1234`),
+			WithName(`cover-test`))
+		require.Nil(t, err)
+		require.True(t, created)
+		var replicas []Replica
+		// 10 seconds for replicas to be active on all hosts
+		require.True(t, await(10, 100, func() bool {
+			var replicaCount = 0
+			replicas = replicas[:0]
+			agents[0].Read(ctx, func(s *State) {
+				s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
+					replicas = append(replicas, r)
+					if r.Status == ReplicaStatus_Active {
+						replicaCount++
+					}
+					return true
+				})
+			})
+			return replicaCount == len(agents)
+		}), `%+v`, replicas)
+	})
+	t.Run(`shard cover multi tag`, func(t *testing.T) {
+		shard, created, err := agents[0].RegisterShard(ctx, `concurrent`,
+			WithPlacementVary(`geo:zone`),
+			WithPlacementMembers(3, `node:class=concurrent`),
+			WithPlacementCover(`test:tag=1234`, `node:class=concurrent`),
+			WithName(`cover-test-2`))
+		require.Nil(t, err)
+		require.True(t, created)
+		var replicas []Replica
+		// 10 seconds for replicas to be active on all hosts
+		require.True(t, await(10, 100, func() bool {
+			var replicaCount = 0
+			replicas = replicas[:0]
+			agents[0].Read(ctx, func(s *State) {
+				s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
+					replicas = append(replicas, r)
+					if r.Status == ReplicaStatus_Active {
+						replicaCount++
+					}
+					return true
+				})
+			})
+			return replicaCount == 6
+		}), `%+v`, replicas)
+	})
+	t.Run(`shard cover no value`, func(t *testing.T) {
+		shard, created, err := agents[0].RegisterShard(ctx, `concurrent`,
+			WithPlacementVary(`geo:zone`),
+			WithPlacementMembers(3, `node:class=concurrent`),
+			WithPlacementCover(`test:novalue`),
+			WithName(`cover-test-3`))
+		require.Nil(t, err)
+		require.True(t, created)
+		var replicas []Replica
+		// 10 seconds for replicas to be active on all hosts
+		require.True(t, await(10, 100, func() bool {
+			var replicaCount = 0
+			replicas = replicas[:0]
+			agents[0].Read(ctx, func(s *State) {
+				s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
+					replicas = append(replicas, r)
+					if r.Status == ReplicaStatus_Active {
+						replicaCount++
+					}
+					return true
+				})
+			})
+			return replicaCount == len(agents)
+		}), `%+v`, replicas)
+	})
 	t.Run(`host restart`, func(t *testing.T) {
 		t.Run(`stop`, func(t *testing.T) {
 			agents[0].Stop()

@@ -34,3 +34,10 @@ func WithPlacementVary(tagKeys ...string) ShardOption {
 		return nil
 	}
 }
+
+func WithPlacementCover(tagKeys ...string) ShardOption {
+	return func(s *Shard) error {
+		s.Tags[`placement:cover`] = strings.Join(tagKeys, ";")
+		return nil
+	}
+}

@@ -259,7 +259,9 @@ func (a *Agent) RegisterShard(ctx context.Context, uri string, opts ...ShardOpti
 		Tags:   map[string]string{},
 	}
 	for _, opt := range opts {
-		opt(&shard)
+		if err = opt(&shard); err != nil {
+			return
+		}
 	}
 	var res Result
 	if len(shard.Name) > 0 {

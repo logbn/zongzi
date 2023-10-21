@@ -165,6 +165,18 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 			}
 			desired[group] = i
 			filters[group] = parts[1:]
+		} else if tagKey == `placement:cover` {
+			// ex: placement:cover=geo:region=us-central1
+			for _, t := range strings.Split(tagValue, ";") {
+				k, v := c.parseTag(t)
+				state.HostIterateByTag(k, func(h Host) bool {
+					if v == "" || h.Tags[k] == v {
+						desired[`cover`]++
+					}
+					return true
+				})
+				filters[`cover`] = append(filters[`cover`], t)
+			}
 		}
 	}
 	var varies bool
@@ -297,11 +309,7 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 					// Don't even try this vary tag because it has no remaining hosts.
 					continue
 				}
-				k, v, ok := c.parseTag(tag)
-				if !ok {
-					c.agent.log.Errorf(`Invalid tag %s`, tag)
-					continue
-				}
+				k, v := c.parseTag(tag)
 				if varyTagCounts[k] == 0 || varyTagCounts[k] < replicaCount {
 					varyTagValues[k] = v
 					varyTagCounts[k] = replicaCount
@@ -337,7 +345,7 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 					}
 					updated = true
 					for _, varyTag := range varyTags {
-						tagKey, _, _ := c.parseTag(varyTag)
+						tagKey, _ := c.parseTag(varyTag)
 						varyMatch[group][tagKey]--
 						varyCount[group][varyTag]++
 					}
@@ -361,12 +369,12 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 	return
 }
 
-func (c *shardController) parseTag(tag string) (k, v string, ok bool) {
+func (c *shardController) parseTag(tag string) (k, v string) {
 	i := strings.Index(tag, "=")
 	if i < 1 {
-		return
+		return tag, ""
 	}
-	return tag[:i], tag[i+1:], true
+	return tag[:i], tag[i+1:]
 }
 
 func (c *shardController) matchTagFilter(src map[string]string, tags []string) bool {
@@ -374,12 +382,8 @@ func (c *shardController) matchTagFilter(src map[string]string, tags []string) b
 		if len(tag) == 0 {
 			continue
 		}
-		k, v, ok := c.parseTag(tag)
-		if !ok {
-			c.agent.log.Warningf(`Invalid tag filter: %s`, tag)
-			continue
-		}
-		if _, ok = src[k]; !ok {
+		k, v := c.parseTag(tag)
+		if _, ok := src[k]; !ok {
 			// Tag key not present
 			return false
 		}
