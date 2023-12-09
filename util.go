@@ -71,14 +71,16 @@ type (
 	SnapshotFile           = statemachine.SnapshotFile
 	SnapshotFileCollection = statemachine.ISnapshotFileCollection
 
-	LogLevel  = logger.LogLevel
-	GetLogger = logger.ILogger
+	LogLevel = logger.LogLevel
+	Logger   = logger.ILogger
 
 	AgentStatus   string
 	HostStatus    string
 	ShardStatus   string
 	ReplicaStatus string
 )
+
+var GetLogger = logger.GetLogger
 
 const (
 	LogLevelCritical = logger.CRITICAL

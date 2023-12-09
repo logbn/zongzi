@@ -31,6 +31,13 @@ func WithGossipAddress(advertiseAddress string, bindAddress ...string) AgentOpti
 	}
 }
 
+func WithRaftAddress(raftAddress string) AgentOption {
+	return func(a *Agent) error {
+		a.hostConfig.RaftAddress = raftAddress
+		return nil
+	}
+}
+
 func WithHostConfig(cfg HostConfig) AgentOption {
 	return func(a *Agent) error {
 		if len(cfg.Gossip.AdvertiseAddress) == 0 && len(a.hostConfig.Gossip.AdvertiseAddress) > 0 {
@@ -38,6 +45,9 @@ func WithHostConfig(cfg HostConfig) AgentOption {
 		}
 		if len(cfg.Gossip.BindAddress) == 0 && len(a.hostConfig.Gossip.BindAddress) > 0 {
 			cfg.Gossip.BindAddress = a.hostConfig.Gossip.BindAddress
+		}
+		if len(cfg.RaftAddress) == 0 && len(a.hostConfig.RaftAddress) > 0 {
+			cfg.RaftAddress = a.hostConfig.RaftAddress
 		}
 		cfg.Expert.LogDBFactory = DefaultHostConfig.Expert.LogDBFactory
 		a.hostConfig = cfg
