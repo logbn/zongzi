@@ -2,7 +2,7 @@ syntax = "proto3";
 
 option go_package = "github.com/logbn/zongzi/internal";
 
-// Zongzi provides a gRPC api for internal host communication
+// Zongzi uses an internal gRPC service for cluster coordination
 service Zongzi {
 	// Ping is a noop for timing purposes
 	rpc Ping(PingRequest) returns (PingResponse) {}

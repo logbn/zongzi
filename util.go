@@ -25,9 +25,9 @@ const (
 )
 
 const (
-	DefaultApiAddress    = "127.0.0.1:17001"
+	DefaultGossipAddress = "127.0.0.1:17001"
 	DefaultRaftAddress   = "127.0.0.1:17002"
-	DefaultGossipAddress = "127.0.0.1:17003"
+	DefaultApiAddress    = "127.0.0.1:17003"
 
 	ZongziShardID = 0
 )
