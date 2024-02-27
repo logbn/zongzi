@@ -597,6 +597,11 @@ func (a *Agent) readIndex(ctx context.Context, shardID uint64) (err error) {
 	return
 }
 
+// ReadIndex blocks until it can read from a shard, indicating that the local replica is up to date.
+func (a *Agent) ReadIndex(ctx context.Context, shardID uint64) (err error) {
+	return a.readIndex(ctx, shardID)
+}
+
 func (a *Agent) joinPrimeReplica(hostID string, shardID uint64, isNonVoting bool) (replicaID uint64, err error) {
 	var ok bool
 	var host Host
