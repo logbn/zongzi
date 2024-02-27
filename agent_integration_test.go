@@ -329,9 +329,9 @@ var mockConcurrentSM = func(shardID uint64, replicaID uint64) StateMachine {
 var idx = map[string]uint64{}
 var mutex sync.Mutex
 
-var mockPersistentSM = func(shardID uint64, replicaID uint64) PersistentStateMachine {
+var mockPersistentSM = func(shardID uint64, replicaID uint64) StateMachinePersistent {
 	var id = fmt.Sprintf(`%d-%d`, shardID, replicaID)
-	return &mockPersistentStateMachine{
+	return &mockStateMachinePersistent{
 		mockOpen: func(stopc <-chan struct{}) (index uint64, err error) {
 			return idx[id], nil
 		},

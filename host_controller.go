@@ -133,7 +133,7 @@ func (c *hostController) tick() (err error) {
 					err = c.agent.host.StartConcurrentReplica(nil, false, shim, item.Config)
 				}
 			} else {
-				shim := persistentStateMachineFactoryShim(item.PersistentStateMachineFactory)
+				shim := stateMachinePersistentFactoryShim(item.StateMachinePersistentFactory)
 				switch replica.Status {
 				case ReplicaStatus_Bootstrapping:
 					if len(members) < 3 {

@@ -46,7 +46,7 @@ type Agent struct {
 type shardType struct {
 	Config                        ReplicaConfig
 	StateMachineFactory           StateMachineFactory
-	PersistentStateMachineFactory PersistentStateMachineFactory
+	StateMachinePersistentFactory StateMachinePersistentFactory
 	Uri                           string
 }
 
@@ -308,14 +308,14 @@ func (a *Agent) RegisterStateMachine(uri string, factory StateMachineFactory, co
 }
 
 // RegisterStateMachinePersistent registers a persistent shard type. Call before Starting agent.
-func (a *Agent) RegisterStateMachinePersistent(uri string, factory PersistentStateMachineFactory, config ...ReplicaConfig) {
+func (a *Agent) RegisterStateMachinePersistent(uri string, factory StateMachinePersistentFactory, config ...ReplicaConfig) {
 	cfg := DefaultReplicaConfig
 	if len(config) > 0 {
 		cfg = config[0]
 	}
 	a.shardTypes[uri] = shardType{
 		Config:                        cfg,
-		PersistentStateMachineFactory: factory,
+		StateMachinePersistentFactory: factory,
 		Uri:                           uri,
 	}
 }

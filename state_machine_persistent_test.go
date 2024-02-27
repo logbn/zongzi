@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPersistentStateMachineFactoryShim(t *testing.T) {
+func TestStateMachinePersistentFactoryShim(t *testing.T) {
 	t.Run(`success`, func(t *testing.T) {
-		shimFunc := persistentStateMachineFactoryShim(func(shardID uint64, replicaID uint64) PersistentStateMachine {
-			return &mockPersistentStateMachine{
+		shimFunc := stateMachinePersistentFactoryShim(func(shardID uint64, replicaID uint64) StateMachinePersistent {
+			return &mockStateMachinePersistent{
 				mockUpdate: func(e []Entry) []Entry {
 					e[0].Result.Value = shardID + e[0].Index
 					return e
@@ -28,10 +28,10 @@ func TestPersistentStateMachineFactoryShim(t *testing.T) {
 	})
 }
 
-func TestPersistentStateMachineShim(t *testing.T) {
-	var newShim = func() (*mockPersistentStateMachine, *persistentStateMachineShim) {
-		mock := &mockPersistentStateMachine{}
-		return mock, &persistentStateMachineShim{sm: mock}
+func TestStateMachinePersistentShim(t *testing.T) {
+	var newShim = func() (*mockStateMachinePersistent, *stateMachinePersistentShim) {
+		mock := &mockStateMachinePersistent{}
+		return mock, &stateMachinePersistentShim{sm: mock}
 	}
 	t.Run(`Open`, func(t *testing.T) {
 		mock, shim := newShim()
@@ -54,9 +54,9 @@ func TestPersistentStateMachineShim(t *testing.T) {
 	})
 }
 
-var _ PersistentStateMachine = (*mockPersistentStateMachine)(nil)
+var _ StateMachinePersistent = (*mockStateMachinePersistent)(nil)
 
-type mockPersistentStateMachine struct {
+type mockStateMachinePersistent struct {
 	mockOpen                func(stopc <-chan struct{}) (index uint64, err error)
 	mockUpdate              func(commands []Entry) []Entry
 	mockQuery               func(ctx context.Context, data []byte) *Result
@@ -68,38 +68,38 @@ type mockPersistentStateMachine struct {
 	mockClose               func() error
 }
 
-func (shim *mockPersistentStateMachine) Open(stopc <-chan struct{}) (index uint64, err error) {
+func (shim *mockStateMachinePersistent) Open(stopc <-chan struct{}) (index uint64, err error) {
 	return shim.mockOpen(stopc)
 }
 
-func (shim *mockPersistentStateMachine) Update(commands []Entry) []Entry {
+func (shim *mockStateMachinePersistent) Update(commands []Entry) []Entry {
 	return shim.mockUpdate(commands)
 }
 
-func (shim *mockPersistentStateMachine) Query(ctx context.Context, data []byte) *Result {
+func (shim *mockStateMachinePersistent) Query(ctx context.Context, data []byte) *Result {
 	return shim.mockQuery(ctx, data)
 }
 
-func (shim *mockPersistentStateMachine) Watch(ctx context.Context, data []byte, result chan<- *Result) {
+func (shim *mockStateMachinePersistent) Watch(ctx context.Context, data []byte, result chan<- *Result) {
 	shim.mockWatch(ctx, data, result)
 }
 
-func (shim *mockPersistentStateMachine) Sync() error {
+func (shim *mockStateMachinePersistent) Sync() error {
 	return shim.mockSync()
 }
 
-func (shim *mockPersistentStateMachine) PrepareSnapshot() (cursor any, err error) {
+func (shim *mockStateMachinePersistent) PrepareSnapshot() (cursor any, err error) {
 	return shim.mockPrepareSnapshot()
 }
 
-func (shim *mockPersistentStateMachine) SaveSnapshot(cursor any, w io.Writer, close <-chan struct{}) error {
+func (shim *mockStateMachinePersistent) SaveSnapshot(cursor any, w io.Writer, close <-chan struct{}) error {
 	return shim.mockSaveSnapshot(cursor, w, close)
 }
 
-func (shim *mockPersistentStateMachine) RecoverFromSnapshot(r io.Reader, close <-chan struct{}) error {
+func (shim *mockStateMachinePersistent) RecoverFromSnapshot(r io.Reader, close <-chan struct{}) error {
 	return shim.mockRecoverFromSnapshot(r, close)
 }
 
-func (shim *mockPersistentStateMachine) Close() error {
+func (shim *mockStateMachinePersistent) Close() error {
 	return shim.mockClose()
 }
