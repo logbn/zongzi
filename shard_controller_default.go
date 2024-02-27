@@ -1,122 +1,26 @@
 package zongzi
 
 import (
-	"context"
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
-
-	"github.com/benbjohnson/clock"
 )
 
-// The shard shardController creates and destroys replicas based on a shard's tags.
-type shardController struct {
-	agent       *Agent
-	cluster     cluster
-	ctx         context.Context
-	ctxCancel   context.CancelFunc
-	clock       clock.Clock
-	isLeader    bool
-	index       uint64
-	lastHostID  string
-	leaderIndex uint64
-	mutex       sync.RWMutex
-	wg          sync.WaitGroup
+// The default shard controller is a basic controller that creates and destroys replicas based on a shard tags.
+type shardControllerDefault struct {
+	agent *Agent
+	log   Logger
 }
 
-func newShardController(agent *Agent) *shardController {
-	return &shardController{
-		clock:   clock.New(),
-		agent:   agent,
-		cluster: agent,
+func newShardControllerDefault(agent *Agent) *shardControllerDefault {
+	return &shardControllerDefault{
+		log:   agent.log,
+		agent: agent,
 	}
 }
 
-type cluster interface {
-	replicaCreate(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error)
-	replicaDelete(replicaID uint64) (err error)
-}
-
-func (c *shardController) Start() (err error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	c.ctx, c.ctxCancel = context.WithCancel(context.Background())
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-		t := c.clock.Ticker(500 * time.Millisecond)
-		defer t.Stop()
-		for {
-			select {
-			case <-c.ctx.Done():
-				c.agent.log.Infof("Controller stopped")
-				return
-			case <-t.C:
-				c.tick()
-			}
-		}
-	}()
-	return
-}
-
-func (c *shardController) tick() {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	var err error
-	var hadErr bool
-	var index uint64
-	var updated = true
-	if c.isLeader {
-		for updated {
-			updated = false
-			err = c.agent.Read(c.ctx, func(state *State) {
-				index = state.Index()
-				state.ShardIterateUpdatedAfter(c.index, func(shard Shard) bool {
-					select {
-					case <-c.ctx.Done():
-						return false
-					default:
-					}
-					if shard.ID == 0 {
-						return true
-					}
-					updated, err = c.reconcile(state, shard)
-					if err != nil {
-						hadErr = true
-						c.agent.log.Warningf("Error resolving shard %d %s %s", shard.ID, shard.Name, err.Error())
-						c.agent.tagsSet(shard, fmt.Sprintf(`placement:error=%s`, err.Error()))
-					} else if _, ok := shard.Tags[`placement:error`]; ok {
-						c.agent.tagsRemove(shard, `placement:error`)
-					}
-					if updated {
-						// We break the iterator on update in order to catch a fresh snapshot for the next shard.
-						// This ensures that changes applied during reconciliation of this shard will be visible to
-						// reconciliation of the next shard. Otherwise we would stack all the replicas for all the
-						// shards requiring reconciliation onto the first few hosts due to outdated host replica
-						// counts. Updated must only be set to true if shard.Updated has been changed. Otherwise
-						// reconcile will loop infinitely.
-						return false
-					}
-					return true
-				})
-			})
-			if err != nil {
-				hadErr = true
-			}
-		}
-	}
-	// TODO - Update shard client pool
-	if !hadErr && index > c.index {
-		c.agent.log.Debugf("%s Finished processing %d", c.agent.HostID(), index)
-		c.index = index
-	}
-	return
-}
-
-func (c *shardController) reconcile(state *State, shard Shard) (updated bool, err error) {
-	c.agent.log.Debugf("Reconciling Shard %d", shard.ID)
+func (c *shardControllerDefault) Reconcile(state *State, shard Shard, controls ShardControls) (err error) {
+	c.log.Debugf("Reconciling Shard %d", shard.ID)
 	var (
 		desired       = map[string]int{}
 		filters       = map[string][]string{}
@@ -128,6 +32,7 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 		varyCount     = map[string]map[string]int{}
 		varyMatch     = map[string]map[string]int{}
 	)
+	// Resolve desired state from shard tags
 	for tagKey, tagValue := range shard.Tags {
 		if !strings.HasPrefix(tagKey, "placement:") {
 			continue
@@ -140,33 +45,32 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 			parts := strings.Split(tagValue, ";")
 			i, err := strconv.Atoi(parts[0])
 			if err != nil {
-				c.agent.log.Warningf(`Invalid tag placement:member %s %s`, tagKey, err.Error())
+				c.log.Warningf(`Invalid tag placement:member %s %s`, tagKey, err.Error())
 				continue
 			}
 			desired[`member`] = i
 			filters[`member`] = parts[1:]
 		} else if strings.HasPrefix(tagKey, `placement:replica:`) {
-			// ex: placement:replica:usc1=3;geo:region=us-central1
-			// ex: placement:replica:usw1=3;geo:region=us-west1
+			// ex: placement:replica:read=6;host:class=storage-replica
 			group := tagKey[len(`placement:replica:`):]
 			if len(group) == 0 {
-				c.agent.log.Warningf(`Invalid tag placement:replica - "%s"`, tagKey)
+				c.log.Warningf(`Invalid tag placement:replica - "%s"`, tagKey)
 				continue
 			}
 			if group == `member` {
-				c.agent.log.Warningf(`Invalid tag placement:replica - group name "member" is reserved.`)
+				c.log.Warningf(`Invalid tag placement:replica - group name "member" is reserved.`)
 				continue
 			}
 			parts := strings.Split(tagValue, ";")
 			i, err := strconv.Atoi(parts[0])
 			if err != nil {
-				c.agent.log.Warningf(`Invalid tag placement:replica %s %s`, tagKey, err.Error())
+				c.log.Warningf(`Invalid tag placement:replica %s %s`, tagKey, err.Error())
 				continue
 			}
 			desired[group] = i
 			filters[group] = parts[1:]
 		} else if tagKey == `placement:cover` {
-			// ex: placement:cover=geo:region=us-central1
+			// ex: placement:cover=host:class=compute
 			for _, t := range strings.Split(tagValue, ";") {
 				k, v := c.parseTag(t)
 				state.HostIterateByTag(k, func(h Host) bool {
@@ -204,11 +108,11 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 				}
 			}
 			if len(groups) > 1 {
-				c.agent.log.Infof(`Replica matched multiple groups [%05d:%05d]: %v`, shard.ID, replica.ID, groups)
+				c.log.Infof(`Replica matched multiple groups [%05d:%05d]: %v`, shard.ID, replica.ID, groups)
 			}
 		}
 		if len(groups) == 0 {
-			c.agent.log.Debugf(`[%05d:%05d] Undesired \n%#v\n%#v`, shard.ID, replica.ID, shard.Tags, host.Tags)
+			c.log.Debugf(`[%05d:%05d] Undesired \n%#v\n%#v`, shard.ID, replica.ID, shard.Tags, host.Tags)
 			undesired = append(undesired, replica.ID)
 		} else {
 			occupiedHosts[replica.HostID] = true
@@ -257,11 +161,10 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 	}
 	// Delete undesired replicas
 	for _, replicaID := range undesired {
-		if err = c.cluster.replicaDelete(replicaID); err != nil {
-			c.agent.log.Errorf(`Error deleting replica: %s`, err.Error())
+		if err = controls.ReplicaDelete(replicaID); err != nil {
+			c.log.Errorf(`Error deleting replica: %s`, err.Error())
 			return
 		}
-		updated = true
 		// Early exit just simplifies the logic
 		return
 	}
@@ -339,17 +242,16 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 					continue
 				}
 				if c.matchTagFilter(host.Tags, varyTags) {
-					replicaID, err = c.cluster.replicaCreate(host.ID, shard.ID, group != `member`)
+					replicaID, err = controls.ReplicaCreate(host.ID, shard.ID, group != `member`)
 					if err != nil {
 						return
 					}
-					updated = true
 					for _, varyTag := range varyTags {
 						tagKey, _ := c.parseTag(varyTag)
 						varyMatch[group][tagKey]--
 						varyCount[group][varyTag]++
 					}
-					c.agent.log.Infof(`[%05d:%05d] Created replica for %s`, shard.ID, replicaID, shard.Name)
+					c.log.Infof(`[%05d:%05d] Created replica for %s`, shard.ID, replicaID, shard.Name)
 					matches[group] = append(matches[group][:j], matches[group][j+1:]...)
 					occupiedHosts[host.ID] = true
 					success = true
@@ -362,14 +264,14 @@ func (c *shardController) reconcile(state *State, shard Shard) (updated bool, er
 			}
 		}
 		if err != nil {
-			c.agent.log.Warningf("[%05d] (%s/%s) %s", shard.ID, shard.Name, group, err.Error())
+			c.log.Warningf("[%05d] (%s/%s) %s", shard.ID, shard.Name, group, err.Error())
 			err = nil
 		}
 	}
 	return
 }
 
-func (c *shardController) parseTag(tag string) (k, v string) {
+func (c *shardControllerDefault) parseTag(tag string) (k, v string) {
 	i := strings.Index(tag, "=")
 	if i < 1 {
 		return tag, ""
@@ -377,7 +279,7 @@ func (c *shardController) parseTag(tag string) (k, v string) {
 	return tag[:i], tag[i+1:]
 }
 
-func (c *shardController) matchTagFilter(src map[string]string, tags []string) bool {
+func (c *shardControllerDefault) matchTagFilter(src map[string]string, tags []string) bool {
 	for _, tag := range tags {
 		if len(tag) == 0 {
 			continue
@@ -393,24 +295,4 @@ func (c *shardController) matchTagFilter(src map[string]string, tags []string) b
 		}
 	}
 	return true
-}
-
-func (c *shardController) LeaderUpdated(info LeaderInfo) {
-	c.agent.log.Infof("[%05d:%05d] LeaderUpdated: %05d", info.ShardID, info.ReplicaID, info.LeaderID)
-	if info.ShardID == 0 {
-		c.mutex.Lock()
-		c.isLeader = info.LeaderID == info.ReplicaID
-		c.mutex.Unlock()
-		return
-	}
-}
-
-func (c *shardController) Stop() {
-	defer c.agent.log.Infof(`Stopped shardController`)
-	if c.ctxCancel != nil {
-		c.ctxCancel()
-	}
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	c.index = 0
 }

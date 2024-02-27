@@ -50,7 +50,7 @@ func main() {
 		panic(err)
 	}
 	agent.RegisterStateMachine(uri, factory)
-	if err = agent.Start(); err != nil {
+	if err = agent.Start(ctx); err != nil {
 		panic(err)
 	}
 	// var clients = make([]zongzi.ShardClient, *shards)

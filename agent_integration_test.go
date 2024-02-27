@@ -48,7 +48,7 @@ func TestAgent(t *testing.T) {
 			a.RegisterStateMachine(`concurrent`, mockConcurrentSM)
 			a.RegisterStateMachinePersistent(`persistent`, mockPersistentSM)
 			go func(a *Agent) {
-				err = a.Start()
+				err = a.Start(ctx)
 				require.Nil(t, err, `%+v`, err)
 			}(a)
 		}
@@ -233,7 +233,7 @@ func TestAgent(t *testing.T) {
 			}), `%s`, mustJson(agents))
 		})
 		t.Run(`start`, func(t *testing.T) {
-			agents[0].Start()
+			agents[0].Start(ctx)
 			// 5 seconds for the host to transition to active
 			require.True(t, await(10, 100, func() bool {
 				return agents[0].Status() == AgentStatus_Ready

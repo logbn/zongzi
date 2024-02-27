@@ -29,7 +29,7 @@ const (
 	DefaultRaftAddress   = "127.0.0.1:17002"
 	DefaultApiAddress    = "127.0.0.1:17003"
 
-	ZongziShardID = 0
+	ShardID = 0
 )
 
 var (

@@ -18,23 +18,23 @@ import (
 )
 
 type Agent struct {
-	advertiseAddress string
-	bindAddress      string
-	clusterName      string
-	hostController   *hostController
-	shardController  *shardController
-	fsm              *fsm
-	grpcClientPool   *grpcClientPool
-	grpcServer       *grpcServer
-	host             *dragonboat.NodeHost
-	hostConfig       HostConfig
-	hostTags         []string
-	log              logger.ILogger
-	members          map[uint64]string
-	peers            []string
-	replicaConfig    ReplicaConfig
-	shardTypes       map[string]shardType
-	status           AgentStatus
+	advertiseAddress       string
+	bindAddress            string
+	clusterName            string
+	hostController         *hostController
+	shardControllerManager *shardControllerManager
+	fsm                    *fsm
+	grpcClientPool         *grpcClientPool
+	grpcServer             *grpcServer
+	host                   *dragonboat.NodeHost
+	hostConfig             HostConfig
+	hostTags               []string
+	log                    logger.ILogger
+	members                map[uint64]string
+	peers                  []string
+	replicaConfig          ReplicaConfig
+	shardTypes             map[string]shardType
+	status                 AgentStatus
 
 	clock     clock.Clock
 	ctx       context.Context
@@ -65,6 +65,7 @@ func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent
 		shardTypes:  map[string]shardType{},
 		status:      AgentStatus_Pending,
 	}
+	a.shardControllerManager = newShardControllerManager(a)
 	for _, opt := range append([]AgentOption{
 		WithApiAddress(DefaultApiAddress),
 		WithGossipAddress(DefaultGossipAddress),
@@ -74,9 +75,8 @@ func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent
 		opt(a)
 	}
 	a.hostController = newHostController(a)
-	a.shardController = newShardController(a)
-	a.hostConfig.RaftEventListener = newCompositeRaftEventListener(a.shardController, a.hostConfig.RaftEventListener)
-	a.replicaConfig.ShardID = ZongziShardID
+	a.hostConfig.RaftEventListener = newCompositeRaftEventListener(a.shardControllerManager, a.hostConfig.RaftEventListener)
+	a.replicaConfig.ShardID = ShardID
 	a.hostConfig.DeploymentID = mustBase36Decode(clusterName)
 	a.hostConfig.AddressByNodeHostID = true
 	a.hostConfig.Gossip.Meta = []byte(a.advertiseAddress)
@@ -85,16 +85,16 @@ func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent
 	return a, nil
 }
 
-func (a *Agent) Start() (err error) {
+func (a *Agent) Start(ctx context.Context) (err error) {
 	var init bool
 	defer func() {
 		if err == nil {
 			a.hostController.Start()
-			a.shardController.Start()
+			a.shardControllerManager.Start()
 			a.setStatus(AgentStatus_Ready)
 		}
 	}()
-	a.ctx, a.ctxCancel = context.WithCancel(context.Background())
+	a.ctx, a.ctxCancel = context.WithCancel(ctx)
 	// Start gRPC server
 	a.wg.Add(1)
 	go func() {
@@ -330,7 +330,7 @@ func (a *Agent) HostID() (id string) {
 
 // Stop stops the agent
 func (a *Agent) Stop() {
-	a.shardController.Stop()
+	a.shardControllerManager.Stop()
 	a.hostController.Stop()
 	a.grpcServer.Stop()
 	a.ctxCancel()
@@ -567,7 +567,7 @@ func (a *Agent) updateReplica() (err error) {
 	return
 }
 
-// readIndex blocks until it can read from the prime shard, indicating that the local replica is up to date.
+// readIndex blocks until it can read from a shard, indicating that the local replica is up to date.
 func (a *Agent) readIndex(ctx context.Context, shardID uint64) (err error) {
 	var rs *dragonboat.RequestState
 	for {

@@ -8,6 +8,8 @@ import (
 	"github.com/hashicorp/go-memdb"
 )
 
+// State represents internal state.
+// All public methods are read only.
 type State struct {
 	db  *memdb.MemDB
 	txn *memdb.Txn

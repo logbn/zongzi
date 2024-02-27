@@ -82,3 +82,10 @@ func WithReplicaConfig(cfg ReplicaConfig) AgentOption {
 		return nil
 	}
 }
+
+func WithShardController(c ShardController) AgentOption {
+	return func(a *Agent) error {
+		a.shardControllerManager.shardController = c
+		return nil
+	}
+}

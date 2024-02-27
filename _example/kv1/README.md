@@ -8,6 +8,8 @@ The example starts an HTTP server which performs queries on GET and proposes upd
 
 Any proposed update with an invalid version will be rejected.
 
+From the command line:
+
 ```
 > curl -X PUT "http://localhost:8001/testkey?val=testvalue"
 {"key":"/testkey","ver":6,"val":"testvalue"}
@@ -23,6 +25,14 @@ Version mismatch (6 != 8)
 
 > curl -X PUT "http://localhost:8001/testkey?val=testvalue3&ver=8"
 {"key":"/testkey","ver":10,"val":"testvalue3"}
+```
+
+Or in a browser console:
+
+Visit http://localhost:8001/testkey2 then:
+```
+await fetch(window.location.href, {method: 'PUT', body: new URLSearchParams('val=testval')})
+await fetch(window.location.href, {method: 'PUT', body: new URLSearchParams('val=testval2&ver=6')})
 ```
 
 ## Startup

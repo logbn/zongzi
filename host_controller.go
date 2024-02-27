@@ -9,6 +9,7 @@ import (
 	"github.com/logbn/zongzi/internal"
 )
 
+// The hostController starts and stops replicas based on replica config.
 type hostController struct {
 	agent     *Agent
 	ctx       context.Context
@@ -62,6 +63,7 @@ func (c *hostController) tick() (err error) {
 		if index <= c.index {
 			return
 		}
+		// These are all the replicas that SHOULD exist on the host
 		var found = map[uint64]bool{}
 		state.ReplicaIterateByHostID(c.agent.HostID(), func(r Replica) bool {
 			if r.ShardID > 0 {
@@ -69,6 +71,7 @@ func (c *hostController) tick() (err error) {
 			}
 			return true
 		})
+		// These are all the replicas that DO exist on the host
 		hostInfo := c.agent.host.GetNodeHostInfo(nodeHostInfoOption{})
 		for _, info := range hostInfo.ShardInfoList {
 			if replica, ok := state.Replica(info.ReplicaID); ok {
@@ -86,6 +89,7 @@ func (c *hostController) tick() (err error) {
 				// Remove raftNode
 			}
 		}
+		// This creates all the missing replicas
 		for id, ok := range found {
 			if ok {
 				continue

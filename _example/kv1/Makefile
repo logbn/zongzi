@@ -1,6 +1,6 @@
 PROJECTNAME := zongzi
 
-DATA_DIR := /tmp/zongzi-kv2
+DATA_DIR := /tmp/zongzi/example-kv1
 
 clean-data:
 	@sudo mkdir -p $(DATA_DIR)

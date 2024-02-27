@@ -31,30 +31,28 @@ func TestShardController(t *testing.T) {
 			state.shardPut(shard)
 			agent, err := NewAgent("test", nil)
 			require.Nil(t, err)
-			ctrl := shardController{
-				agent: agent,
-				cluster: &mockCluster{
-					mockReplicaCreate: func(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error) {
-						i := state.Index()
-						id = state.replicaIncr()
-						state.metaSetIndex(i + 1)
-						state.replicaPut(Replica{
-							ID:          id,
-							Updated:     i,
-							HostID:      hostID,
-							ShardID:     shardID,
-							IsNonVoting: isNonVoting,
-							Tags:        map[string]string{},
-						})
-						state.shardTouch(shardID, i)
-						state.hostTouch(hostID, i)
-						return
-					},
+			ctrl := newShardControllerDefault(agent)
+			controls := &mockShardControls{
+				mockReplicaCreate: func(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error) {
+					i := state.Index()
+					id = state.replicaIncr()
+					state.metaSetIndex(i + 1)
+					state.replicaPut(Replica{
+						ID:          id,
+						Updated:     i,
+						HostID:      hostID,
+						ShardID:     shardID,
+						IsNonVoting: isNonVoting,
+						Tags:        map[string]string{},
+					})
+					state.shardTouch(shardID, i)
+					state.hostTouch(hostID, i)
+					return
 				},
 			}
-			updated, err := ctrl.reconcile(state, shard)
+			err = ctrl.Reconcile(state, shard, controls)
 			require.Nil(t, err)
-			assert.True(t, updated)
+			assert.True(t, controls.updated)
 			var n int
 			state.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
 				n++
@@ -73,30 +71,28 @@ func TestShardController(t *testing.T) {
 			state.shardPut(shard)
 			agent, err := NewAgent("test", nil)
 			require.Nil(t, err)
-			ctrl := shardController{
-				agent: agent,
-				cluster: &mockCluster{
-					mockReplicaCreate: func(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error) {
-						i := state.Index()
-						id = state.replicaIncr()
-						state.metaSetIndex(i + 1)
-						state.replicaPut(Replica{
-							ID:          id,
-							Updated:     i,
-							HostID:      hostID,
-							ShardID:     shardID,
-							IsNonVoting: isNonVoting,
-							Tags:        map[string]string{},
-						})
-						state.shardTouch(shardID, i)
-						state.hostTouch(hostID, i)
-						return
-					},
+			controls := &mockShardControls{
+				mockReplicaCreate: func(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error) {
+					i := state.Index()
+					id = state.replicaIncr()
+					state.metaSetIndex(i + 1)
+					state.replicaPut(Replica{
+						ID:          id,
+						Updated:     i,
+						HostID:      hostID,
+						ShardID:     shardID,
+						IsNonVoting: isNonVoting,
+						Tags:        map[string]string{},
+					})
+					state.shardTouch(shardID, i)
+					state.hostTouch(hostID, i)
+					return
 				},
 			}
-			updated, err := ctrl.reconcile(state, shard)
+			ctrl := newShardControllerDefault(agent)
+			err = ctrl.Reconcile(state, shard, controls)
 			require.Nil(t, err)
-			assert.True(t, updated)
+			assert.True(t, controls.updated)
 			var n int
 			state.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
 				n++
@@ -131,15 +127,22 @@ func testHelperFillHosts(state *State, n uint64) {
 	}
 }
 
-type mockCluster struct {
+type mockShardControls struct {
 	mockReplicaCreate func(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error)
 	mockReplicaDelete func(replicaID uint64) (err error)
+	updated           bool
 }
 
-func (m *mockCluster) replicaCreate(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error) {
-	return m.mockReplicaCreate(hostID, shardID, isNonVoting)
+func (m *mockShardControls) ReplicaCreate(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error) {
+	if id, err = m.mockReplicaCreate(hostID, shardID, isNonVoting); err == nil {
+		m.updated = true
+	}
+	return
 }
 
-func (m *mockCluster) replicaDelete(replicaID uint64) (err error) {
-	return m.mockReplicaDelete(replicaID)
+func (m *mockShardControls) ReplicaDelete(replicaID uint64) (err error) {
+	if err = m.mockReplicaDelete(replicaID); err == nil {
+		m.updated = true
+	}
+	return
 }
