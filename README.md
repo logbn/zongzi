@@ -26,6 +26,7 @@ This package provides a centralized coordination layer for Dragonboat multi-grou
 - Shard Controller
   - Reads placement policies from shard tags
   - Creates and destroys replicas to reconcile cluster state
+  - You can replace the default shard controller with your own custom version
 - Host Client
   - Used to make proposals and queries to replicas on specific hosts
   - gRPC over message bus
