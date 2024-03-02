@@ -87,9 +87,9 @@ func (c *shardControllerManager) tick() {
 					if err != nil {
 						hadErr = true
 						c.log.Warningf("Error resolving shard %d %s %s", shard.ID, shard.Name, err.Error())
-						c.agent.tagsSet(shard, fmt.Sprintf(`control:error=%s`, err.Error()))
-					} else if _, ok := shard.Tags[`control:error`]; ok {
-						c.agent.tagsRemove(shard, `control:error`)
+						c.agent.tagsSet(shard, fmt.Sprintf(`zongzi:controller:error=%s`, err.Error()))
+					} else if _, ok := shard.Tags[`zongzi:controller:error`]; ok {
+						c.agent.tagsRemove(shard, `zongzi:controller:error`)
 					}
 					if controls.updated {
 						// We break the iterator on update in order to catch a fresh snapshot for the next shard.
