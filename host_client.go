@@ -15,6 +15,7 @@ type HostClient interface {
 	Apply(ctx context.Context, shardID uint64, cmd []byte) (value uint64, data []byte, err error)
 	Commit(ctx context.Context, shardID uint64, cmd []byte) (err error)
 	Read(ctx context.Context, shardID uint64, query []byte, stale ...bool) (value uint64, data []byte, err error)
+	Watch(ctx context.Context, shardID uint64, query []byte, results chan<- *Result, stale ...bool) (err error)
 }
 
 type hostclient struct {

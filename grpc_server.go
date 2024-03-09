@@ -209,18 +209,20 @@ func (s *grpcServer) Watch(req *internal.WatchRequest, srv internal.Zongzi_Watch
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		select {
-		case result := <-query.result:
-			err := srv.Send(&internal.WatchResponse{
-				Value: result.Value,
-				Data:  result.Data,
-			})
-			if err != nil {
-				s.agent.log.Errorf(`Error sending watch response: %s`, err.Error())
+		for {
+			select {
+			case result := <-query.result:
+				err := srv.Send(&internal.WatchResponse{
+					Value: result.Value,
+					Data:  result.Data,
+				})
+				if err != nil {
+					s.agent.log.Errorf(`Error sending watch response: %s`, err.Error())
+				}
+				releaseResult(result)
+			case <-done:
+				return
 			}
-			releaseResult(result)
-		case <-done:
-			return
 		}
 	}()
 	if req.Stale {

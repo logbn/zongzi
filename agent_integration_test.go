@@ -141,7 +141,7 @@ func TestAgent(t *testing.T) {
 		for _, a := range agents {
 			require.Nil(t, a.readIndex(ctx, shard.ID))
 		}
-		for _, op := range []string{"update", "query"} {
+		for _, op := range []string{"update", "query", "watch"} {
 			for _, linearity := range []string{"linear", "non-linear"} {
 				t.Run(fmt.Sprintf(`%s %s %s host client`, sm, op, linearity), func(t *testing.T) {
 					runAgentSubTest(t, agents, shard, sm, op, linearity != "linear")
@@ -275,8 +275,35 @@ func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, sm, op string, 
 				err = client.Commit(raftCtx(), shard.ID, bytes.Repeat([]byte("test"), i+1))
 			} else if op == "update" && !stale {
 				val, _, err = client.Apply(raftCtx(), shard.ID, bytes.Repeat([]byte("test"), i+1))
-			} else {
+			} else if op == "query" {
 				val, _, err = client.Read(raftCtx(), shard.ID, bytes.Repeat([]byte("test"), i+1), stale)
+				assert.Nil(t, err)
+			} else if op == "watch" {
+				res := make(chan *Result)
+				done := make(chan bool)
+				n := uint64(0)
+				var wg sync.WaitGroup
+				wg.Add(1)
+				go func() {
+					for {
+						select {
+						case result := <-res:
+							val = result.Value + 1
+							assert.Equal(t, n, result.Value)
+							n++
+						case <-done:
+							wg.Done()
+							return
+						}
+					}
+				}()
+				err = client.Watch(raftCtx(), shard.ID, bytes.Repeat([]byte("test"), i+1), res, stale)
+				close(done)
+				wg.Wait()
+				assert.Equal(t, uint64((i+1)*4), n)
+				assert.Nil(t, err)
+			} else {
+				t.Error("Invalid op" + op)
 			}
 			require.Nil(t, err, `%v, %v, %#v`, i, err, client)
 			if op == "update" && stale {
@@ -294,7 +321,7 @@ func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, sm, op string, 
 }
 
 func runAgentSubTestByShard(t *testing.T, agents []*Agent, shard Shard, sm, op string, stale bool) {
-	var i = int(1e6)
+	var i = 0
 	var err error
 	var val uint64
 	for _, a := range agents {
@@ -305,8 +332,34 @@ func runAgentSubTestByShard(t *testing.T, agents []*Agent, shard Shard, sm, op s
 			err = client.Commit(raftCtx(), bytes.Repeat([]byte("test"), i+1))
 		} else if op == "update" && !stale {
 			val, _, err = client.Apply(raftCtx(), bytes.Repeat([]byte("test"), i+1))
-		} else {
+		} else if op == "query" {
 			val, _, err = client.Read(raftCtx(), bytes.Repeat([]byte("test"), i+1), stale)
+		} else if op == "watch" {
+			res := make(chan *Result)
+			done := make(chan bool)
+			n := uint64(0)
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
+				for {
+					select {
+					case result := <-res:
+						val = result.Value + 1
+						assert.Equal(t, n, result.Value)
+						n++
+					case <-done:
+						wg.Done()
+						return
+					}
+				}
+			}()
+			err = client.Watch(raftCtx(), bytes.Repeat([]byte("test"), i+1), res, stale)
+			close(done)
+			wg.Wait()
+			assert.Equal(t, uint64((i+1)*4), n)
+			assert.Nil(t, err)
+		} else {
+			t.Error("Invalid op" + op)
 		}
 		require.Nil(t, err, `%v, %v, %#v`, i, err, client)
 		if op == "update" && stale {
@@ -338,6 +391,11 @@ var mockConcurrentSM = func(shardID uint64, replicaID uint64) StateMachine {
 		},
 		mockQuery: func(ctx context.Context, data []byte) *Result {
 			return &Result{Value: uint64(len(data))}
+		},
+		mockWatch: func(ctx context.Context, data []byte, results chan<- *Result) {
+			for i := 0; i < len(data); i++ {
+				results <- &Result{Value: uint64(i)}
+			}
 		},
 		mockPrepareSnapshot: func() (cursor any, err error) {
 			return
@@ -374,6 +432,11 @@ var mockPersistentSM = func(shardID uint64, replicaID uint64) StateMachinePersis
 		},
 		mockQuery: func(ctx context.Context, data []byte) *Result {
 			return &Result{Value: uint64(len(data))}
+		},
+		mockWatch: func(ctx context.Context, data []byte, results chan<- *Result) {
+			for i := 0; i < len(data); i++ {
+				results <- &Result{Value: uint64(i)}
+			}
 		},
 		mockPrepareSnapshot: func() (cursor any, err error) {
 			return
