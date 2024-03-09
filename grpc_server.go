@@ -26,6 +26,10 @@ func newGrpcServer(listenAddr string, opts ...grpc.ServerOption) *grpcServer {
 	}
 }
 
+func (s *grpcServer) Ping(ctx context.Context, req *internal.PingRequest) (res *internal.PingResponse, err error) {
+	return &internal.PingResponse{}, nil
+}
+
 func (s *grpcServer) Probe(ctx context.Context, req *internal.ProbeRequest) (res *internal.ProbeResponse, err error) {
 	// s.agent.log.Debugf(`gRPC Req Probe: %#v`, req)
 	return &internal.ProbeResponse{

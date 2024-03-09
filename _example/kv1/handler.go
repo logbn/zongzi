@@ -4,25 +4,35 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/logbn/zongzi"
 )
 
 type handler struct {
-	ctrl *controller
+	clients []zongzi.ShardClient
+}
+
+func hash(b []byte) uint32 {
+	hash := fnv.New32a()
+	hash.Write(b)
+	return hash.Sum32()
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer w.Write([]byte("\n"))
 	var err error
+	var shard = int(hash([]byte(r.URL.Path)) % uint32(len(h.clients)))
 	ctx, _ := context.WithTimeout(context.Background(), time.Second)
 	if r.Method == "GET" {
 		query := kvQuery{
 			Op:  queryOpRead,
 			Key: r.URL.Path,
 		}
-		code, data, err := h.ctrl.getClient(r.FormValue("local") != "true", false).Query(ctx, h.ctrl.shard.ID, query.MustMarshalBinary(), r.FormValue("stale") == "true")
+		code, data, err := h.clients[shard].Query(ctx, query.MustMarshalBinary(), r.FormValue("stale") == "true")
 		if err != nil {
 			w.WriteHeader(500)
 			w.Write([]byte(err.Error()))
@@ -56,9 +66,9 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var code uint64
 		var data []byte
 		if r.FormValue("stale") == "true" {
-			err = h.ctrl.getClient(r.FormValue("local") != "true", true).Commit(ctx, h.ctrl.shard.ID, cmd.MustMarshalBinary())
+			err = h.clients[shard].Commit(ctx, cmd.MustMarshalBinary())
 		} else {
-			code, data, err = h.ctrl.getClient(r.FormValue("local") != "true", true).Apply(ctx, h.ctrl.shard.ID, cmd.MustMarshalBinary())
+			code, data, err = h.clients[shard].Apply(ctx, cmd.MustMarshalBinary())
 			if code == ResultCodeFailure {
 				w.WriteHeader(400)
 				w.Write(data)

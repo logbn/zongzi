@@ -32,7 +32,6 @@ func main() {
 	flag.Parse()
 	zongzi.SetLogLevelDebug()
 	ctx := context.Background()
-	ctrl := newController()
 	agent, err := zongzi.NewAgent(*name, strings.Split(*peers, ","),
 		zongzi.WithHostConfig(zongzi.HostConfig{
 			NodeHostDir:    *dataDir + "/raft",
@@ -43,7 +42,6 @@ func main() {
 		zongzi.WithGossipAddress(*gossipAddr),
 		zongzi.WithRaftAddress(*raftAddr),
 		zongzi.WithApiAddress(*zongziAddr),
-		zongzi.WithRaftEventListener(ctrl),
 		zongzi.WithHostTags(
 			fmt.Sprintf(`geo:region=%s`, *region),
 			fmt.Sprintf(`geo:zone=%s`, *zone)))
@@ -54,9 +52,9 @@ func main() {
 	if err = agent.Start(ctx); err != nil {
 		panic(err)
 	}
-	// var clients = make([]zongzi.ShardClient, *shards)
-	for i := 1; i <= *shards; i++ {
-		_, _, err := agent.RegisterShard(ctx, uri,
+	var clients = make([]zongzi.ShardClient, *shards)
+	for i := 0; i < *shards; i++ {
+		shard, _, err := agent.RegisterShard(ctx, uri,
 			zongzi.WithName(fmt.Sprintf(`%s-%05d`, *name, i)),
 			zongzi.WithPlacementVary(`geo:zone`),
 			zongzi.WithPlacementMembers(3, `geo:region=`+*region))
@@ -64,23 +62,20 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		// clients[i] = agent.ShardClient(shard.ID)
-	}
-	if err = ctrl.Start(agent); err != nil {
-		panic(err)
+		clients[i] = agent.ShardClient(shard.ID)
 	}
 	// Start HTTP API
 	go func(s *http.Server) {
 		log.Fatal(s.ListenAndServe())
 	}(&http.Server{
 		Addr:    *httpAddr,
-		Handler: &handler{ctrl},
+		Handler: &handler{clients},
 	})
 
 	stop := make(chan os.Signal)
 	signal.Notify(stop, os.Interrupt)
 	signal.Notify(stop, syscall.SIGTERM)
 	<-stop
-	ctrl.Stop()
+
 	agent.Stop()
 }

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestShardController(t *testing.T) {
+func TestShardControllerDefault(t *testing.T) {
 	t.Run("reconcile", func(t *testing.T) {
 		state := newFsmStateRadix()
 		testHelperFillHosts(state, 3)

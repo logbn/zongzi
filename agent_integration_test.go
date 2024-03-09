@@ -143,8 +143,11 @@ func TestAgent(t *testing.T) {
 		}
 		for _, op := range []string{"update", "query"} {
 			for _, linearity := range []string{"linear", "non-linear"} {
-				t.Run(fmt.Sprintf(`%s %s %s`, sm, op, linearity), func(t *testing.T) {
+				t.Run(fmt.Sprintf(`%s %s %s host client`, sm, op, linearity), func(t *testing.T) {
 					runAgentSubTest(t, agents, shard, sm, op, linearity != "linear")
+				})
+				t.Run(fmt.Sprintf(`%s %s %s shard client`, sm, op, linearity), func(t *testing.T) {
+					runAgentSubTestByShard(t, agents, shard, sm, op, linearity != "linear")
 				})
 			}
 		}
@@ -266,7 +269,7 @@ func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, sm, op string, 
 				return true
 			}
 			val = 0
-			client := agents[0].Client(r.HostID)
+			client := agents[0].HostClient(r.HostID)
 			require.NotNil(t, client)
 			if op == "update" && stale {
 				err = client.Commit(raftCtx(), shard.ID, bytes.Repeat([]byte("test"), i+1))
@@ -287,6 +290,31 @@ func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, sm, op string, 
 	})
 	if op == "update" {
 		assert.Equal(t, 9, nonvoting)
+	}
+}
+
+func runAgentSubTestByShard(t *testing.T, agents []*Agent, shard Shard, sm, op string, stale bool) {
+	var i = int(1e6)
+	var err error
+	var val uint64
+	for _, a := range agents {
+		val = 0
+		client := a.ShardClient(shard.ID)
+		require.NotNil(t, client)
+		if op == "update" && stale {
+			err = client.Commit(raftCtx(), bytes.Repeat([]byte("test"), i+1))
+		} else if op == "update" && !stale {
+			val, _, err = client.Apply(raftCtx(), bytes.Repeat([]byte("test"), i+1))
+		} else {
+			val, _, err = client.Query(raftCtx(), bytes.Repeat([]byte("test"), i+1), stale)
+		}
+		require.Nil(t, err, `%v, %v, %#v`, i, err, client)
+		if op == "update" && stale {
+			assert.Equal(t, uint64(0), val)
+		} else {
+			assert.Equal(t, uint64((i+1)*4), val)
+		}
+		i++
 	}
 }
 

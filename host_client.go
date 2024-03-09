@@ -2,42 +2,56 @@ package zongzi
 
 import (
 	"context"
+	"time"
+
+	"github.com/benbjohnson/clock"
 
 	"github.com/logbn/zongzi/internal"
 )
 
-type Client struct {
+type HostClient interface {
+	Ping(ctx context.Context) (t time.Duration, err error)
+	Apply(ctx context.Context, shardID uint64, cmd []byte) (value uint64, data []byte, err error)
+	Commit(ctx context.Context, shardID uint64, cmd []byte) (err error)
+	Query(ctx context.Context, shardID uint64, query []byte, stale ...bool) (value uint64, data []byte, err error)
+}
+
+type hostclient struct {
 	agent          *Agent
+	clock          clock.Clock
 	hostApiAddress string
 	hostID         string
 }
 
-func newClient(a *Agent, host Host) *Client {
-	return &Client{
+func newHostClient(a *Agent, host Host) *hostclient {
+	return &hostclient{
 		agent:          a,
+		clock:          clock.New(),
 		hostApiAddress: host.ApiAddress,
 		hostID:         host.ID,
 	}
 }
 
-func (c *Client) Ping(ctx context.Context) (err error) {
+func (c *hostclient) Ping(ctx context.Context) (t time.Duration, err error) {
 	if c.hostID == c.agent.HostID() {
 		return
 	}
+	start := c.clock.Now()
 	_, err = c.agent.grpcClientPool.get(c.hostApiAddress).Ping(ctx, &internal.PingRequest{})
+	t = c.clock.Since(start)
 	return
 }
 
-func (c *Client) Apply(ctx context.Context, shardID uint64, cmd []byte) (value uint64, data []byte, err error) {
+func (c *hostclient) Apply(ctx context.Context, shardID uint64, cmd []byte) (value uint64, data []byte, err error) {
 	var res *internal.ApplyResponse
 	if c.hostID == c.agent.HostID() {
-		c.agent.log.Debugf(`gRPC Client Apply Local: %s`, string(cmd))
+		c.agent.log.Debugf(`gRPC HostClient Apply Local: %s`, string(cmd))
 		res, err = c.agent.grpcServer.Apply(ctx, &internal.ApplyRequest{
 			ShardId: shardID,
 			Data:    cmd,
 		})
 	} else {
-		c.agent.log.Debugf(`gRPC Client Apply Remote: %s`, string(cmd))
+		c.agent.log.Debugf(`gRPC HostClient Apply Remote: %s`, string(cmd))
 		res, err = c.agent.grpcClientPool.get(c.hostApiAddress).Apply(ctx, &internal.ApplyRequest{
 			ShardId: shardID,
 			Data:    cmd,
@@ -51,15 +65,15 @@ func (c *Client) Apply(ctx context.Context, shardID uint64, cmd []byte) (value u
 	return
 }
 
-func (c *Client) Commit(ctx context.Context, shardID uint64, cmd []byte) (err error) {
+func (c *hostclient) Commit(ctx context.Context, shardID uint64, cmd []byte) (err error) {
 	if c.hostID == c.agent.HostID() {
-		c.agent.log.Debugf(`gRPC Client Commit Local: %s`, string(cmd))
+		c.agent.log.Debugf(`gRPC HostClient Commit Local: %s`, string(cmd))
 		_, err = c.agent.grpcServer.Commit(ctx, &internal.CommitRequest{
 			ShardId: shardID,
 			Data:    cmd,
 		})
 	} else {
-		c.agent.log.Debugf(`gRPC Client Commit Remote: %s`, string(cmd))
+		c.agent.log.Debugf(`gRPC HostClient Commit Remote: %s`, string(cmd))
 		_, err = c.agent.grpcClientPool.get(c.hostApiAddress).Commit(ctx, &internal.CommitRequest{
 			ShardId: shardID,
 			Data:    cmd,
@@ -71,7 +85,7 @@ func (c *Client) Commit(ctx context.Context, shardID uint64, cmd []byte) (err er
 	return
 }
 
-func (c *Client) Query(ctx context.Context, shardID uint64, query []byte, stale ...bool) (value uint64, data []byte, err error) {
+func (c *hostclient) Query(ctx context.Context, shardID uint64, query []byte, stale ...bool) (value uint64, data []byte, err error) {
 	var res *internal.QueryResponse
 	if c.hostID == c.agent.HostID() {
 		res, err = c.agent.grpcServer.Query(ctx, &internal.QueryRequest{

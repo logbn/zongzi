@@ -23,6 +23,7 @@ type Agent struct {
 	clusterName            string
 	hostController         *hostController
 	shardControllerManager *shardControllerManager
+	shardClientManager     *shardClientManager
 	fsm                    *fsm
 	grpcClientPool         *grpcClientPool
 	grpcServer             *grpcServer
@@ -66,6 +67,7 @@ func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent
 		status:      AgentStatus_Pending,
 	}
 	a.shardControllerManager = newShardControllerManager(a)
+	a.shardClientManager = newShardClientManager(a)
 	for _, opt := range append([]AgentOption{
 		WithApiAddress(DefaultApiAddress),
 		WithGossipAddress(DefaultGossipAddress),
@@ -75,7 +77,10 @@ func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent
 		opt(a)
 	}
 	a.hostController = newHostController(a)
-	a.hostConfig.RaftEventListener = newCompositeRaftEventListener(a.shardControllerManager, a.hostConfig.RaftEventListener)
+	a.hostConfig.RaftEventListener = newCompositeRaftEventListener(
+		a.shardControllerManager,
+		a.hostConfig.RaftEventListener,
+	)
 	a.replicaConfig.ShardID = ShardID
 	a.hostConfig.DeploymentID = mustBase36Decode(clusterName)
 	a.hostConfig.AddressByNodeHostID = true
@@ -91,6 +96,7 @@ func (a *Agent) Start(ctx context.Context) (err error) {
 		if err == nil {
 			a.hostController.Start()
 			a.shardControllerManager.Start()
+			a.shardClientManager.Start()
 			a.setStatus(AgentStatus_Ready)
 		}
 	}()
@@ -206,14 +212,21 @@ func (a *Agent) Start(ctx context.Context) (err error) {
 	return
 }
 
-// Client returns a Client for a specific host.
-func (a *Agent) Client(hostID string) (c *Client) {
+// HostClient returns a Client for a specific host.
+func (a *Agent) HostClient(hostID string) (c HostClient) {
 	a.Read(a.ctx, func(s *State) {
 		host, ok := s.Host(hostID)
 		if ok {
-			c = newClient(a, host)
+			c = newHostClient(a, host)
 		}
 	})
+	return
+}
+
+// ShardClient returns a Client for a specific shard.
+// It will send writes to the nearest member and send reads to the nearest replica (by ping).
+func (a *Agent) ShardClient(shardID uint64) (c ShardClient) {
+	c, _ = newShardClient(a.shardClientManager, shardID)
 	return
 }
 
@@ -231,7 +244,7 @@ func (a *Agent) Status() AgentStatus {
 //	    return nil
 //	})
 //
-// Linear reads are enable by default to achieve "Read Your Writes" consistency following a proposal. Pass optional
+// Linear reads are enabled by default to achieve "Read Your Writes" consistency following a proposal. Pass optional
 // argument _stale_ as true to disable linearizable reads (for higher performance). State will always provide snapshot
 // isolation, even for stale reads.
 //
@@ -246,6 +259,11 @@ func (a *Agent) Read(ctx context.Context, fn func(*State), stale ...bool) (err e
 			return
 		}
 	}
+	fn(a.fsm.state.withTxn(false))
+	return
+}
+
+func (a *Agent) ReadStale(fn func(*State)) (err error) {
 	fn(a.fsm.state.withTxn(false))
 	return
 }
