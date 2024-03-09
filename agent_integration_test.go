@@ -276,7 +276,7 @@ func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, sm, op string, 
 			} else if op == "update" && !stale {
 				val, _, err = client.Apply(raftCtx(), shard.ID, bytes.Repeat([]byte("test"), i+1))
 			} else {
-				val, _, err = client.Query(raftCtx(), shard.ID, bytes.Repeat([]byte("test"), i+1), stale)
+				val, _, err = client.Read(raftCtx(), shard.ID, bytes.Repeat([]byte("test"), i+1), stale)
 			}
 			require.Nil(t, err, `%v, %v, %#v`, i, err, client)
 			if op == "update" && stale {
@@ -306,7 +306,7 @@ func runAgentSubTestByShard(t *testing.T, agents []*Agent, shard Shard, sm, op s
 		} else if op == "update" && !stale {
 			val, _, err = client.Apply(raftCtx(), bytes.Repeat([]byte("test"), i+1))
 		} else {
-			val, _, err = client.Query(raftCtx(), bytes.Repeat([]byte("test"), i+1), stale)
+			val, _, err = client.Read(raftCtx(), bytes.Repeat([]byte("test"), i+1), stale)
 		}
 		require.Nil(t, err, `%v, %v, %#v`, i, err, client)
 		if op == "update" && stale {

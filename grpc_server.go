@@ -3,6 +3,7 @@ package zongzi
 import (
 	"context"
 	"net"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc"
@@ -174,9 +175,9 @@ func (s *grpcServer) Apply(ctx context.Context, req *internal.ApplyRequest) (res
 	return
 }
 
-func (s *grpcServer) Query(ctx context.Context, req *internal.QueryRequest) (res *internal.QueryResponse, err error) {
+func (s *grpcServer) Read(ctx context.Context, req *internal.ReadRequest) (res *internal.ReadResponse, err error) {
 	// s.agent.log.Debugf(`gRPC Req Query: %#v`, req)
-	res = &internal.QueryResponse{}
+	res = &internal.ReadResponse{}
 	query := getLookupQuery()
 	query.ctx = ctx
 	query.data = req.Data
@@ -193,6 +194,42 @@ func (s *grpcServer) Query(ctx context.Context, req *internal.QueryRequest) (res
 		res.Data = result.Data
 		releaseResult(result)
 	}
+	return
+}
+
+func (s *grpcServer) Watch(req *internal.WatchRequest, srv internal.Zongzi_WatchServer) (err error) {
+	// s.agent.log.Debugf(`gRPC Req Query: %#v`, req)
+	query := getWatchQuery()
+	query.ctx = srv.Context()
+	query.data = req.Data
+	query.result = make(chan *Result)
+	defer query.Release()
+	var done = make(chan bool)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		select {
+		case result := <-query.result:
+			err := srv.Send(&internal.WatchResponse{
+				Value: result.Value,
+				Data:  result.Data,
+			})
+			if err != nil {
+				s.agent.log.Errorf(`Error sending watch response: %s`, err.Error())
+			}
+			releaseResult(result)
+		case <-done:
+			return
+		}
+	}()
+	if req.Stale {
+		_, err = s.agent.host.StaleRead(req.ShardId, query)
+	} else {
+		_, err = s.agent.host.SyncRead(srv.Context(), req.ShardId, query)
+	}
+	close(done)
+	wg.Wait()
 	return
 }
 

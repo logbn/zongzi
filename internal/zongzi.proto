@@ -4,43 +4,43 @@ option go_package = "github.com/logbn/zongzi/internal";
 
 // Zongzi uses an internal gRPC service for cluster coordination
 service Zongzi {
-	// Ping is a noop for timing purposes
-	rpc Ping(PingRequest) returns (PingResponse) {}
+  // Ping is a noop for timing purposes
+  rpc Ping(PingRequest) returns (PingResponse) {}
 
-	// Probe returns Gossip.AdvertiseAddress
-	// Used by new hosts to start dragonboat
-	rpc Probe(ProbeRequest) returns (ProbeResponse) {}
+  // Probe returns Gossip.AdvertiseAddress
+  // Used by new hosts to start dragonboat
+  rpc Probe(ProbeRequest) returns (ProbeResponse) {}
 
-	// Info returns zero shard replicaID and hostID
-	// Used by new hosts to discover zero shard replicas
-	rpc Info(InfoRequest) returns (InfoResponse) {}
+  // Info returns zero shard replicaID and hostID
+  // Used by new hosts to discover zero shard replicas
+  rpc Info(InfoRequest) returns (InfoResponse) {}
 
-	// Members returns json marshaled map of member zero shard replicaID to hostID
-	// Used by new hosts joining a bootstrapped zero shard
-	rpc Members(MembersRequest) returns (MembersResponse) {}
+  // Members returns json marshaled map of member zero shard replicaID to hostID
+  // Used by new hosts joining a bootstrapped zero shard
+  rpc Members(MembersRequest) returns (MembersResponse) {}
 
-	// Join takes a host ID and returns success
-	// Used by joining hosts to request their own addition to the zero shard
-	rpc Join(JoinRequest) returns (JoinResponse) {}
+  // Join takes a host ID and returns success
+  // Used by joining hosts to request their own addition to the zero shard
+  rpc Join(JoinRequest) returns (JoinResponse) {}
 
-	// ShardJoin takes a replica ID and host ID and returns success
-	// Used during replica creation to request replica's addition to the shard
-	rpc ShardJoin(ShardJoinRequest) returns (ShardJoinResponse) {}
+  // ShardJoin takes a replica ID and host ID and returns success
+  // Used during replica creation to request replica's addition to the shard
+  rpc ShardJoin(ShardJoinRequest) returns (ShardJoinResponse) {}
 
-	// Apply provides unary request/response command forwarding
-	rpc Apply(ApplyRequest) returns (ApplyResponse) {}
+  // Apply provides unary request/response command forwarding
+  rpc Apply(ApplyRequest) returns (ApplyResponse) {}
 
-	// Commit provides unary request/response command forwarding
-	rpc Commit(CommitRequest) returns (CommitResponse) {}
+  // Commit provides unary request/response command forwarding
+  rpc Commit(CommitRequest) returns (CommitResponse) {}
 
-	// Query provides unary request/response query forwarding
-	rpc Query(QueryRequest) returns (QueryResponse) {}
+  // Read provides unary request/response query forwarding
+  rpc Read(ReadRequest) returns (ReadResponse) {}
 
-	// Stream provides streaming proposal forwarding
-	// rpc Stream(stream Request) returns (stream Response) {}
+  // Watch provides streaming query response forwarding
+  rpc Watch(WatchRequest) returns (stream WatchResponse) {}
 
-	// Watch provides streaming query response forwarding
-	// rpc Watch(Request) returns (stream Response) {}
+  // Stream provides streaming proposal forwarding
+  // rpc Stream(stream Request) returns (stream Response) {}
 }
 
 message PingRequest {}
@@ -48,61 +48,71 @@ message PingResponse {}
 
 message ProbeRequest {}
 message ProbeResponse {
-    string gossip_advertise_address = 1;
+  string gossip_advertise_address = 1;
 }
 
 message InfoRequest {}
 message InfoResponse {
-    string host_id = 1;
-    uint64 replica_id = 2;
+  string host_id = 1;
+  uint64 replica_id = 2;
 }
 
 message MembersRequest {}
 message MembersResponse {
-    map<uint64, string> members = 1;
+  map<uint64, string> members = 1;
 }
 
 message JoinRequest {
-	string host_id = 1;
-	bool is_non_voting = 2;
+  string host_id = 1;
+  bool is_non_voting = 2;
 }
 message JoinResponse {
-    uint64 value = 1;
-    string error = 2;
+  uint64 value = 1;
+  string error = 2;
 }
 
 message ShardJoinRequest {
-	string host_id = 1;
-	uint64 shard_id = 2;
-	uint64 replica_id = 3;
-	bool is_non_voting = 4;
+  string host_id = 1;
+  uint64 shard_id = 2;
+  uint64 replica_id = 3;
+  bool is_non_voting = 4;
 }
 message ShardJoinResponse {
-    uint64 value = 1;
-    string error = 2;
+  uint64 value = 1;
+  string error = 2;
 }
 
 message ApplyRequest {
-    uint64 shard_id = 1;
-    bytes data = 15;
+  uint64 shard_id = 1;
+  bytes data = 2;
 }
 message ApplyResponse {
-    uint64 value = 1;
-    bytes data = 15;
+  uint64 value = 1;
+  bytes data = 2;
 }
 
 message CommitRequest {
-    uint64 shard_id = 1;
-    bytes data = 15;
+  uint64 shard_id = 1;
+  bytes data = 2;
 }
 message CommitResponse {}
 
-message QueryRequest {
-    uint64 shard_id = 1;
-	bool stale = 2;
-    bytes data = 15;
+message ReadRequest {
+  uint64 shard_id = 1;
+  bool stale = 2;
+  bytes data = 3;
 }
-message QueryResponse {
-    uint64 value = 1;
-    bytes data = 15;
+message ReadResponse {
+  uint64 value = 1;
+  bytes data = 2;
+}
+
+message WatchRequest {
+  uint64 shard_id = 1;
+  bool stale = 2;
+  bytes data = 3;
+}
+message WatchResponse {
+  uint64 value = 1;
+  bytes data = 2;
 }

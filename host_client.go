@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/benbjohnson/clock"
+	"google.golang.org/grpc"
 
 	"github.com/logbn/zongzi/internal"
 )
@@ -13,7 +14,7 @@ type HostClient interface {
 	Ping(ctx context.Context) (t time.Duration, err error)
 	Apply(ctx context.Context, shardID uint64, cmd []byte) (value uint64, data []byte, err error)
 	Commit(ctx context.Context, shardID uint64, cmd []byte) (err error)
-	Query(ctx context.Context, shardID uint64, query []byte, stale ...bool) (value uint64, data []byte, err error)
+	Read(ctx context.Context, shardID uint64, query []byte, stale ...bool) (value uint64, data []byte, err error)
 }
 
 type hostclient struct {
@@ -85,16 +86,16 @@ func (c *hostclient) Commit(ctx context.Context, shardID uint64, cmd []byte) (er
 	return
 }
 
-func (c *hostclient) Query(ctx context.Context, shardID uint64, query []byte, stale ...bool) (value uint64, data []byte, err error) {
-	var res *internal.QueryResponse
+func (c *hostclient) Read(ctx context.Context, shardID uint64, query []byte, stale ...bool) (value uint64, data []byte, err error) {
+	var res *internal.ReadResponse
 	if c.hostID == c.agent.HostID() {
-		res, err = c.agent.grpcServer.Query(ctx, &internal.QueryRequest{
+		res, err = c.agent.grpcServer.Read(ctx, &internal.ReadRequest{
 			ShardId: shardID,
 			Stale:   len(stale) > 0 && stale[0],
 			Data:    query,
 		})
 	} else {
-		res, err = c.agent.grpcClientPool.get(c.hostApiAddress).Query(ctx, &internal.QueryRequest{
+		res, err = c.agent.grpcClientPool.get(c.hostApiAddress).Read(ctx, &internal.ReadRequest{
 			ShardId: shardID,
 			Stale:   len(stale) > 0 && stale[0],
 			Data:    query,
@@ -105,5 +106,62 @@ func (c *hostclient) Query(ctx context.Context, shardID uint64, query []byte, st
 	}
 	value = res.Value
 	data = res.Data
+	return
+}
+
+type watchServer struct {
+	grpc.ServerStream
+
+	ctx     context.Context
+	results chan<- *Result
+}
+
+func newWatchServer(ctx context.Context, results chan<- *Result) *watchServer {
+	return &watchServer{
+		ctx:     ctx,
+		results: results,
+	}
+}
+
+func (s *watchServer) Context() context.Context {
+	return s.ctx
+}
+
+func (s *watchServer) Send(res *internal.WatchResponse) error {
+	s.results <- &Result{
+		Value: res.Value,
+		Data:  res.Data,
+	}
+	return nil
+}
+
+func (c *hostclient) Watch(ctx context.Context, shardID uint64, query []byte, results chan<- *Result, stale ...bool) (err error) {
+	var client internal.Zongzi_WatchClient
+	if c.hostID == c.agent.HostID() {
+		err = c.agent.grpcServer.Watch(&internal.WatchRequest{
+			ShardId: shardID,
+			Stale:   len(stale) > 0 && stale[0],
+			Data:    query,
+		}, newWatchServer(ctx, results))
+	} else {
+		client, err = c.agent.grpcClientPool.get(c.hostApiAddress).Watch(ctx, &internal.WatchRequest{
+			ShardId: shardID,
+			Stale:   len(stale) > 0 && stale[0],
+			Data:    query,
+		})
+		for {
+			res, err := client.Recv()
+			if err != nil {
+				break
+			}
+			results <- &Result{
+				Value: res.Value,
+				Data:  res.Data,
+			}
+		}
+	}
+	if err != nil {
+		return
+	}
 	return
 }

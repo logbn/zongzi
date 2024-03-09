@@ -32,7 +32,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Op:  queryOpRead,
 			Key: r.URL.Path,
 		}
-		code, data, err := h.clients[shard].Query(ctx, query.MustMarshalBinary(), r.FormValue("stale") == "true")
+		code, data, err := h.clients[shard].Read(ctx, query.MustMarshalBinary(), r.FormValue("stale") == "true")
 		if err != nil {
 			w.WriteHeader(500)
 			w.Write([]byte(err.Error()))

@@ -44,6 +44,10 @@ func (c *grpcClientErr) Apply(ctx context.Context, in *internal.ApplyRequest, op
 	return nil, c.err
 }
 
-func (c *grpcClientErr) Query(ctx context.Context, in *internal.QueryRequest, opts ...grpc.CallOption) (*internal.QueryResponse, error) {
+func (c *grpcClientErr) Read(ctx context.Context, in *internal.ReadRequest, opts ...grpc.CallOption) (*internal.ReadResponse, error) {
+	return nil, c.err
+}
+
+func (c *grpcClientErr) Watch(ctx context.Context, in *internal.WatchRequest, opts ...grpc.CallOption) (internal.Zongzi_WatchClient, error) {
 	return nil, c.err
 }
