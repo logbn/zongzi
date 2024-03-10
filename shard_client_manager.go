@@ -99,7 +99,7 @@ func (c *shardClientManager) tick() {
 				if replica.IsNonVoting {
 					replicas = append(replicas, hostClientPing{ping.Nanoseconds(), client})
 				} else {
-					members = append(replicas, hostClientPing{ping.Nanoseconds(), client})
+					members = append(members, hostClientPing{ping.Nanoseconds(), client})
 				}
 				return true
 			})
