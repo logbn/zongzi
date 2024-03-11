@@ -198,3 +198,54 @@ Details (average, fastest, slowest):
 Status code distribution:
   [200] 999936 responses
  ```
+
+### Concurrency 64 (stale)
+
+240k stale rps @ 1.2ms p99 latency
+
+ ```
+> hey -n 1000000 -c 64 "http://localhost:8001/testkey?stale=true"
+
+Summary:
+  Total:        4.1194 secs
+  Slowest:      0.0146 secs
+  Fastest:      0.0000 secs
+  Average:      0.0003 secs
+  Requests/sec: 242753.5125
+
+  Total data:   19000000 bytes
+  Size/request: 19 bytes
+
+Response time histogram:
+  0.000 [1]     |
+  0.001 [994550]        |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  0.003 [5226]  |
+  0.004 [79]    |
+  0.006 [31]    |
+  0.007 [77]    |
+  0.009 [26]    |
+  0.010 [0]     |
+  0.012 [0]     |
+  0.013 [9]     |
+  0.015 [1]     |
+
+
+Latency distribution:
+  10% in 0.0001 secs
+  25% in 0.0001 secs
+  50% in 0.0002 secs
+  75% in 0.0004 secs
+  90% in 0.0005 secs
+  95% in 0.0007 secs
+  99% in 0.0012 secs
+
+Details (average, fastest, slowest):
+  DNS+dialup:   0.0000 secs, 0.0000 secs, 0.0146 secs
+  DNS-lookup:   0.0000 secs, 0.0000 secs, 0.0047 secs
+  req write:    0.0000 secs, 0.0000 secs, 0.0066 secs
+  resp wait:    0.0002 secs, 0.0000 secs, 0.0120 secs
+  resp read:    0.0001 secs, 0.0000 secs, 0.0141 secs
+
+Status code distribution:
+  [200] 1000000 responses
+ ```

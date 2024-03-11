@@ -97,104 +97,159 @@ These benchmarks are run in Ubuntu 22.04 in WSL2 on a 4Ghz i5-12600k desktop w/ 
 
 The load generator and the 3 node cluster are running in the same vm so YMMV.
 
-### Concurrency 8
+These benchmarks all hit a single key so do not benefit from sharding.
 
-24k rps @ 0.6ms p99 latency
+### Concurrency 64 (follower)
 
-```
-> hey -n 100000 -c 8 "http://localhost:8002/testkey"
-
-Summary:
-  Total:        4.0624 secs
-  Slowest:      0.0022 secs
-  Fastest:      0.0001 secs
-  Average:      0.0003 secs
-  Requests/sec: 24615.6986
-
-  Total data:   2800000 bytes
-  Size/request: 28 bytes
-
-Response time histogram:
-  0.000 [1]     |
-  0.000 [41087] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
-  0.001 [55930] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
-  0.001 [2598]  |■■
-  0.001 [319]   |
-  0.001 [49]    |
-  0.001 [8]     |
-  0.002 [1]     |
-  0.002 [0]     |
-  0.002 [3]     |
-  0.002 [4]     |
-
-
-Latency distribution:
-  10% in 0.0002 secs
-  25% in 0.0003 secs
-  50% in 0.0003 secs
-  75% in 0.0004 secs
-  90% in 0.0004 secs
-  95% in 0.0005 secs
-  99% in 0.0006 secs
-
-Details (average, fastest, slowest):
-  DNS+dialup:   0.0000 secs, 0.0001 secs, 0.0022 secs
-  DNS-lookup:   0.0000 secs, 0.0000 secs, 0.0003 secs
-  req write:    0.0000 secs, 0.0000 secs, 0.0009 secs
-  resp wait:    0.0003 secs, 0.0001 secs, 0.0012 secs
-  resp read:    0.0000 secs, 0.0000 secs, 0.0013 secs
-
-Status code distribution:
-  [200] 100000 responses
- ```
-
-### Concurrency 128 
-
-190k rps @ 2.5ms p99 latency
+80k rps @ 1.5ms p99 latency (to follower)
 
 ```
-> hey -n 1000000 -c 128 "http://localhost:8002/testkey"
+> hey -n 1000000 -c 64 "http://localhost:8001/testkey"
 
 Summary:
-  Total:        5.2660 secs
-  Slowest:      0.1161 secs
-  Fastest:      0.0001 secs
-  Average:      0.0007 secs
-  Requests/sec: 189884.8819
+  Total:        12.5200 secs
+  Slowest:      0.0087 secs
+  Fastest:      0.0002 secs
+  Average:      0.0008 secs
+  Requests/sec: 79872.1881
 
-  Total data:   27998208 bytes
-  Size/request: 28 bytes
+  Total data:   19000000 bytes
+  Size/request: 19 bytes
 
 Response time histogram:
   0.000 [1]      |
-  0.012 [999689] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
-  0.023 [145]    |
-  0.035 [0]      |
-  0.047 [0]      |
-  0.058 [0]      |
-  0.070 [61]     |
-  0.081 [0]      |
-  0.093 [0]      |
-  0.105 [0]      |
-  0.116 [40]     |
+  0.001 [877521] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  0.002 [118124] |■■■■■
+  0.003 [3666]   |
+  0.004 [401]    |
+  0.004 [119]    |
+  0.005 [122]    |
+  0.006 [42]     |
+  0.007 [2]      |
+  0.008 [0]      |
+  0.009 [2]      |
+
+
+Latency distribution:
+  10% in 0.0005 secs
+  25% in 0.0007 secs
+  50% in 0.0008 secs
+  75% in 0.0009 secs
+  90% in 0.0011 secs
+  95% in 0.0011 secs
+  99% in 0.0015 secs
+
+Details (average, fastest, slowest):
+  DNS+dialup:   0.0000 secs, 0.0002 secs, 0.0087 secs
+  DNS-lookup:   0.0000 secs, 0.0000 secs, 0.0035 secs
+  req write:    0.0000 secs, 0.0000 secs, 0.0028 secs
+  resp wait:    0.0007 secs, 0.0002 secs, 0.0087 secs
+  resp read:    0.0000 secs, 0.0000 secs, 0.0036 secs
+
+Status code distribution:
+  [200] 1000000 responses
+
+ ```
+
+### Concurrency 64 (leader)
+
+120k rps @ 1.2ms p99 latency (to leader)
+
+```
+> hey -n 1000000 -c 64 "http://localhost:8003/testkey"
+
+Summary:
+  Total:        8.3917 secs
+  Slowest:      0.1053 secs
+  Fastest:      0.0001 secs
+  Average:      0.0005 secs
+  Requests/sec: 119165.5451
+
+  Total data:   19000000 bytes
+  Size/request: 19 bytes
+
+Response time histogram:
+  0.000 [1]      |
+  0.011 [999948] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  0.021 [0]      |
+  0.032 [0]      |
+  0.042 [0]      |
+  0.053 [0]      |
+  0.063 [0]      |
+  0.074 [0]      |
+  0.084 [0]      |
+  0.095 [0]      |
+  0.105 [51]     |
 
 
 Latency distribution:
   10% in 0.0003 secs
   25% in 0.0004 secs
-  50% in 0.0006 secs
-  75% in 0.0008 secs
-  90% in 0.0011 secs
-  95% in 0.0013 secs
-  99% in 0.0025 secs
+  50% in 0.0005 secs
+  75% in 0.0006 secs
+  90% in 0.0008 secs
+  95% in 0.0009 secs
+  99% in 0.0012 secs
 
 Details (average, fastest, slowest):
-  DNS+dialup:   0.0000 secs, 0.0001 secs, 0.1161 secs
-  DNS-lookup:   0.0000 secs, 0.0000 secs, 0.0025 secs
-  req write:    0.0000 secs, 0.0000 secs, 0.0117 secs
-  resp wait:    0.0006 secs, 0.0001 secs, 0.1105 secs
-  resp read:    0.0001 secs, 0.0000 secs, 0.0192 secs
+  DNS+dialup:   0.0000 secs, 0.0001 secs, 0.1053 secs
+  DNS-lookup:   0.0000 secs, 0.0000 secs, 0.0012 secs
+  req write:    0.0000 secs, 0.0000 secs, 0.0043 secs
+  resp wait:    0.0005 secs, 0.0001 secs, 0.1030 secs
+  resp read:    0.0000 secs, 0.0000 secs, 0.0061 secs
 
 Status code distribution:
-  [200] 999936 responses
+  [200] 1000000 responses
+```
+
+### Concurrency 64 (stale)
+
+300k rps @ 1.3ms p99 latency (stale read)
+
+```
+> hey -n 1000000 -c 64 "http://localhost:8001/testkey?stale=true"
+
+Summary:
+  Total:        3.3367 secs
+  Slowest:      0.0162 secs
+  Fastest:      0.0000 secs
+  Average:      0.0002 secs
+  Requests/sec: 299693.4242
+
+  Total data:   19000000 bytes
+  Size/request: 19 bytes
+
+Response time histogram:
+  0.000 [1]      |
+  0.002 [993727] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  0.003 [5493]   |
+  0.005 [352]    |
+  0.006 [280]    |
+  0.008 [125]    |
+  0.010 [18]     |
+  0.011 [2]      |
+  0.013 [0]      |
+  0.015 [1]      |
+  0.016 [1]      |
+
+
+Latency distribution:
+  10% in 0.0000 secs
+  25% in 0.0001 secs
+  50% in 0.0001 secs
+  75% in 0.0003 secs
+  90% in 0.0005 secs
+  95% in 0.0006 secs
+  99% in 0.0013 secs
+
+Details (average, fastest, slowest):
+  DNS+dialup:   0.0000 secs, 0.0000 secs, 0.0162 secs
+  DNS-lookup:   0.0000 secs, 0.0000 secs, 0.0048 secs
+  req write:    0.0000 secs, 0.0000 secs, 0.0060 secs
+  resp wait:    0.0001 secs, 0.0000 secs, 0.0153 secs
+  resp read:    0.0001 secs, 0.0000 secs, 0.0089 secs
+
+Status code distribution:
+  [200] 1000000 responses
+
 ```
