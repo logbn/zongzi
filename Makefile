@@ -12,3 +12,6 @@ cover:
 gen:
 	@ protoc internal/*.proto --go_out=internal --go_opt=paths=source_relative \
 		--go-grpc_out=internal --go-grpc_opt=paths=source_relative -I internal
+
+cloc:
+	@cloc . --exclude-dir=_example,_dist --exclude-ext=pb.go

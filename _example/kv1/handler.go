@@ -71,7 +71,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			code, data, err = h.clients[shard].Apply(ctx, cmd.MustMarshalBinary())
 			if code == ResultCodeFailure {
 				w.WriteHeader(400)
-				w.Write(data)
+				w.Write([]byte(err.Error()))
 				return
 			}
 			if code == ResultCodeVersionMismatch {
