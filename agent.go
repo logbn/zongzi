@@ -252,12 +252,10 @@ func (a *Agent) Status() AgentStatus {
 // Pass a timeout context to avoid blocking indefinitely.
 //
 // Read is thread safe and will not block writes.
-func (a *Agent) Read(ctx context.Context, fn func(*State), stale ...bool) (err error) {
-	if len(stale) == 0 || stale[0] == false {
-		err = a.readIndex(ctx, a.replicaConfig.ShardID)
-		if err != nil {
-			return
-		}
+func (a *Agent) Read(ctx context.Context, fn func(*State)) (err error) {
+	err = a.readIndex(ctx, a.replicaConfig.ShardID)
+	if err != nil {
+		return
 	}
 	fn(a.fsm.state.withTxn(false))
 	return
@@ -778,10 +776,10 @@ func (a *Agent) findLocalReplicaID(shardID uint64) (id uint64) {
 }
 
 func (a *Agent) dumpState() {
-	a.Read(a.ctx, func(state *State) {
+	a.ReadStale(func(state *State) {
 		// Print snapshot
 		buf := bytes.NewBufferString("")
 		state.Save(buf)
 		a.log.Debugf(buf.String())
-	}, true)
+	})
 }

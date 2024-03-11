@@ -149,9 +149,9 @@ func (q *kvQuery) MustMarshalBinary() []byte {
 }
 
 type kvCmd struct {
-	Op     uint64 `json:"op"`
-	Key    string `json:"key"`
-	Record kvRecord
+	Op     uint64   `json:"op"`
+	Key    string   `json:"key"`
+	Record kvRecord `json:"rec"`
 }
 
 func (c *kvCmd) MustMarshalBinary() []byte {

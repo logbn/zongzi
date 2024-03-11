@@ -72,7 +72,7 @@ func (c *shardClientManager) tick() {
 	var shardCount int
 	var replicaCount int
 	var pings = map[string]time.Duration{}
-	err = c.agent.Read(c.ctx, func(state *State) {
+	err = c.agent.ReadStale(func(state *State) {
 		state.ShardIterateUpdatedAfter(c.index, func(shard Shard) bool {
 			shardCount++
 			index = shard.Updated
@@ -119,7 +119,7 @@ func (c *shardClientManager) tick() {
 			c.mutex.Unlock()
 			return true
 		})
-	}, true)
+	})
 	if err == nil && shardCount > 0 {
 		c.log.Infof("%s Shard client manager updated. hosts: %d shards: %d replicas: %d time: %vms", c.agent.HostID(), len(pings), shardCount, replicaCount, int(c.clock.Since(start)/time.Millisecond))
 		c.index = index
