@@ -106,11 +106,13 @@ const (
 
 	ShardStatus_Active      = ShardStatus("active")
 	ShardStatus_Closed      = ShardStatus("closed")
+	ShardStatus_Closing     = ShardStatus("closing")
 	ShardStatus_New         = ShardStatus("new")
 	ShardStatus_Unavailable = ShardStatus("unavailable")
 
 	ReplicaStatus_Active        = ReplicaStatus("active")
 	ReplicaStatus_Closed        = ReplicaStatus("closed")
+	ReplicaStatus_Closing       = ReplicaStatus("closing")
 	ReplicaStatus_Bootstrapping = ReplicaStatus("bootstrapping")
 	ReplicaStatus_Joining       = ReplicaStatus("joining")
 	ReplicaStatus_New           = ReplicaStatus("new")

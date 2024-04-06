@@ -150,6 +150,21 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 				return true
 			})
 			entry.Result.Value = 1
+		// Status Update
+		case command_action_status_update:
+			shard, ok := state.Shard(cmd.Shard.ID)
+			if !ok {
+				fsm.log.Warningf("%v: %#v", ErrShardNotFound, cmd)
+				break
+			}
+			shard.Status = cmd.Shard.Status
+			shard.Updated = entry.Index
+			state.shardPut(shard)
+			state.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
+				state.hostTouch(r.HostID, entry.Index)
+				return true
+			})
+			entry.Result.Value = 1
 		// Delete
 		case command_action_del:
 			shard, ok := state.Shard(cmd.Shard.ID)

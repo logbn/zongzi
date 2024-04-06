@@ -81,6 +81,17 @@ func newCmdShardPut(s Shard) (b []byte) {
 	return
 }
 
+func newCmdShardStatusUpdate(id uint64, status ShardStatus) (b []byte) {
+	b, _ = json.Marshal(commandShard{command{
+		Action: command_action_status_update,
+		Type:   command_type_shard,
+	}, Shard{
+		ID:     id,
+		Status: status,
+	}})
+	return
+}
+
 func newCmdShardDel(shardID uint64) (b []byte) {
 	b, _ = json.Marshal(commandShard{command{
 		Action: command_action_del,

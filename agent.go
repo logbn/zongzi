@@ -310,6 +310,47 @@ func (a *Agent) RegisterShard(ctx context.Context, uri string, opts ...ShardOpti
 	return
 }
 
+// ShardCreate creates a new shard.
+func (a *Agent) ShardCreate(ctx context.Context, s Shard) (shard Shard, err error) {
+	s.Status = ShardStatus_New
+	res, err := a.primePropose(newCmdShardPost(s))
+	if err != nil {
+		return
+	}
+	shard = s
+	shard.ID = res.Value
+	a.log.Infof("Shard %08x created (%s)", shard.ID, shard.Type)
+	return
+}
+
+// ShardClose closes a shard.
+func (a *Agent) ShardClose(ctx context.Context, id uint64) (err error) {
+	res, err := a.primePropose(newCmdTagsSet(Shard{ID: id}, fmt.Sprintf("desired:status=%s", ShardStatus_Closed)))
+	if err != nil {
+		return
+	}
+	if res.Value == 0 {
+		err = fmt.Errorf("Error closing shard %d: %s", id, string(res.Data))
+		return
+	}
+	a.log.Infof("Shard marked for closure: %d", id)
+	return
+}
+
+// ShardDelete deletes a shard.
+func (a *Agent) ShardDelete(ctx context.Context, id uint64) (err error) {
+	res, err := a.primePropose(newCmdShardDel(id))
+	if err != nil {
+		return
+	}
+	if res.Value == 0 {
+		err = fmt.Errorf("Error deleting shard %d: %s", id, string(res.Data))
+		return
+	}
+	a.log.Infof("Shard deleted (%d)", id)
+	return
+}
+
 // RegisterStateMachine registers a non-persistent shard type. Call before Starting agent.
 func (a *Agent) RegisterStateMachine(uri string, factory StateMachineFactory, config ...ReplicaConfig) {
 	cfg := DefaultReplicaConfig
