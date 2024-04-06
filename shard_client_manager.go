@@ -50,7 +50,7 @@ func (c *shardClientManager) Start() (err error) {
 		for {
 			select {
 			case <-c.ctx.Done():
-				c.log.Infof("Shard controller manager stopped")
+				c.log.Infof("Shard client manager stopped")
 				return
 			case <-t.C:
 				c.tick()
