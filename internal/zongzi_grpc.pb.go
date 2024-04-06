@@ -19,16 +19,16 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Zongzi_Ping_FullMethodName      = "/Zongzi/Ping"
-	Zongzi_Probe_FullMethodName     = "/Zongzi/Probe"
-	Zongzi_Info_FullMethodName      = "/Zongzi/Info"
-	Zongzi_Members_FullMethodName   = "/Zongzi/Members"
-	Zongzi_Join_FullMethodName      = "/Zongzi/Join"
-	Zongzi_ShardJoin_FullMethodName = "/Zongzi/ShardJoin"
-	Zongzi_Apply_FullMethodName     = "/Zongzi/Apply"
-	Zongzi_Commit_FullMethodName    = "/Zongzi/Commit"
-	Zongzi_Read_FullMethodName      = "/Zongzi/Read"
-	Zongzi_Watch_FullMethodName     = "/Zongzi/Watch"
+	Zongzi_Ping_FullMethodName      = "/zongzi.Zongzi/Ping"
+	Zongzi_Probe_FullMethodName     = "/zongzi.Zongzi/Probe"
+	Zongzi_Info_FullMethodName      = "/zongzi.Zongzi/Info"
+	Zongzi_Members_FullMethodName   = "/zongzi.Zongzi/Members"
+	Zongzi_Join_FullMethodName      = "/zongzi.Zongzi/Join"
+	Zongzi_ShardJoin_FullMethodName = "/zongzi.Zongzi/ShardJoin"
+	Zongzi_Apply_FullMethodName     = "/zongzi.Zongzi/Apply"
+	Zongzi_Commit_FullMethodName    = "/zongzi.Zongzi/Commit"
+	Zongzi_Read_FullMethodName      = "/zongzi.Zongzi/Read"
+	Zongzi_Watch_FullMethodName     = "/zongzi.Zongzi/Watch"
 )
 
 // ZongziClient is the client API for Zongzi service.
@@ -449,7 +449,7 @@ func (x *zongziWatchServer) Send(m *WatchResponse) error {
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Zongzi_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "Zongzi",
+	ServiceName: "zongzi.Zongzi",
 	HandlerType: (*ZongziServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+package zongzi;
+
 option go_package = "github.com/logbn/zongzi/internal";
 
 // Zongzi uses an internal gRPC service for cluster coordination
