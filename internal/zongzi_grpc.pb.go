@@ -19,22 +19,22 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Zongzi_Ping_FullMethodName      = "/zongzi.Zongzi/Ping"
-	Zongzi_Probe_FullMethodName     = "/zongzi.Zongzi/Probe"
-	Zongzi_Info_FullMethodName      = "/zongzi.Zongzi/Info"
-	Zongzi_Members_FullMethodName   = "/zongzi.Zongzi/Members"
-	Zongzi_Join_FullMethodName      = "/zongzi.Zongzi/Join"
-	Zongzi_ShardJoin_FullMethodName = "/zongzi.Zongzi/ShardJoin"
-	Zongzi_Apply_FullMethodName     = "/zongzi.Zongzi/Apply"
-	Zongzi_Commit_FullMethodName    = "/zongzi.Zongzi/Commit"
-	Zongzi_Read_FullMethodName      = "/zongzi.Zongzi/Read"
-	Zongzi_Watch_FullMethodName     = "/zongzi.Zongzi/Watch"
+	Internal_Ping_FullMethodName      = "/zongzi.Internal/Ping"
+	Internal_Probe_FullMethodName     = "/zongzi.Internal/Probe"
+	Internal_Info_FullMethodName      = "/zongzi.Internal/Info"
+	Internal_Members_FullMethodName   = "/zongzi.Internal/Members"
+	Internal_Join_FullMethodName      = "/zongzi.Internal/Join"
+	Internal_ShardJoin_FullMethodName = "/zongzi.Internal/ShardJoin"
+	Internal_Apply_FullMethodName     = "/zongzi.Internal/Apply"
+	Internal_Commit_FullMethodName    = "/zongzi.Internal/Commit"
+	Internal_Read_FullMethodName      = "/zongzi.Internal/Read"
+	Internal_Watch_FullMethodName     = "/zongzi.Internal/Watch"
 )
 
-// ZongziClient is the client API for Zongzi service.
+// InternalClient is the client API for Internal service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type ZongziClient interface {
+type InternalClient interface {
 	// Ping is a noop for timing purposes
 	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
 	// Probe returns Gossip.AdvertiseAddress
@@ -59,104 +59,104 @@ type ZongziClient interface {
 	// Read provides unary request/response query forwarding
 	Read(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*ReadResponse, error)
 	// Watch provides streaming query response forwarding
-	Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (Zongzi_WatchClient, error)
+	Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (Internal_WatchClient, error)
 }
 
-type zongziClient struct {
+type internalClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewZongziClient(cc grpc.ClientConnInterface) ZongziClient {
-	return &zongziClient{cc}
+func NewInternalClient(cc grpc.ClientConnInterface) InternalClient {
+	return &internalClient{cc}
 }
 
-func (c *zongziClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error) {
+func (c *internalClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error) {
 	out := new(PingResponse)
-	err := c.cc.Invoke(ctx, Zongzi_Ping_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Internal_Ping_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *zongziClient) Probe(ctx context.Context, in *ProbeRequest, opts ...grpc.CallOption) (*ProbeResponse, error) {
+func (c *internalClient) Probe(ctx context.Context, in *ProbeRequest, opts ...grpc.CallOption) (*ProbeResponse, error) {
 	out := new(ProbeResponse)
-	err := c.cc.Invoke(ctx, Zongzi_Probe_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Internal_Probe_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *zongziClient) Info(ctx context.Context, in *InfoRequest, opts ...grpc.CallOption) (*InfoResponse, error) {
+func (c *internalClient) Info(ctx context.Context, in *InfoRequest, opts ...grpc.CallOption) (*InfoResponse, error) {
 	out := new(InfoResponse)
-	err := c.cc.Invoke(ctx, Zongzi_Info_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Internal_Info_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *zongziClient) Members(ctx context.Context, in *MembersRequest, opts ...grpc.CallOption) (*MembersResponse, error) {
+func (c *internalClient) Members(ctx context.Context, in *MembersRequest, opts ...grpc.CallOption) (*MembersResponse, error) {
 	out := new(MembersResponse)
-	err := c.cc.Invoke(ctx, Zongzi_Members_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Internal_Members_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *zongziClient) Join(ctx context.Context, in *JoinRequest, opts ...grpc.CallOption) (*JoinResponse, error) {
+func (c *internalClient) Join(ctx context.Context, in *JoinRequest, opts ...grpc.CallOption) (*JoinResponse, error) {
 	out := new(JoinResponse)
-	err := c.cc.Invoke(ctx, Zongzi_Join_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Internal_Join_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *zongziClient) ShardJoin(ctx context.Context, in *ShardJoinRequest, opts ...grpc.CallOption) (*ShardJoinResponse, error) {
+func (c *internalClient) ShardJoin(ctx context.Context, in *ShardJoinRequest, opts ...grpc.CallOption) (*ShardJoinResponse, error) {
 	out := new(ShardJoinResponse)
-	err := c.cc.Invoke(ctx, Zongzi_ShardJoin_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Internal_ShardJoin_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *zongziClient) Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error) {
+func (c *internalClient) Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error) {
 	out := new(ApplyResponse)
-	err := c.cc.Invoke(ctx, Zongzi_Apply_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Internal_Apply_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *zongziClient) Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*CommitResponse, error) {
+func (c *internalClient) Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*CommitResponse, error) {
 	out := new(CommitResponse)
-	err := c.cc.Invoke(ctx, Zongzi_Commit_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Internal_Commit_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *zongziClient) Read(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*ReadResponse, error) {
+func (c *internalClient) Read(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*ReadResponse, error) {
 	out := new(ReadResponse)
-	err := c.cc.Invoke(ctx, Zongzi_Read_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Internal_Read_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *zongziClient) Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (Zongzi_WatchClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Zongzi_ServiceDesc.Streams[0], Zongzi_Watch_FullMethodName, opts...)
+func (c *internalClient) Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (Internal_WatchClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Internal_ServiceDesc.Streams[0], Internal_Watch_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &zongziWatchClient{stream}
+	x := &internalWatchClient{stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -166,16 +166,16 @@ func (c *zongziClient) Watch(ctx context.Context, in *WatchRequest, opts ...grpc
 	return x, nil
 }
 
-type Zongzi_WatchClient interface {
+type Internal_WatchClient interface {
 	Recv() (*WatchResponse, error)
 	grpc.ClientStream
 }
 
-type zongziWatchClient struct {
+type internalWatchClient struct {
 	grpc.ClientStream
 }
 
-func (x *zongziWatchClient) Recv() (*WatchResponse, error) {
+func (x *internalWatchClient) Recv() (*WatchResponse, error) {
 	m := new(WatchResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
@@ -183,10 +183,10 @@ func (x *zongziWatchClient) Recv() (*WatchResponse, error) {
 	return m, nil
 }
 
-// ZongziServer is the server API for Zongzi service.
-// All implementations must embed UnimplementedZongziServer
+// InternalServer is the server API for Internal service.
+// All implementations must embed UnimplementedInternalServer
 // for forward compatibility
-type ZongziServer interface {
+type InternalServer interface {
 	// Ping is a noop for timing purposes
 	Ping(context.Context, *PingRequest) (*PingResponse, error)
 	// Probe returns Gossip.AdvertiseAddress
@@ -211,288 +211,288 @@ type ZongziServer interface {
 	// Read provides unary request/response query forwarding
 	Read(context.Context, *ReadRequest) (*ReadResponse, error)
 	// Watch provides streaming query response forwarding
-	Watch(*WatchRequest, Zongzi_WatchServer) error
-	mustEmbedUnimplementedZongziServer()
+	Watch(*WatchRequest, Internal_WatchServer) error
+	mustEmbedUnimplementedInternalServer()
 }
 
-// UnimplementedZongziServer must be embedded to have forward compatible implementations.
-type UnimplementedZongziServer struct {
+// UnimplementedInternalServer must be embedded to have forward compatible implementations.
+type UnimplementedInternalServer struct {
 }
 
-func (UnimplementedZongziServer) Ping(context.Context, *PingRequest) (*PingResponse, error) {
+func (UnimplementedInternalServer) Ping(context.Context, *PingRequest) (*PingResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
 }
-func (UnimplementedZongziServer) Probe(context.Context, *ProbeRequest) (*ProbeResponse, error) {
+func (UnimplementedInternalServer) Probe(context.Context, *ProbeRequest) (*ProbeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Probe not implemented")
 }
-func (UnimplementedZongziServer) Info(context.Context, *InfoRequest) (*InfoResponse, error) {
+func (UnimplementedInternalServer) Info(context.Context, *InfoRequest) (*InfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Info not implemented")
 }
-func (UnimplementedZongziServer) Members(context.Context, *MembersRequest) (*MembersResponse, error) {
+func (UnimplementedInternalServer) Members(context.Context, *MembersRequest) (*MembersResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Members not implemented")
 }
-func (UnimplementedZongziServer) Join(context.Context, *JoinRequest) (*JoinResponse, error) {
+func (UnimplementedInternalServer) Join(context.Context, *JoinRequest) (*JoinResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Join not implemented")
 }
-func (UnimplementedZongziServer) ShardJoin(context.Context, *ShardJoinRequest) (*ShardJoinResponse, error) {
+func (UnimplementedInternalServer) ShardJoin(context.Context, *ShardJoinRequest) (*ShardJoinResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ShardJoin not implemented")
 }
-func (UnimplementedZongziServer) Apply(context.Context, *ApplyRequest) (*ApplyResponse, error) {
+func (UnimplementedInternalServer) Apply(context.Context, *ApplyRequest) (*ApplyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Apply not implemented")
 }
-func (UnimplementedZongziServer) Commit(context.Context, *CommitRequest) (*CommitResponse, error) {
+func (UnimplementedInternalServer) Commit(context.Context, *CommitRequest) (*CommitResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Commit not implemented")
 }
-func (UnimplementedZongziServer) Read(context.Context, *ReadRequest) (*ReadResponse, error) {
+func (UnimplementedInternalServer) Read(context.Context, *ReadRequest) (*ReadResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Read not implemented")
 }
-func (UnimplementedZongziServer) Watch(*WatchRequest, Zongzi_WatchServer) error {
+func (UnimplementedInternalServer) Watch(*WatchRequest, Internal_WatchServer) error {
 	return status.Errorf(codes.Unimplemented, "method Watch not implemented")
 }
-func (UnimplementedZongziServer) mustEmbedUnimplementedZongziServer() {}
+func (UnimplementedInternalServer) mustEmbedUnimplementedInternalServer() {}
 
-// UnsafeZongziServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to ZongziServer will
+// UnsafeInternalServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to InternalServer will
 // result in compilation errors.
-type UnsafeZongziServer interface {
-	mustEmbedUnimplementedZongziServer()
+type UnsafeInternalServer interface {
+	mustEmbedUnimplementedInternalServer()
 }
 
-func RegisterZongziServer(s grpc.ServiceRegistrar, srv ZongziServer) {
-	s.RegisterService(&Zongzi_ServiceDesc, srv)
+func RegisterInternalServer(s grpc.ServiceRegistrar, srv InternalServer) {
+	s.RegisterService(&Internal_ServiceDesc, srv)
 }
 
-func _Zongzi_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Internal_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PingRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ZongziServer).Ping(ctx, in)
+		return srv.(InternalServer).Ping(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Zongzi_Ping_FullMethodName,
+		FullMethod: Internal_Ping_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZongziServer).Ping(ctx, req.(*PingRequest))
+		return srv.(InternalServer).Ping(ctx, req.(*PingRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Zongzi_Probe_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Internal_Probe_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ProbeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ZongziServer).Probe(ctx, in)
+		return srv.(InternalServer).Probe(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Zongzi_Probe_FullMethodName,
+		FullMethod: Internal_Probe_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZongziServer).Probe(ctx, req.(*ProbeRequest))
+		return srv.(InternalServer).Probe(ctx, req.(*ProbeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Zongzi_Info_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Internal_Info_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(InfoRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ZongziServer).Info(ctx, in)
+		return srv.(InternalServer).Info(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Zongzi_Info_FullMethodName,
+		FullMethod: Internal_Info_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZongziServer).Info(ctx, req.(*InfoRequest))
+		return srv.(InternalServer).Info(ctx, req.(*InfoRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Zongzi_Members_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Internal_Members_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(MembersRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ZongziServer).Members(ctx, in)
+		return srv.(InternalServer).Members(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Zongzi_Members_FullMethodName,
+		FullMethod: Internal_Members_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZongziServer).Members(ctx, req.(*MembersRequest))
+		return srv.(InternalServer).Members(ctx, req.(*MembersRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Zongzi_Join_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Internal_Join_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(JoinRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ZongziServer).Join(ctx, in)
+		return srv.(InternalServer).Join(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Zongzi_Join_FullMethodName,
+		FullMethod: Internal_Join_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZongziServer).Join(ctx, req.(*JoinRequest))
+		return srv.(InternalServer).Join(ctx, req.(*JoinRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Zongzi_ShardJoin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Internal_ShardJoin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ShardJoinRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ZongziServer).ShardJoin(ctx, in)
+		return srv.(InternalServer).ShardJoin(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Zongzi_ShardJoin_FullMethodName,
+		FullMethod: Internal_ShardJoin_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZongziServer).ShardJoin(ctx, req.(*ShardJoinRequest))
+		return srv.(InternalServer).ShardJoin(ctx, req.(*ShardJoinRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Zongzi_Apply_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Internal_Apply_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ApplyRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ZongziServer).Apply(ctx, in)
+		return srv.(InternalServer).Apply(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Zongzi_Apply_FullMethodName,
+		FullMethod: Internal_Apply_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZongziServer).Apply(ctx, req.(*ApplyRequest))
+		return srv.(InternalServer).Apply(ctx, req.(*ApplyRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Zongzi_Commit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Internal_Commit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CommitRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ZongziServer).Commit(ctx, in)
+		return srv.(InternalServer).Commit(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Zongzi_Commit_FullMethodName,
+		FullMethod: Internal_Commit_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZongziServer).Commit(ctx, req.(*CommitRequest))
+		return srv.(InternalServer).Commit(ctx, req.(*CommitRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Zongzi_Read_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Internal_Read_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ReadRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ZongziServer).Read(ctx, in)
+		return srv.(InternalServer).Read(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Zongzi_Read_FullMethodName,
+		FullMethod: Internal_Read_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZongziServer).Read(ctx, req.(*ReadRequest))
+		return srv.(InternalServer).Read(ctx, req.(*ReadRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Zongzi_Watch_Handler(srv interface{}, stream grpc.ServerStream) error {
+func _Internal_Watch_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(WatchRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(ZongziServer).Watch(m, &zongziWatchServer{stream})
+	return srv.(InternalServer).Watch(m, &internalWatchServer{stream})
 }
 
-type Zongzi_WatchServer interface {
+type Internal_WatchServer interface {
 	Send(*WatchResponse) error
 	grpc.ServerStream
 }
 
-type zongziWatchServer struct {
+type internalWatchServer struct {
 	grpc.ServerStream
 }
 
-func (x *zongziWatchServer) Send(m *WatchResponse) error {
+func (x *internalWatchServer) Send(m *WatchResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-// Zongzi_ServiceDesc is the grpc.ServiceDesc for Zongzi service.
+// Internal_ServiceDesc is the grpc.ServiceDesc for Internal service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var Zongzi_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "zongzi.Zongzi",
-	HandlerType: (*ZongziServer)(nil),
+var Internal_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "zongzi.Internal",
+	HandlerType: (*InternalServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "Ping",
-			Handler:    _Zongzi_Ping_Handler,
+			Handler:    _Internal_Ping_Handler,
 		},
 		{
 			MethodName: "Probe",
-			Handler:    _Zongzi_Probe_Handler,
+			Handler:    _Internal_Probe_Handler,
 		},
 		{
 			MethodName: "Info",
-			Handler:    _Zongzi_Info_Handler,
+			Handler:    _Internal_Info_Handler,
 		},
 		{
 			MethodName: "Members",
-			Handler:    _Zongzi_Members_Handler,
+			Handler:    _Internal_Members_Handler,
 		},
 		{
 			MethodName: "Join",
-			Handler:    _Zongzi_Join_Handler,
+			Handler:    _Internal_Join_Handler,
 		},
 		{
 			MethodName: "ShardJoin",
-			Handler:    _Zongzi_ShardJoin_Handler,
+			Handler:    _Internal_ShardJoin_Handler,
 		},
 		{
 			MethodName: "Apply",
-			Handler:    _Zongzi_Apply_Handler,
+			Handler:    _Internal_Apply_Handler,
 		},
 		{
 			MethodName: "Commit",
-			Handler:    _Zongzi_Commit_Handler,
+			Handler:    _Internal_Commit_Handler,
 		},
 		{
 			MethodName: "Read",
-			Handler:    _Zongzi_Read_Handler,
+			Handler:    _Internal_Read_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "Watch",
-			Handler:       _Zongzi_Watch_Handler,
+			Handler:       _Internal_Watch_Handler,
 			ServerStreams: true,
 		},
 	},

@@ -5,7 +5,7 @@ package zongzi;
 option go_package = "github.com/logbn/zongzi/internal";
 
 // Zongzi uses an internal gRPC service for cluster coordination
-service Zongzi {
+service Internal {
   // Ping is a noop for timing purposes
   rpc Ping(PingRequest) returns (PingResponse) {}
 

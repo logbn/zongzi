@@ -48,6 +48,6 @@ func (c *grpcClientErr) Read(ctx context.Context, in *internal.ReadRequest, opts
 	return nil, c.err
 }
 
-func (c *grpcClientErr) Watch(ctx context.Context, in *internal.WatchRequest, opts ...grpc.CallOption) (internal.Zongzi_WatchClient, error) {
+func (c *grpcClientErr) Watch(ctx context.Context, in *internal.WatchRequest, opts ...grpc.CallOption) (internal.Internal_WatchClient, error) {
 	return nil, c.err
 }

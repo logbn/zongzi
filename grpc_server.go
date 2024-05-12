@@ -12,7 +12,7 @@ import (
 )
 
 type grpcServer struct {
-	internal.UnimplementedZongziServer
+	internal.UnimplementedInternalServer
 
 	agent      *Agent
 	server     *grpc.Server
@@ -197,7 +197,7 @@ func (s *grpcServer) Read(ctx context.Context, req *internal.ReadRequest) (res *
 	return
 }
 
-func (s *grpcServer) Watch(req *internal.WatchRequest, srv internal.Zongzi_WatchServer) (err error) {
+func (s *grpcServer) Watch(req *internal.WatchRequest, srv internal.Internal_WatchServer) (err error) {
 	// s.agent.log.Debugf(`gRPC Req Query: %#v`, req)
 	query := getWatchQuery()
 	query.ctx = srv.Context()
@@ -245,7 +245,7 @@ func (s *grpcServer) Start(a *Agent) error {
 	// https://github.com/grpc/grpc-go/tree/master/examples/features/authentication
 	// opts = append(opts, grpc.UnaryInterceptor(ensureValidToken))
 	s.server = grpc.NewServer(s.serverOpts...)
-	internal.RegisterZongziServer(s.server, s)
+	internal.RegisterInternalServer(s.server, s)
 	var done = make(chan bool)
 	go func() {
 		err = s.server.Serve(lis)

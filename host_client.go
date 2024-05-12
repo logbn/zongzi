@@ -137,7 +137,7 @@ func (s *watchServer) Send(res *internal.WatchResponse) error {
 }
 
 func (c *hostclient) Watch(ctx context.Context, shardID uint64, query []byte, results chan<- *Result, stale bool) (err error) {
-	var client internal.Zongzi_WatchClient
+	var client internal.Internal_WatchClient
 	if c.hostID == c.agent.HostID() {
 		err = c.agent.grpcServer.Watch(&internal.WatchRequest{
 			ShardId: shardID,

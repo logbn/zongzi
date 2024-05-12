@@ -14,7 +14,7 @@ type grpcClientPool struct {
 }
 
 type grpcClientPoolEntry struct {
-	client internal.ZongziClient
+	client internal.InternalClient
 	conn   *grpc.ClientConn
 }
 
@@ -30,7 +30,7 @@ func newGrpcClientPool(size int, dialOpts ...grpc.DialOption) *grpcClientPool {
 	}
 }
 
-func (c *grpcClientPool) get(addr string) (client internal.ZongziClient) {
+func (c *grpcClientPool) get(addr string) (client internal.InternalClient) {
 	e, ok := c.clients.Get(addr)
 	if ok {
 		return e.client
@@ -43,7 +43,7 @@ func (c *grpcClientPool) get(addr string) (client internal.ZongziClient) {
 	if err != nil {
 		return &grpcClientErr{err}
 	}
-	client = internal.NewZongziClient(conn)
+	client = internal.NewInternalClient(conn)
 	c.clients.Add(addr, grpcClientPoolEntry{client, conn})
 	return
 }
