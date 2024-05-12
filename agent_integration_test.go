@@ -17,6 +17,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var (
+	updates     int
+	update_time time.Duration
+)
+
 func TestAgent(t *testing.T) {
 	// SetLogLevel(LogLevelDebug)
 	basedir := `./tmp/zongzi-test`
@@ -250,6 +255,7 @@ func TestAgent(t *testing.T) {
 			}), `%s`, mustJson(agents))
 		})
 	})
+	fmt.Printf("UPDATES: %d\nAverage: %v\n", updates, update_time/time.Duration(updates))
 }
 
 func mustJson(in any) string {
@@ -272,7 +278,10 @@ func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, sm, op string, 
 			client := agents[0].HostClient(r.HostID)
 			require.NotNil(t, client)
 			if op == "update" && stale {
+				start := time.Now()
 				err = client.Commit(raftCtx(), shard.ID, bytes.Repeat([]byte("test"), i+1))
+				update_time += time.Since(start)
+				updates++
 			} else if op == "update" && !stale {
 				val, _, err = client.Apply(raftCtx(), shard.ID, bytes.Repeat([]byte("test"), i+1))
 			} else if op == "query" {

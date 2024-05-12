@@ -83,7 +83,7 @@ func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent
 	)
 	a.replicaConfig.ShardID = ShardID
 	a.hostConfig.DeploymentID = mustBase36Decode(clusterName)
-	a.hostConfig.AddressByNodeHostID = true
+	a.hostConfig.DefaultNodeRegistryEnabled = true
 	a.hostConfig.Gossip.Meta = []byte(a.advertiseAddress)
 	a.grpcClientPool = newGrpcClientPool(1e4)
 	a.grpcServer = newGrpcServer(a.bindAddress)

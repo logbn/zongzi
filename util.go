@@ -47,6 +47,7 @@ var (
 		CheckQuorum:             true,
 		CompactionOverhead:      1000,
 		ElectionRTT:             100,
+		EntryCompressionType:    config.Snappy,
 		HeartbeatRTT:            10,
 		OrderedConfigChange:     true,
 		Quiesce:                 false,

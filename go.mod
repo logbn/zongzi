@@ -7,7 +7,7 @@ require (
 	github.com/elliotchance/orderedmap/v2 v2.2.0
 	github.com/hashicorp/go-memdb v1.3.4
 	github.com/hashicorp/golang-lru/v2 v2.0.2
-	github.com/lni/dragonboat/v4 v4.0.0-20230202152124-023bafb8e648
+	github.com/lni/dragonboat/v4 v4.0.0-20231222133740-1d6e2d76cd57
 	github.com/stretchr/testify v1.8.3
 	google.golang.org/grpc v1.58.3
 	google.golang.org/protobuf v1.31.0
@@ -37,10 +37,11 @@ require (
 	github.com/hashicorp/go-sockaddr v1.0.0 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/hashicorp/memberlist v0.3.1 // indirect
+	github.com/juju/ratelimit v1.0.2-0.20191002062651-f60b32039441 // indirect
 	github.com/klauspost/compress v1.15.9 // indirect
 	github.com/kr/pretty v0.3.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
-	github.com/lni/goutils v1.3.1-0.20220604063047-388d67b4dbc4 // indirect
+	github.com/lni/goutils v1.4.0 // indirect
 	github.com/lni/vfs v0.2.1-0.20220616104132-8852fd867376 // indirect
 	github.com/miekg/dns v1.1.26 // indirect
 	github.com/pierrec/lz4/v4 v4.1.15 // indirect
