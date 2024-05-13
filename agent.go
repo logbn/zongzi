@@ -306,7 +306,7 @@ func (a *Agent) RegisterShard(ctx context.Context, uri string, opts ...ShardOpti
 	}
 	shard.ID = res.Value
 	created = true
-	a.log.Infof("Shard created %s", uri)
+	a.log.Infof("Shard created %s, %d, %s", uri, shard.ID, shard.Name)
 	return
 }
 
