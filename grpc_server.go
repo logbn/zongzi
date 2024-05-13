@@ -175,6 +175,13 @@ func (s *grpcServer) Apply(ctx context.Context, req *internal.ApplyRequest) (res
 	return
 }
 
+func (s *grpcServer) ReadIndex(ctx context.Context, req *internal.ReadIndexRequest) (res *internal.ReadIndexResponse, err error) {
+	// s.agent.log.Debugf(`gRPC Req Query: %#v`, req)
+	res = &internal.ReadIndexResponse{}
+	err = s.agent.readIndex(ctx, req.ShardId)
+	return
+}
+
 func (s *grpcServer) Read(ctx context.Context, req *internal.ReadRequest) (res *internal.ReadResponse, err error) {
 	// s.agent.log.Debugf(`gRPC Req Query: %#v`, req)
 	res = &internal.ReadResponse{}

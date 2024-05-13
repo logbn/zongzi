@@ -29,6 +29,9 @@ service Internal {
   // Used during replica creation to request replica's addition to the shard
   rpc ShardJoin(ShardJoinRequest) returns (ShardJoinResponse) {}
 
+  // ReadIndex reads the index of a shard
+  rpc ReadIndex(ReadIndexRequest) returns (ReadIndexResponse) {}
+
   // Apply provides unary request/response command forwarding
   rpc Apply(ApplyRequest) returns (ApplyResponse) {}
 
@@ -83,6 +86,11 @@ message ShardJoinResponse {
   uint64 value = 1;
   string error = 2;
 }
+
+message ReadIndexRequest {
+  uint64 shard_id = 1;
+}
+message ReadIndexResponse {}
 
 message ApplyRequest {
   uint64 shard_id = 1;

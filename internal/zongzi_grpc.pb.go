@@ -25,6 +25,7 @@ const (
 	Internal_Members_FullMethodName   = "/zongzi.Internal/Members"
 	Internal_Join_FullMethodName      = "/zongzi.Internal/Join"
 	Internal_ShardJoin_FullMethodName = "/zongzi.Internal/ShardJoin"
+	Internal_ReadIndex_FullMethodName = "/zongzi.Internal/ReadIndex"
 	Internal_Apply_FullMethodName     = "/zongzi.Internal/Apply"
 	Internal_Commit_FullMethodName    = "/zongzi.Internal/Commit"
 	Internal_Read_FullMethodName      = "/zongzi.Internal/Read"
@@ -52,6 +53,8 @@ type InternalClient interface {
 	// ShardJoin takes a replica ID and host ID and returns success
 	// Used during replica creation to request replica's addition to the shard
 	ShardJoin(ctx context.Context, in *ShardJoinRequest, opts ...grpc.CallOption) (*ShardJoinResponse, error)
+	// ReadIndex reads the index of a shard
+	ReadIndex(ctx context.Context, in *ReadIndexRequest, opts ...grpc.CallOption) (*ReadIndexResponse, error)
 	// Apply provides unary request/response command forwarding
 	Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error)
 	// Commit provides unary request/response command forwarding
@@ -118,6 +121,15 @@ func (c *internalClient) Join(ctx context.Context, in *JoinRequest, opts ...grpc
 func (c *internalClient) ShardJoin(ctx context.Context, in *ShardJoinRequest, opts ...grpc.CallOption) (*ShardJoinResponse, error) {
 	out := new(ShardJoinResponse)
 	err := c.cc.Invoke(ctx, Internal_ShardJoin_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *internalClient) ReadIndex(ctx context.Context, in *ReadIndexRequest, opts ...grpc.CallOption) (*ReadIndexResponse, error) {
+	out := new(ReadIndexResponse)
+	err := c.cc.Invoke(ctx, Internal_ReadIndex_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -204,6 +216,8 @@ type InternalServer interface {
 	// ShardJoin takes a replica ID and host ID and returns success
 	// Used during replica creation to request replica's addition to the shard
 	ShardJoin(context.Context, *ShardJoinRequest) (*ShardJoinResponse, error)
+	// ReadIndex reads the index of a shard
+	ReadIndex(context.Context, *ReadIndexRequest) (*ReadIndexResponse, error)
 	// Apply provides unary request/response command forwarding
 	Apply(context.Context, *ApplyRequest) (*ApplyResponse, error)
 	// Commit provides unary request/response command forwarding
@@ -236,6 +250,9 @@ func (UnimplementedInternalServer) Join(context.Context, *JoinRequest) (*JoinRes
 }
 func (UnimplementedInternalServer) ShardJoin(context.Context, *ShardJoinRequest) (*ShardJoinResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ShardJoin not implemented")
+}
+func (UnimplementedInternalServer) ReadIndex(context.Context, *ReadIndexRequest) (*ReadIndexResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReadIndex not implemented")
 }
 func (UnimplementedInternalServer) Apply(context.Context, *ApplyRequest) (*ApplyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Apply not implemented")
@@ -370,6 +387,24 @@ func _Internal_ShardJoin_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Internal_ReadIndex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReadIndexRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InternalServer).ReadIndex(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Internal_ReadIndex_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InternalServer).ReadIndex(ctx, req.(*ReadIndexRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Internal_Apply_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ApplyRequest)
 	if err := dec(in); err != nil {
@@ -475,6 +510,10 @@ var Internal_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ShardJoin",
 			Handler:    _Internal_ShardJoin_Handler,
+		},
+		{
+			MethodName: "ReadIndex",
+			Handler:    _Internal_ReadIndex_Handler,
 		},
 		{
 			MethodName: "Apply",

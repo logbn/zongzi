@@ -12,6 +12,7 @@ import (
 
 type HostClient interface {
 	Ping(ctx context.Context) (t time.Duration, err error)
+	ReadIndex(ctx context.Context, shardID uint64) (err error)
 	Apply(ctx context.Context, shardID uint64, cmd []byte) (value uint64, data []byte, err error)
 	Commit(ctx context.Context, shardID uint64, cmd []byte) (err error)
 	Read(ctx context.Context, shardID uint64, query []byte, stale bool) (value uint64, data []byte, err error)
@@ -41,6 +42,14 @@ func (c *hostclient) Ping(ctx context.Context) (t time.Duration, err error) {
 	start := c.clock.Now()
 	_, err = c.agent.grpcClientPool.get(c.hostApiAddress).Ping(ctx, &internal.PingRequest{})
 	t = c.clock.Since(start)
+	return
+}
+
+func (c *hostclient) ReadIndex(ctx context.Context, shardID uint64) (err error) {
+	if c.hostID == c.agent.HostID() {
+		return
+	}
+	_, err = c.agent.grpcClientPool.get(c.hostApiAddress).ReadIndex(ctx, &internal.ReadIndexRequest{})
 	return
 }
 

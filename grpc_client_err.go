@@ -36,6 +36,10 @@ func (c *grpcClientErr) ShardJoin(ctx context.Context, in *internal.ShardJoinReq
 	return nil, c.err
 }
 
+func (c *grpcClientErr) ReadIndex(ctx context.Context, in *internal.ReadIndexRequest, opts ...grpc.CallOption) (*internal.ReadIndexResponse, error) {
+	return nil, c.err
+}
+
 func (c *grpcClientErr) Commit(ctx context.Context, in *internal.CommitRequest, opts ...grpc.CallOption) (*internal.CommitResponse, error) {
 	return nil, c.err
 }
