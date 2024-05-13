@@ -3,6 +3,8 @@ package zongzi
 import (
 	"fmt"
 	"strings"
+
+	"github.com/lni/dragonboat/v4/config"
 )
 
 type AgentOption func(*Agent) error
@@ -34,6 +36,20 @@ func WithGossipAddress(advertiseAddress string, bindAddress ...string) AgentOpti
 func WithRaftAddress(raftAddress string) AgentOption {
 	return func(a *Agent) error {
 		a.hostConfig.RaftAddress = raftAddress
+		return nil
+	}
+}
+
+func WithRaftDir(dir string) AgentOption {
+	return func(a *Agent) error {
+		a.hostConfig.NodeHostDir = dir
+		return nil
+	}
+}
+
+func WithWALDir(dir string) AgentOption {
+	return func(a *Agent) error {
+		a.hostConfig.WALDir = dir
 		return nil
 	}
 }
