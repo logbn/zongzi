@@ -99,15 +99,16 @@ func (c *shardControllerManager) tick() {
 					}
 					return true
 				})
+				updated = controls.updated
 			})
 			if err != nil {
 				hadErr = true
 			}
 		}
 	}
-	// TODO - Update shard client pool
 	if !hadErr && index > c.index {
 		c.log.Debugf("%s Finished processing %d", c.agent.HostID(), index)
+		// c.agent.dumpState()
 		c.index = index
 	}
 	return
