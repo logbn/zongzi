@@ -41,6 +41,7 @@ var (
 		WALDir:         "/var/lib/zongzi/wal",
 		Expert: config.ExpertConfig{
 			LogDBFactory: tan.Factory,
+			LogDB:        config.GetMediumMemLogDBConfig(),
 		},
 	}
 	DefaultReplicaConfig = ReplicaConfig{

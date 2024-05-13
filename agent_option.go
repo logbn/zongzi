@@ -50,7 +50,40 @@ func WithHostConfig(cfg HostConfig) AgentOption {
 			cfg.RaftAddress = a.hostConfig.RaftAddress
 		}
 		cfg.Expert.LogDBFactory = DefaultHostConfig.Expert.LogDBFactory
+		cfg.Expert.LogDB = DefaultHostConfig.Expert.LogDB
 		a.hostConfig = cfg
+		return nil
+	}
+}
+
+// WithHostMemLimit256 tunes the raft logger to use 256MB of ram
+func WithHostMemLimit256(cfg HostConfig) AgentOption {
+	return func(a *Agent) error {
+		cfg.Expert.LogDB = config.GetTinyMemLogDBConfig()
+		return nil
+	}
+}
+
+// WithHostMemLimit1024 tunes the raft logger to use 1GB of ram
+func WithHostMemLimit1024(cfg HostConfig) AgentOption {
+	return func(a *Agent) error {
+		cfg.Expert.LogDB = config.GetSmallMemLogDBConfig()
+		return nil
+	}
+}
+
+// WithHostMemLimit4096 tunes the raft logger to use 4GB of ram
+func WithHostMemLimit4096(cfg HostConfig) AgentOption {
+	return func(a *Agent) error {
+		cfg.Expert.LogDB = config.GetMediumMemLogDBConfig()
+		return nil
+	}
+}
+
+// WithHostMemLimit8192 tunes the raft logger to use 8GB of ram
+func WithHostMemLimit8192(cfg HostConfig) AgentOption {
+	return func(a *Agent) error {
+		cfg.Expert.LogDB = config.GetMediumMemLogDBConfig()
 		return nil
 	}
 }
