@@ -149,7 +149,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 				state.hostTouch(r.HostID, entry.Index)
 				return true
 			})
-			entry.Result.Value = 1
+			entry.Result.Value = cmd.Shard.ID
 		// Status Update
 		case command_action_status_update:
 			shard, ok := state.Shard(cmd.Shard.ID)
