@@ -30,10 +30,10 @@ This package provides a centralized coordination layer for Dragonboat multi-grou
 - Host Client
   - Used to make proposals and queries to replicas on specific hosts
   - gRPC over message bus
-- Shard Client (in progress)
+- Shard Client
   - Intelligently routes proposals and queries to active shard replicas
   - Selects nearest replica based on ping
-  - Load balances across replica groups
+  - Load balances stale reads across replicas
 
 ## Usage
 
