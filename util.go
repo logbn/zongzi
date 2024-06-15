@@ -202,7 +202,7 @@ func newWatchQuery(ctx context.Context, data []byte, result chan *Result) (q *wa
 
 var resultPool = sync.Pool{New: func() any { return &Result{} }}
 
-func releaseResult(r *Result) {
+func ReleaseResult(r *Result) {
 	r.Value = 0
 	r.Data = r.Data[:0]
 	resultPool.Put(r)

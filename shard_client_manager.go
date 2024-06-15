@@ -121,7 +121,7 @@ func (c *shardClientManager) tick() {
 		})
 	})
 	if err == nil && shardCount > 0 {
-		c.log.Infof("%s Shard client manager updated. hosts: %d shards: %d replicas: %d time: %vms", c.agent.HostID(), len(pings), shardCount, replicaCount, int(c.clock.Since(start)/time.Millisecond))
+		c.log.Infof("%s Shard client manager updated. hosts: %d shards: %d replicas: %d time: %vms", c.agent.HostID(), len(pings), shardCount, replicaCount, float64(c.clock.Since(start)/time.Microsecond)/1000)
 		c.index = index
 	}
 	return

@@ -199,7 +199,7 @@ func (s *grpcServer) Read(ctx context.Context, req *internal.ReadRequest) (res *
 	if result, ok := r.(*Result); ok && result != nil {
 		res.Value = result.Value
 		res.Data = result.Data
-		releaseResult(result)
+		ReleaseResult(result)
 	}
 	return
 }
@@ -226,7 +226,7 @@ func (s *grpcServer) Watch(req *internal.WatchRequest, srv internal.Internal_Wat
 				if err != nil {
 					s.agent.log.Errorf(`Error sending watch response: %s`, err.Error())
 				}
-				releaseResult(result)
+				ReleaseResult(result)
 			case <-done:
 				return
 			}
