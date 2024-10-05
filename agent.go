@@ -310,6 +310,14 @@ func (a *Agent) RegisterShard(ctx context.Context, uri string, opts ...ShardOpti
 	return
 }
 
+// ShardFind returns a shard by id.
+func (a *Agent) ShardFind(ctx context.Context, id uint64) (shard Shard, err error) {
+	err = a.Read(ctx, func(state *State) {
+		shard, _ = state.Shard(id)
+	})
+	return
+}
+
 // ShardCreate creates a new shard.
 func (a *Agent) ShardCreate(ctx context.Context, s Shard) (shard Shard, err error) {
 	s.Status = ShardStatus_New
