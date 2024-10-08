@@ -33,8 +33,8 @@ func main() {
 	zongzi.SetLogLevelDebug()
 	ctx := context.Background()
 	agent, err := zongzi.NewAgent(*name, strings.Split(*peers, ","),
-		zongzi.WithRaftDir(dataDir+"/raft"),
-		zongzi.WithWALDir(dataDir+"/wal"),
+		zongzi.WithRaftDir(*dataDir+"/raft"),
+		zongzi.WithWALDir(*dataDir+"/wal"),
 		zongzi.WithGossipAddress(*gossipAddr),
 		zongzi.WithRaftAddress(*raftAddr),
 		zongzi.WithApiAddress(*zongziAddr),
