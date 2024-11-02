@@ -9,36 +9,36 @@ import (
 	"github.com/benbjohnson/clock"
 )
 
-// The shardControllerManager creates and destroys replicas based on a shard tags.
-type shardControllerManager struct {
-	agent           *Agent
-	clock           clock.Clock
-	ctx             context.Context
-	ctxCancel       context.CancelFunc
-	index           uint64
-	isLeader        bool
-	lastHostID      string
-	leaderIndex     uint64
-	log             Logger
-	mutex           sync.RWMutex
-	shardController ShardController
-	wg              sync.WaitGroup
+// The controllerManager creates and destroys replicas based on a shard tags.
+type controllerManager struct {
+	agent       *Agent
+	clock       clock.Clock
+	ctx         context.Context
+	ctxCancel   context.CancelFunc
+	index       uint64
+	isLeader    bool
+	lastHostID  string
+	leaderIndex uint64
+	log         Logger
+	mutex       sync.RWMutex
+	controller  Controller
+	wg          sync.WaitGroup
 }
 
-func newShardControllerManager(agent *Agent) *shardControllerManager {
-	return &shardControllerManager{
-		log:             agent.log,
-		agent:           agent,
-		clock:           clock.New(),
-		shardController: newShardControllerDefault(agent),
+func newControllerManager(agent *Agent) *controllerManager {
+	return &controllerManager{
+		log:        agent.log,
+		agent:      agent,
+		clock:      clock.New(),
+		controller: newShardControllerDefault(agent),
 	}
 }
 
-type ShardController interface {
-	Reconcile(*State, Shard, ShardControls) error
+type Controller interface {
+	Reconcile(*State, Shard, Controls) error
 }
 
-func (c *shardControllerManager) Start() (err error) {
+func (c *controllerManager) Start() (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	c.ctx, c.ctxCancel = context.WithCancel(context.Background())
@@ -60,18 +60,18 @@ func (c *shardControllerManager) Start() (err error) {
 	return
 }
 
-func (c *shardControllerManager) tick() {
+func (c *controllerManager) tick() {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	var err error
 	var hadErr bool
 	var index uint64
 	var updated = true
-	var controls = newShardControls(c.agent)
+	var controls = newControls(c.agent)
 	if c.isLeader {
 		for updated {
 			updated = false
-			err = c.agent.Read(c.ctx, func(state *State) {
+			err = c.agent.State(c.ctx, func(state *State) {
 				index = state.Index()
 				state.ShardIterateUpdatedAfter(c.index, func(shard Shard) bool {
 					select {
@@ -83,7 +83,7 @@ func (c *shardControllerManager) tick() {
 						return true
 					}
 					controls.updated = false
-					err = c.shardController.Reconcile(state, shard, controls)
+					err = c.controller.Reconcile(state, shard, controls)
 					if err != nil {
 						hadErr = true
 						c.log.Warningf("Error resolving shard %d %s %s", shard.ID, shard.Name, err.Error())
@@ -107,14 +107,14 @@ func (c *shardControllerManager) tick() {
 		}
 	}
 	if !hadErr && index > c.index {
-		c.log.Debugf("%s Finished processing %d", c.agent.HostID(), index)
+		c.log.Debugf("%s Finished processing %d", c.agent.hostID(), index)
 		// c.agent.dumpState()
 		c.index = index
 	}
 	return
 }
 
-func (c *shardControllerManager) LeaderUpdated(info LeaderInfo) {
+func (c *controllerManager) LeaderUpdated(info LeaderInfo) {
 	c.log.Infof("[%05d:%05d] LeaderUpdated: %05d", info.ShardID, info.ReplicaID, info.LeaderID)
 	if info.ShardID == 0 {
 		c.mutex.Lock()
@@ -124,8 +124,8 @@ func (c *shardControllerManager) LeaderUpdated(info LeaderInfo) {
 	}
 }
 
-func (c *shardControllerManager) Stop() {
-	defer c.log.Infof(`Stopped shardControllerManager`)
+func (c *controllerManager) Stop() {
+	defer c.log.Infof(`Stopped controllerManager`)
 	if c.ctxCancel != nil {
 		c.ctxCancel()
 	}

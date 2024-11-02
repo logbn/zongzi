@@ -19,7 +19,7 @@ func newShardControllerDefault(agent *Agent) *shardControllerDefault {
 	}
 }
 
-func (c *shardControllerDefault) Reconcile(state *State, shard Shard, controls ShardControls) (err error) {
+func (c *shardControllerDefault) Reconcile(state *State, shard Shard, controls Controls) (err error) {
 	c.log.Debugf("Reconciling Shard %d", shard.ID)
 	var (
 		desired       = map[string]int{}
@@ -161,7 +161,7 @@ func (c *shardControllerDefault) Reconcile(state *State, shard Shard, controls S
 	}
 	// Delete undesired replicas
 	for _, replicaID := range undesired {
-		if err = controls.ReplicaDelete(replicaID); err != nil {
+		if err = controls.Delete(replicaID); err != nil {
 			c.log.Errorf(`Error deleting replica: %s`, err.Error())
 			return
 		}
@@ -242,7 +242,7 @@ func (c *shardControllerDefault) Reconcile(state *State, shard Shard, controls S
 					continue
 				}
 				if c.matchTagFilter(host.Tags, varyTags) {
-					replicaID, err = controls.ReplicaCreate(host.ID, shard.ID, group != `member`)
+					replicaID, err = controls.Create(host.ID, shard.ID, group != `member`)
 					if err != nil {
 						return
 					}

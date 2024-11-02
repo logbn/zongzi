@@ -50,8 +50,8 @@ func TestAgent(t *testing.T) {
 			require.Nil(t, err)
 			// a.log.SetLevel(LogLevelDebug)
 			agents = append(agents, a)
-			a.RegisterStateMachine(`concurrent`, mockConcurrentSM)
-			a.RegisterStateMachinePersistent(`persistent`, mockPersistentSM)
+			a.StateMachineRegister(`concurrent`, mockConcurrentSM)
+			a.StateMachineRegister(`persistent`, mockPersistentSM)
 			go func(a *Agent) {
 				err = a.Start(ctx)
 				require.Nil(t, err, `%+v`, err)
@@ -97,8 +97,8 @@ func TestAgent(t *testing.T) {
 			var replicaCount = 0
 			replicas = replicas[:0]
 			for j, a := range agents {
-				agents[j].Read(ctx, func(s *State) {
-					s.ReplicaIterateByHostID(a.HostID(), func(r Replica) bool {
+				agents[j].State(ctx, func(s *State) {
+					s.ReplicaIterateByHostID(a.hostID(), func(r Replica) bool {
 						replicas = append(replicas, r)
 						if r.Status == ReplicaStatus_Active {
 							replicaCount++
@@ -118,7 +118,7 @@ func TestAgent(t *testing.T) {
 			othersm = `concurrent`
 		}
 		t.Run(sm+` shard create`, func(t *testing.T) {
-			shard, created, err = agents[0].RegisterShard(ctx, sm,
+			shard, created, err = agents[0].ShardCreate(ctx, sm,
 				WithPlacementVary(`geo:zone`),
 				WithPlacementMembers(3, `node:class=`+sm),
 				WithPlacementReplicas(sm, 3, `node:class=`+sm),
@@ -131,7 +131,7 @@ func TestAgent(t *testing.T) {
 			require.True(t, await(10, 100, func() bool {
 				var replicaCount = 0
 				replicas = replicas[:0]
-				agents[0].Read(ctx, func(s *State) {
+				agents[0].State(ctx, func(s *State) {
 					s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
 						replicas = append(replicas, r)
 						if r.Status == ReplicaStatus_Active {
@@ -144,21 +144,21 @@ func TestAgent(t *testing.T) {
 			}), `%+v`, replicas)
 		})
 		for _, a := range agents {
-			require.Nil(t, a.readIndex(ctx, shard.ID))
+			require.Nil(t, a.index(ctx, shard.ID))
 		}
 		for _, op := range []string{"update", "query", "watch"} {
 			for _, linearity := range []string{"linear", "non-linear"} {
 				t.Run(fmt.Sprintf(`%s %s %s host client`, sm, op, linearity), func(t *testing.T) {
-					runAgentSubTest(t, agents, shard, sm, op, linearity != "linear")
+					runAgentSubTest(t, agents, shard, op, linearity != "linear")
 				})
 				t.Run(fmt.Sprintf(`%s %s %s shard client`, sm, op, linearity), func(t *testing.T) {
-					runAgentSubTestByShard(t, agents, shard, sm, op, linearity != "linear")
+					runAgentSubTestByShard(t, agents, shard, op, linearity != "linear")
 				})
 			}
 		}
 	}
 	t.Run(`shard cover`, func(t *testing.T) {
-		shard, created, err := agents[0].RegisterShard(ctx, `concurrent`,
+		shard, created, err := agents[0].ShardCreate(ctx, `concurrent`,
 			WithPlacementVary(`geo:zone`),
 			WithPlacementMembers(3, `node:class=concurrent`),
 			WithPlacementCover(`test:tag=1234`),
@@ -170,7 +170,7 @@ func TestAgent(t *testing.T) {
 		require.True(t, await(10, 100, func() bool {
 			var replicaCount = 0
 			replicas = replicas[:0]
-			agents[0].Read(ctx, func(s *State) {
+			agents[0].State(ctx, func(s *State) {
 				s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
 					replicas = append(replicas, r)
 					if r.Status == ReplicaStatus_Active {
@@ -183,7 +183,7 @@ func TestAgent(t *testing.T) {
 		}), `%+v`, replicas)
 	})
 	t.Run(`shard cover multi tag`, func(t *testing.T) {
-		shard, created, err := agents[0].RegisterShard(ctx, `concurrent`,
+		shard, created, err := agents[0].ShardCreate(ctx, `concurrent`,
 			WithPlacementVary(`geo:zone`),
 			WithPlacementMembers(3, `node:class=concurrent`),
 			WithPlacementCover(`test:tag=1234`, `node:class=concurrent`),
@@ -195,7 +195,7 @@ func TestAgent(t *testing.T) {
 		require.True(t, await(10, 100, func() bool {
 			var replicaCount = 0
 			replicas = replicas[:0]
-			agents[0].Read(ctx, func(s *State) {
+			agents[0].State(ctx, func(s *State) {
 				s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
 					replicas = append(replicas, r)
 					if r.Status == ReplicaStatus_Active {
@@ -208,7 +208,7 @@ func TestAgent(t *testing.T) {
 		}), `%+v`, replicas)
 	})
 	t.Run(`shard cover no value`, func(t *testing.T) {
-		shard, created, err := agents[0].RegisterShard(ctx, `concurrent`,
+		shard, created, err := agents[0].ShardCreate(ctx, `concurrent`,
 			WithPlacementVary(`geo:zone`),
 			WithPlacementMembers(3, `node:class=concurrent`),
 			WithPlacementCover(`test:novalue`),
@@ -220,7 +220,7 @@ func TestAgent(t *testing.T) {
 		require.True(t, await(10, 100, func() bool {
 			var replicaCount = 0
 			replicas = replicas[:0]
-			agents[0].Read(ctx, func(s *State) {
+			agents[0].State(ctx, func(s *State) {
 				s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
 					replicas = append(replicas, r)
 					if r.Status == ReplicaStatus_Active {
@@ -245,15 +245,24 @@ func TestAgent(t *testing.T) {
 			// 5 seconds for the host to transition to active
 			require.True(t, await(10, 100, func() bool {
 				return agents[0].Status() == AgentStatus_Ready
-			}), `%#v`, *agents[0])
+			}), `%v`, agents[0].Status())
 			require.True(t, await(5, 100, func() (success bool) {
-				agents[0].Read(ctx, func(s *State) {
-					host, ok := s.Host(agents[0].HostID())
+				agents[0].State(ctx, func(s *State) {
+					host, ok := s.Host(agents[0].hostID())
 					success = ok && host.Status == HostStatus_Active
 				})
 				return
 			}), `%s`, mustJson(agents))
 		})
+	})
+	t.Run(`stop all`, func(t *testing.T) {
+		for _, agent := range agents {
+			agent.Stop()
+			// 5 seconds for the host to transition to stopped
+			require.True(t, await(5, 100, func() bool {
+				return agent.Status() == AgentStatus_Stopped
+			}), `%s`, mustJson(agents))
+		}
 	})
 	fmt.Printf("UPDATES: %d\nAverage: %v\n", updates, update_time/time.Duration(updates))
 }
@@ -263,19 +272,19 @@ func mustJson(in any) string {
 	return string(b)
 }
 
-func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, sm, op string, stale bool) {
+func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, op string, stale bool) {
 	var i = 0
 	var err error
 	var val uint64
 	var nonvoting = 0
-	agents[0].Read(context.Background(), func(s *State) {
+	agents[0].State(context.Background(), func(s *State) {
 		s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
 			if op == "update" && r.IsNonVoting {
 				nonvoting++
 				return true
 			}
 			val = 0
-			client := agents[0].HostClient(r.HostID)
+			client := agents[0].hostClient(r.HostID)
 			require.NotNil(t, client)
 			if op == "update" && stale {
 				start := time.Now()
@@ -329,13 +338,13 @@ func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, sm, op string, 
 	}
 }
 
-func runAgentSubTestByShard(t *testing.T, agents []*Agent, shard Shard, sm, op string, stale bool) {
+func runAgentSubTestByShard(t *testing.T, agents []*Agent, shard Shard, op string, stale bool) {
 	var i = 0
 	var err error
 	var val uint64
 	for _, a := range agents {
 		val = 0
-		client := a.ShardClient(shard.ID)
+		client := a.GetClient(shard.ID)
 		require.NotNil(t, client)
 		if op == "update" && stale {
 			err = client.Commit(raftCtx(), bytes.Repeat([]byte("test"), i+1))

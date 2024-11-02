@@ -1,9 +1,9 @@
 package zongzi
 
-type ShardClientOption func(*shardClient) error
+type ClientOption func(*client) error
 
-func WithRetries(retries int) ShardClientOption {
-	return func(c *shardClient) error {
+func WithRetries(retries int) ClientOption {
+	return func(c *client) error {
 		c.retries = retries
 		return nil
 	}

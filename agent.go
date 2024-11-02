@@ -18,24 +18,24 @@ import (
 )
 
 type Agent struct {
-	advertiseAddress       string
-	bindAddress            string
-	clusterName            string
-	hostController         *hostController
-	shardControllerManager *shardControllerManager
-	shardClientManager     *shardClientManager
-	fsm                    *fsm
-	grpcClientPool         *grpcClientPool
-	grpcServer             *grpcServer
-	host                   *dragonboat.NodeHost
-	hostConfig             HostConfig
-	hostTags               []string
-	log                    logger.ILogger
-	members                map[uint64]string
-	peers                  []string
-	replicaConfig          ReplicaConfig
-	shardTypes             map[string]shardType
-	status                 AgentStatus
+	advertiseAddress  string
+	bindAddress       string
+	clusterName       string
+	hostController    *hostController
+	controllerManager *controllerManager
+	clientManager     *clientManager
+	fsm               *fsm
+	grpcClientPool    *grpcClientPool
+	grpcServer        *grpcServer
+	host              *dragonboat.NodeHost
+	hostConfig        HostConfig
+	hostTags          []string
+	log               logger.ILogger
+	members           map[uint64]string
+	peers             []string
+	replicaConfig     ReplicaConfig
+	shardTypes        map[string]shardType
+	status            AgentStatus
 
 	clock     clock.Clock
 	ctx       context.Context
@@ -66,8 +66,8 @@ func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent
 		shardTypes:  map[string]shardType{},
 		status:      AgentStatus_Pending,
 	}
-	a.shardControllerManager = newShardControllerManager(a)
-	a.shardClientManager = newShardClientManager(a)
+	a.controllerManager = newControllerManager(a)
+	a.clientManager = newClientManager(a)
 	for _, opt := range append([]AgentOption{
 		WithApiAddress(DefaultApiAddress),
 		WithGossipAddress(DefaultGossipAddress),
@@ -78,7 +78,7 @@ func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent
 	}
 	a.hostController = newHostController(a)
 	a.hostConfig.RaftEventListener = newCompositeRaftEventListener(
-		a.shardControllerManager,
+		a.controllerManager,
 		a.hostConfig.RaftEventListener,
 	)
 	a.replicaConfig.ShardID = ShardID
@@ -95,8 +95,8 @@ func (a *Agent) Start(ctx context.Context) (err error) {
 	defer func() {
 		if err == nil {
 			a.hostController.Start()
-			a.shardControllerManager.Start()
-			a.shardClientManager.Start()
+			a.controllerManager.Start()
+			a.clientManager.Start()
 			a.setStatus(AgentStatus_Ready)
 		}
 	}()
@@ -128,7 +128,7 @@ func (a *Agent) Start(ctx context.Context) (err error) {
 		a.log.Errorf(`Failed to start host: %v`, err)
 		return
 	}
-	a.log.Infof(`Started host "%s"`, a.HostID())
+	a.log.Infof(`Started host "%s"`, a.hostID())
 	// Find prime replicaID
 	a.replicaConfig.ReplicaID = a.findLocalReplicaID(a.replicaConfig.ShardID)
 	existing := a.replicaConfig.ReplicaID > 0
@@ -212,21 +212,21 @@ func (a *Agent) Start(ctx context.Context) (err error) {
 	return
 }
 
-// HostClient returns a Client for a specific host.
-func (a *Agent) HostClient(hostID string) (c HostClient) {
-	a.Read(a.ctx, func(s *State) {
+// hostClient returns a Client for a specific host.
+func (a *Agent) hostClient(hostID string) (c hostClient) {
+	a.State(a.ctx, func(s *State) {
 		host, ok := s.Host(hostID)
 		if ok {
-			c = newHostClient(a, host)
+			c = newhostClient(a, host)
 		}
 	})
 	return
 }
 
-// ShardClient returns a Client for a specific shard.
+// GetClient returns a client for a specific shard.
 // It will send writes to the nearest member and send reads to the nearest replica (by ping).
-func (a *Agent) ShardClient(shardID uint64) (c ShardClient) {
-	c, _ = newShardClient(a.shardClientManager, shardID)
+func (a *Agent) GetClient(shardID uint64) (c ShardClient) {
+	c, _ = newClient(a.clientManager, shardID)
 	return
 }
 
@@ -237,9 +237,9 @@ func (a *Agent) Status() AgentStatus {
 	return a.status
 }
 
-// Read executes a callback function passing a snapshot of the cluster state.
+// State executes a callback function passing a snapshot of the cluster state.
 //
-//	err := agent.Read(ctx, func(s *State) error {
+//	err := agent.State(ctx, func(s *State) error {
 //	    log.Println(s.Index())
 //	    return nil
 //	})
@@ -248,27 +248,25 @@ func (a *Agent) Status() AgentStatus {
 // argument _stale_ as true to disable linearizable reads (for higher performance). State will always provide snapshot
 // isolation, even for stale reads.
 //
-// Read will block indefinitely if the prime shard is unavailable. This may prevent the agent from stopping gracefully.
+// State will block indefinitely if the prime shard is unavailable. This may prevent the agent from stopping gracefully.
 // Pass a timeout context to avoid blocking indefinitely.
 //
-// Read is thread safe and will not block writes.
-func (a *Agent) Read(ctx context.Context, fn func(*State)) (err error) {
-	err = a.readIndex(ctx, a.replicaConfig.ShardID)
-	if err != nil {
-		return
+// State is thread safe and will not block writes.
+//
+// State read will be stale (non-linearizable) when ctx is nil.
+func (a *Agent) State(ctx context.Context, fn func(*State)) (err error) {
+	if ctx != nil {
+		err = a.index(ctx, a.replicaConfig.ShardID)
+		if err != nil {
+			return
+		}
 	}
 	fn(a.fsm.state.withTxn(false))
 	return
 }
 
-func (a *Agent) ReadStale(fn func(*State)) (err error) {
-	fn(a.fsm.state.withTxn(false))
-	return
-}
-
-// RegisterShard creates a new shard. If shard name option is provided and shard already exists,
-// found shard is updated.
-func (a *Agent) RegisterShard(ctx context.Context, uri string, opts ...ShardOption) (shard Shard, created bool, err error) {
+// ShardCreate creates a new shard. If shard name option is provided and shard exists, found shard is returned.
+func (a *Agent) ShardCreate(ctx context.Context, uri string, opts ...ShardOption) (shard Shard, created bool, err error) {
 	shard = Shard{
 		Status: ShardStatus_New,
 		Type:   uri,
@@ -279,69 +277,24 @@ func (a *Agent) RegisterShard(ctx context.Context, uri string, opts ...ShardOpti
 			return
 		}
 	}
-	var res Result
 	if len(shard.Name) > 0 {
+		var ok bool
 		var found Shard
-		a.Read(ctx, func(state *State) {
-			found, _ = state.ShardFindByName(shard.Name)
+		a.State(ctx, func(state *State) {
+			found, ok = state.ShardFindByName(shard.Name)
 		})
-		// found.ID > 0 is not just a validity check. It also guards the prime shard.
-		if found.ID > 0 {
-			for _, opt := range opts {
-				opt(&found)
-			}
+		if ok {
 			shard = found
-			res, err = a.primePropose(newCmdShardPut(shard))
-			if err != nil {
-				return
-			}
-			shard.ID = res.Value
-			a.log.Infof("Shard found %s, %d, %s", uri, shard.ID, shard.Name)
 			return
 		}
 	}
-	res, err = a.primePropose(newCmdShardPost(shard))
+	res, err := a.primePropose(newCmdShardPost(shard))
 	if err != nil {
 		return
 	}
 	shard.ID = res.Value
 	created = true
 	a.log.Infof("Shard created %s, %d, %s", uri, shard.ID, shard.Name)
-	return
-}
-
-// ShardFind returns a shard by id.
-func (a *Agent) ShardFind(ctx context.Context, id uint64) (shard Shard, err error) {
-	err = a.Read(ctx, func(state *State) {
-		shard, _ = state.Shard(id)
-	})
-	return
-}
-
-// ShardCreate creates a new shard.
-func (a *Agent) ShardCreate(ctx context.Context, s Shard) (shard Shard, err error) {
-	s.Status = ShardStatus_New
-	res, err := a.primePropose(newCmdShardPost(s))
-	if err != nil {
-		return
-	}
-	shard = s
-	shard.ID = res.Value
-	a.log.Infof("Shard %08x created (%s)", shard.ID, shard.Type)
-	return
-}
-
-// ShardClose closes a shard.
-func (a *Agent) ShardClose(ctx context.Context, id uint64) (err error) {
-	res, err := a.primePropose(newCmdTagsSet(Shard{ID: id}, fmt.Sprintf("desired:status=%s", ShardStatus_Closed)))
-	if err != nil {
-		return
-	}
-	if res.Value == 0 {
-		err = fmt.Errorf("Error closing shard %d: %s", id, string(res.Data))
-		return
-	}
-	a.log.Infof("Shard marked for closure: %d", id)
 	return
 }
 
@@ -359,34 +312,62 @@ func (a *Agent) ShardDelete(ctx context.Context, id uint64) (err error) {
 	return
 }
 
-// RegisterStateMachine registers a non-persistent shard type. Call before Starting agent.
-func (a *Agent) RegisterStateMachine(uri string, factory StateMachineFactory, config ...ReplicaConfig) {
+// ShardFind returns a shard by id.
+func (a *Agent) ShardFind(ctx context.Context, id uint64) (shard Shard, err error) {
+	err = a.State(ctx, func(state *State) {
+		shard, _ = state.Shard(id)
+	})
+	return
+}
+
+// ShardUpdate creates a new shard. If shard name option is provided and shard exists, found shard is returned.
+func (a *Agent) ShardUpdate(ctx context.Context, id uint64, opts ...ShardOption) (shard Shard, err error) {
+	var found Shard
+	var ok bool
+	a.State(ctx, func(state *State) {
+		found, ok = state.ShardFindByName(shard.Name)
+	})
+	if !ok {
+		err = ErrShardNotFound
+		return
+	}
+	for _, opt := range opts {
+		opt(&found)
+	}
+	shard = found
+	res, err := a.primePropose(newCmdShardPut(shard))
+	if err != nil {
+		return
+	}
+	shard.ID = res.Value
+	a.log.Infof("Shard updated (%d)", id)
+	return
+}
+
+// StateMachineRegister registers a non-persistent shard type. Call before Starting agent.
+func (a *Agent) StateMachineRegister(uri string, factory any, config ...ReplicaConfig) (err error) {
 	cfg := DefaultReplicaConfig
 	if len(config) > 0 {
 		cfg = config[0]
 	}
-	a.shardTypes[uri] = shardType{
-		Config:              cfg,
-		StateMachineFactory: factory,
-		Uri:                 uri,
+	t := shardType{
+		Config: cfg,
+		Uri:    uri,
 	}
+	switch factory.(type) {
+	case StateMachineFactory:
+		t.StateMachineFactory = factory.(StateMachineFactory)
+	case StateMachinePersistentFactory:
+		t.StateMachinePersistentFactory = factory.(StateMachinePersistentFactory)
+	default:
+		return ErrInvalidFactory
+	}
+	a.shardTypes[uri] = t
+	return
 }
 
-// RegisterStateMachinePersistent registers a persistent shard type. Call before Starting agent.
-func (a *Agent) RegisterStateMachinePersistent(uri string, factory StateMachinePersistentFactory, config ...ReplicaConfig) {
-	cfg := DefaultReplicaConfig
-	if len(config) > 0 {
-		cfg = config[0]
-	}
-	a.shardTypes[uri] = shardType{
-		Config:                        cfg,
-		StateMachinePersistentFactory: factory,
-		Uri:                           uri,
-	}
-}
-
-// HostID returns host ID if host is initialized, otherwise empty string.
-func (a *Agent) HostID() (id string) {
+// hFostID returns host ID if host is initialized, otherwise empty string.
+func (a *Agent) hostID() (id string) {
 	if a.host != nil {
 		return a.host.ID()
 	}
@@ -395,7 +376,7 @@ func (a *Agent) HostID() (id string) {
 
 // Stop stops the agent
 func (a *Agent) Stop() {
-	a.shardControllerManager.Stop()
+	a.controllerManager.Stop()
 	a.hostController.Stop()
 	a.grpcServer.Stop()
 	a.ctxCancel()
@@ -446,7 +427,7 @@ func (a *Agent) replicaDelete(replicaID uint64) (err error) {
 func (a *Agent) setStatus(s AgentStatus) {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
-	a.log.Infof("%s Agent Status: %v", a.HostID(), s)
+	a.log.Infof("%s Agent Status: %v", a.hostID(), s)
 	a.status = s
 }
 
@@ -501,10 +482,10 @@ func (a *Agent) resolvePrimeMembership() (members map[uint64]string, init bool, 
 		// Get host info from all peers to determine which are initialized.
 		for _, apiAddr := range a.peers {
 			var info *internal.InfoResponse
-			if apiAddr == a.advertiseAddress && a.HostID() != "" {
+			if apiAddr == a.advertiseAddress && a.hostID() != "" {
 				info = &internal.InfoResponse{
 					ReplicaId: a.replicaConfig.ReplicaID,
-					HostId:    a.HostID(),
+					HostId:    a.hostID(),
 				}
 			} else {
 				info, err = a.grpcClientPool.get(apiAddr).Info(raftCtx(), &internal.InfoRequest{})
@@ -552,8 +533,8 @@ func (a *Agent) resolvePrimeMembership() (members map[uint64]string, init bool, 
 					if err != nil {
 						return
 					}
-					a.log.Debugf("Get Members: %+v", *res)
-					for replicaID, hostID := range res.Members {
+					a.log.Debugf("Get Members: %+v", res.GetMembers())
+					for replicaID, hostID := range res.GetMembers() {
 						members[replicaID] = hostID
 						if hostID == a.host.ID() {
 							a.replicaConfig.ReplicaID = replicaID
@@ -585,7 +566,7 @@ func (a *Agent) startPrimeReplica(members map[uint64]string, join bool) (err err
 		err = fmt.Errorf(`startPrimeReplica: %w`, err)
 		return
 	}
-	err = a.readIndex(a.ctx, a.replicaConfig.ShardID)
+	err = a.index(a.ctx, a.replicaConfig.ShardID)
 	if err != nil {
 		return
 	}
@@ -598,7 +579,7 @@ func (a *Agent) joinPrimeShard() (replicaID uint64, err error) {
 	var res *internal.JoinResponse
 	for _, peerApiAddr := range a.peers {
 		res, err = a.grpcClientPool.get(peerApiAddr).Join(raftCtx(), &internal.JoinRequest{
-			HostId:      a.HostID(),
+			HostId:      a.hostID(),
 			IsNonVoting: a.replicaConfig.IsNonVoting,
 		})
 		if res != nil && res.Value > 0 {
@@ -611,13 +592,13 @@ func (a *Agent) joinPrimeShard() (replicaID uint64, err error) {
 
 // updateHost adds host info to prime shard
 func (a *Agent) updateHost() (err error) {
-	apiAddr, err := a.parseMeta(a.HostID())
+	apiAddr, err := a.parseMeta(a.hostID())
 	if err != nil {
 		return
 	}
 	shardTypes := keys(a.shardTypes)
 	sort.Strings(shardTypes)
-	cmd := newCmdHostPut(a.HostID(), apiAddr, a.hostConfig.RaftAddress, a.hostTags, HostStatus_Active, shardTypes)
+	cmd := newCmdHostPut(a.hostID(), apiAddr, a.hostConfig.RaftAddress, a.hostTags, HostStatus_Active, shardTypes)
 	a.log.Debugf("Updating host: %s", string(cmd))
 	_, err = a.primePropose(cmd)
 	return
@@ -632,13 +613,13 @@ func (a *Agent) updateReplica() (err error) {
 	return
 }
 
-// readIndex blocks until it can read from a shard, indicating that the local replica is up to date.
-func (a *Agent) readIndex(ctx context.Context, shardID uint64) (err error) {
+// index blocks until it can read from a shard, indicating that the local replica is up to date.
+func (a *Agent) index(ctx context.Context, shardID uint64) (err error) {
 	var rs *dragonboat.RequestState
 	for {
 		rs, err = a.host.ReadIndex(shardID, raftTimeout)
 		if err != nil || rs == nil {
-			a.log.Infof(`[%05x] Error reading shard index: %s: %v`, shardID, a.HostID(), err)
+			a.log.Infof(`[%05x] Error reading shard index: %s: %v`, shardID, a.hostID(), err)
 			select {
 			case <-ctx.Done():
 				return
@@ -662,15 +643,10 @@ func (a *Agent) readIndex(ctx context.Context, shardID uint64) (err error) {
 	return
 }
 
-// ReadIndex blocks until it can read from a shard, indicating that the local replica is up to date.
-func (a *Agent) ReadIndex(ctx context.Context, shardID uint64) (err error) {
-	return a.readIndex(ctx, shardID)
-}
-
 func (a *Agent) joinPrimeReplica(hostID string, shardID uint64, isNonVoting bool) (replicaID uint64, err error) {
 	var ok bool
 	var host Host
-	a.Read(a.ctx, func(s *State) {
+	a.State(a.ctx, func(s *State) {
 		host, ok = s.Host(hostID)
 		if !ok {
 			return
@@ -682,7 +658,7 @@ func (a *Agent) joinPrimeReplica(hostID string, shardID uint64, isNonVoting bool
 			return
 		}
 	}
-	a.Read(a.ctx, func(s *State) {
+	a.State(a.ctx, func(s *State) {
 		s.ReplicaIterateByHostID(host.ID, func(r Replica) bool {
 			if r.ShardID == shardID {
 				replicaID = r.ID
@@ -772,8 +748,8 @@ func (a *Agent) primeInit(members map[uint64]string) (err error) {
 func (a *Agent) primeInitAwait() (err error) {
 	for {
 		var found bool
-		err = a.Read(a.ctx, func(s *State) {
-			s.ReplicaIterateByHostID(a.HostID(), func(r Replica) bool {
+		err = a.State(a.ctx, func(s *State) {
+			s.ReplicaIterateByHostID(a.hostID(), func(r Replica) bool {
 				found = true
 				return false
 			})
@@ -815,7 +791,7 @@ func (a *Agent) primeAddReplica(nhid string, isNonVoting bool) (id uint64, err e
 
 // findLocalReplicaID proposes addition of replica metadata to the prime shard state
 func (a *Agent) findLocalReplicaID(shardID uint64) (id uint64) {
-	nhInfo := a.host.GetNodeHostInfo(dragonboat.NodeHostInfoOption{false})
+	nhInfo := a.host.GetNodeHostInfo(dragonboat.NodeHostInfoOption{})
 	for _, info := range nhInfo.LogInfo {
 		if info.ShardID == shardID {
 			return info.ReplicaID
@@ -825,7 +801,7 @@ func (a *Agent) findLocalReplicaID(shardID uint64) (id uint64) {
 }
 
 func (a *Agent) dumpState() {
-	a.ReadStale(func(state *State) {
+	a.State(nil, func(state *State) {
 		// Print snapshot
 		buf := bytes.NewBufferString("")
 		state.Save(buf)

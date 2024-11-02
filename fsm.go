@@ -342,7 +342,7 @@ func (fsm *fsm) tagsSetNX(new, old map[string]string) (written bool) {
 }
 
 func (fsm *fsm) tagsRemove(new, old map[string]string) (written bool) {
-	for k, _ := range old {
+	for k := range old {
 		delete(new, k)
 		written = true
 	}

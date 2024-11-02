@@ -41,7 +41,7 @@ func (s *grpcServer) Probe(ctx context.Context, req *internal.ProbeRequest) (res
 func (s *grpcServer) Info(ctx context.Context, req *internal.InfoRequest) (res *internal.InfoResponse, err error) {
 	// s.agent.log.Debugf(`gRPC Req Info: %#v`, req)
 	return &internal.InfoResponse{
-		HostId:    s.agent.HostID(),
+		HostId:    s.agent.hostID(),
 		ReplicaId: s.agent.replicaConfig.ReplicaID,
 	}, nil
 }
@@ -64,9 +64,9 @@ func (s *grpcServer) Join(ctx context.Context, req *internal.JoinRequest) (res *
 	return
 }
 
-func (s *grpcServer) ShardJoin(ctx context.Context, req *internal.ShardJoinRequest) (res *internal.ShardJoinResponse, err error) {
+func (s *grpcServer) Add(ctx context.Context, req *internal.AddRequest) (res *internal.AddResponse, err error) {
 	// s.agent.log.Debugf(`gRPC Req Join: %#v`, req)
-	res = &internal.ShardJoinResponse{}
+	res = &internal.AddResponse{}
 	if s.agent.Status() != AgentStatus_Ready {
 		err = ErrAgentNotReady
 		return
@@ -96,31 +96,26 @@ func (s *grpcServer) Commit(ctx context.Context, req *internal.CommitRequest) (r
 		case r := <-rs.ResultC():
 			if r.Committed() {
 				res = emptyCommitResponse
-				return
 			} else if r.Aborted() {
 				err = ErrAborted
-				return
 			} else if r.Dropped() {
 				err = ErrShardNotReady
-				return
 			} else if r.Rejected() {
 				err = ErrRejected
-				return
 			} else if r.Terminated() {
 				err = ErrShardClosed
-				return
 			} else if r.Timeout() {
 				err = ErrTimeout
-				return
 			}
 		case <-ctx.Done():
 			if ctx.Err() == context.Canceled {
 				err = ErrCanceled
-				return
 			} else if ctx.Err() == context.DeadlineExceeded {
 				err = ErrTimeout
-				return
 			}
+		}
+		if err != nil || res != nil {
+			break
 		}
 	}
 	return
@@ -145,40 +140,35 @@ func (s *grpcServer) Apply(ctx context.Context, req *internal.ApplyRequest) (res
 					Value: r.GetResult().Value,
 					Data:  r.GetResult().Data,
 				}
-				return
 			} else if r.Aborted() {
 				err = ErrAborted
-				return
 			} else if r.Dropped() {
 				err = ErrShardNotReady
-				return
 			} else if r.Rejected() {
 				err = ErrRejected
-				return
 			} else if r.Terminated() {
 				err = ErrShardClosed
-				return
 			} else if r.Timeout() {
 				err = ErrTimeout
-				return
 			}
 		case <-ctx.Done():
 			if ctx.Err() == context.Canceled {
 				err = ErrCanceled
-				return
 			} else if ctx.Err() == context.DeadlineExceeded {
 				err = ErrTimeout
-				return
 			}
+		}
+		if err != nil || res != nil {
+			break
 		}
 	}
 	return
 }
 
-func (s *grpcServer) ReadIndex(ctx context.Context, req *internal.ReadIndexRequest) (res *internal.ReadIndexResponse, err error) {
+func (s *grpcServer) Index(ctx context.Context, req *internal.IndexRequest) (res *internal.IndexResponse, err error) {
 	// s.agent.log.Debugf(`gRPC Req Query: %#v`, req)
-	res = &internal.ReadIndexResponse{}
-	err = s.agent.readIndex(ctx, req.ShardId)
+	res = &internal.IndexResponse{}
+	err = s.agent.index(ctx, req.ShardId)
 	return
 }
 
@@ -193,7 +183,8 @@ func (s *grpcServer) Read(ctx context.Context, req *internal.ReadRequest) (res *
 	if req.Stale {
 		r, err = s.agent.host.StaleRead(req.ShardId, query)
 	} else {
-		ctx, _ := context.WithTimeout(ctx, raftTimeout)
+		ctx, cancel := context.WithTimeout(ctx, raftTimeout)
+		defer cancel()
 		r, err = s.agent.host.SyncRead(ctx, req.ShardId, query)
 	}
 	if result, ok := r.(*Result); ok && result != nil {

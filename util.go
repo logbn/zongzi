@@ -63,6 +63,7 @@ type (
 	HostConfig    = config.NodeHostConfig
 	ReplicaConfig = config.Config
 	GossipConfig  = config.GossipConfig
+	LogDBConfig   = config.LogDBConfig
 
 	LeaderInfo          = raftio.LeaderInfo
 	RaftEventListener   = raftio.IRaftEventListener

@@ -32,8 +32,8 @@ func TestShardControllerDefault(t *testing.T) {
 			agent, err := NewAgent("test", nil)
 			require.Nil(t, err)
 			ctrl := newShardControllerDefault(agent)
-			controls := &mockShardControls{
-				mockReplicaCreate: func(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error) {
+			controls := &mockControls{
+				mockCreate: func(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error) {
 					i := state.Index()
 					id = state.replicaIncr()
 					state.metaSetIndex(i + 1)
@@ -71,8 +71,8 @@ func TestShardControllerDefault(t *testing.T) {
 			state.shardPut(shard)
 			agent, err := NewAgent("test", nil)
 			require.Nil(t, err)
-			controls := &mockShardControls{
-				mockReplicaCreate: func(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error) {
+			controls := &mockControls{
+				mockCreate: func(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error) {
 					i := state.Index()
 					id = state.replicaIncr()
 					state.metaSetIndex(i + 1)
@@ -127,21 +127,21 @@ func testHelperFillHosts(state *State, n uint64) {
 	}
 }
 
-type mockShardControls struct {
-	mockReplicaCreate func(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error)
-	mockReplicaDelete func(replicaID uint64) (err error)
-	updated           bool
+type mockControls struct {
+	mockCreate func(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error)
+	mockDelete func(replicaID uint64) (err error)
+	updated    bool
 }
 
-func (m *mockShardControls) ReplicaCreate(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error) {
-	if id, err = m.mockReplicaCreate(hostID, shardID, isNonVoting); err == nil {
+func (m *mockControls) Create(hostID string, shardID uint64, isNonVoting bool) (id uint64, err error) {
+	if id, err = m.mockCreate(hostID, shardID, isNonVoting); err == nil {
 		m.updated = true
 	}
 	return
 }
 
-func (m *mockShardControls) ReplicaDelete(replicaID uint64) (err error) {
-	if err = m.mockReplicaDelete(replicaID); err == nil {
+func (m *mockControls) Delete(replicaID uint64) (err error) {
+	if err = m.mockDelete(replicaID); err == nil {
 		m.updated = true
 	}
 	return

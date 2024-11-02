@@ -7,22 +7,22 @@ import (
 // ShardClient can be used to interact with a shard regardless of its placement in the cluster
 // Requests will be forwarded to the appropriate host based on ping
 type ShardClient interface {
-	ReadIndex(ctx context.Context) (err error)
+	Index(ctx context.Context) (err error)
 	Apply(ctx context.Context, cmd []byte) (value uint64, data []byte, err error)
 	Commit(ctx context.Context, cmd []byte) (err error)
 	Read(ctx context.Context, query []byte, stale bool) (value uint64, data []byte, err error)
 	Watch(ctx context.Context, query []byte, results chan<- *Result, stale bool) (err error)
 }
 
-// The shardClient
-type shardClient struct {
-	manager *shardClientManager
+// The shard client
+type client struct {
+	manager *clientManager
 	shardID uint64
 	retries int
 }
 
-func newShardClient(manager *shardClientManager, shardID uint64, opts ...ShardClientOption) (c *shardClient, err error) {
-	c = &shardClient{
+func newClient(manager *clientManager, shardID uint64, opts ...ClientOption) (c *client, err error) {
+	c = &client{
 		manager: manager,
 		shardID: shardID,
 	}
@@ -34,7 +34,7 @@ func newShardClient(manager *shardClientManager, shardID uint64, opts ...ShardCl
 	return
 }
 
-func (c *shardClient) ReadIndex(ctx context.Context) (err error) {
+func (c *client) Index(ctx context.Context) (err error) {
 	c.manager.mutex.RLock()
 	list, ok := c.manager.clientMember[c.shardID]
 	c.manager.mutex.RUnlock()
@@ -52,7 +52,7 @@ func (c *shardClient) ReadIndex(ctx context.Context) (err error) {
 	return
 }
 
-func (c *shardClient) Apply(ctx context.Context, cmd []byte) (value uint64, data []byte, err error) {
+func (c *client) Apply(ctx context.Context, cmd []byte) (value uint64, data []byte, err error) {
 	c.manager.mutex.RLock()
 	list, ok := c.manager.clientMember[c.shardID]
 	c.manager.mutex.RUnlock()
@@ -69,7 +69,7 @@ func (c *shardClient) Apply(ctx context.Context, cmd []byte) (value uint64, data
 	return
 }
 
-func (c *shardClient) Commit(ctx context.Context, cmd []byte) (err error) {
+func (c *client) Commit(ctx context.Context, cmd []byte) (err error) {
 	c.manager.mutex.RLock()
 	list, ok := c.manager.clientMember[c.shardID]
 	c.manager.mutex.RUnlock()
@@ -87,7 +87,7 @@ func (c *shardClient) Commit(ctx context.Context, cmd []byte) (err error) {
 	return
 }
 
-func (c *shardClient) Read(ctx context.Context, query []byte, stale bool) (value uint64, data []byte, err error) {
+func (c *client) Read(ctx context.Context, query []byte, stale bool) (value uint64, data []byte, err error) {
 	var run bool
 	if stale {
 		c.manager.mutex.RLock()
@@ -126,7 +126,7 @@ func (c *shardClient) Read(ctx context.Context, query []byte, stale bool) (value
 	return
 }
 
-func (c *shardClient) Watch(ctx context.Context, query []byte, results chan<- *Result, stale bool) (err error) {
+func (c *client) Watch(ctx context.Context, query []byte, results chan<- *Result, stale bool) (err error) {
 	var run bool
 	if stale {
 		c.manager.mutex.RLock()

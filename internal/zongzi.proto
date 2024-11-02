@@ -25,12 +25,12 @@ service Internal {
   // Used by joining hosts to request their own addition to the zero shard
   rpc Join(JoinRequest) returns (JoinResponse) {}
 
-  // ShardJoin takes a replica ID and host ID and returns success
+  // Add takes a replica ID, shard ID and host ID and returns success
   // Used during replica creation to request replica's addition to the shard
-  rpc ShardJoin(ShardJoinRequest) returns (ShardJoinResponse) {}
+  rpc Add(AddRequest) returns (AddResponse) {}
 
-  // ReadIndex reads the index of a shard
-  rpc ReadIndex(ReadIndexRequest) returns (ReadIndexResponse) {}
+  // Index reads the index of a shard
+  rpc Index(IndexRequest) returns (IndexResponse) {}
 
   // Apply provides unary request/response command forwarding
   rpc Apply(ApplyRequest) returns (ApplyResponse) {}
@@ -76,21 +76,21 @@ message JoinResponse {
   string error = 2;
 }
 
-message ShardJoinRequest {
+message AddRequest {
   string host_id = 1;
   uint64 shard_id = 2;
   uint64 replica_id = 3;
   bool is_non_voting = 4;
 }
-message ShardJoinResponse {
+message AddResponse {
   uint64 value = 1;
   string error = 2;
 }
 
-message ReadIndexRequest {
+message IndexRequest {
   uint64 shard_id = 1;
 }
-message ReadIndexResponse {}
+message IndexResponse {}
 
 message ApplyRequest {
   uint64 shard_id = 1;

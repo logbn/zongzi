@@ -11,34 +11,34 @@ import (
 	"github.com/elliotchance/orderedmap/v2"
 )
 
-// The shardClientManager creates and destroys replicas based on a shard tags.
-type shardClientManager struct {
+// The clientManager creates and destroys replicas based on a shard tags.
+type clientManager struct {
 	agent           *Agent
 	clock           clock.Clock
 	ctx             context.Context
 	ctxCancel       context.CancelFunc
-	clientHost      map[string]HostClient
-	clientMember    map[uint64]*orderedmap.OrderedMap[int64, HostClient]
-	clientReplica   map[uint64]*orderedmap.OrderedMap[int64, HostClient]
+	clientHost      map[string]hostClient
+	clientMember    map[uint64]*orderedmap.OrderedMap[int64, hostClient]
+	clientReplica   map[uint64]*orderedmap.OrderedMap[int64, hostClient]
 	index           uint64
 	log             Logger
 	mutex           sync.RWMutex
-	shardController ShardController
+	shardController Controller
 	wg              sync.WaitGroup
 }
 
-func newShardClientManager(agent *Agent) *shardClientManager {
-	return &shardClientManager{
+func newClientManager(agent *Agent) *clientManager {
+	return &clientManager{
 		log:           agent.log,
 		agent:         agent,
 		clock:         clock.New(),
-		clientHost:    map[string]HostClient{},
-		clientMember:  map[uint64]*orderedmap.OrderedMap[int64, HostClient]{},
-		clientReplica: map[uint64]*orderedmap.OrderedMap[int64, HostClient]{},
+		clientHost:    map[string]hostClient{},
+		clientMember:  map[uint64]*orderedmap.OrderedMap[int64, hostClient]{},
+		clientReplica: map[uint64]*orderedmap.OrderedMap[int64, hostClient]{},
 	}
 }
 
-func (c *shardClientManager) Start() (err error) {
+func (c *clientManager) Start() (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	c.ctx, c.ctxCancel = context.WithCancel(context.Background())
@@ -62,17 +62,17 @@ func (c *shardClientManager) Start() (err error) {
 
 type hostClientPing struct {
 	ping   int64
-	client HostClient
+	client hostClient
 }
 
-func (c *shardClientManager) tick() {
+func (c *clientManager) tick() {
 	var err error
 	var index uint64
 	var start = c.clock.Now()
 	var shardCount int
 	var replicaCount int
 	var pings = map[string]time.Duration{}
-	err = c.agent.ReadStale(func(state *State) {
+	err = c.agent.State(nil, func(state *State) {
 		state.ShardIterateUpdatedAfter(c.index, func(shard Shard) bool {
 			shardCount++
 			index = shard.Updated
@@ -82,7 +82,7 @@ func (c *shardClientManager) tick() {
 				replicaCount++
 				client, ok := c.clientHost[replica.HostID]
 				if !ok {
-					client = c.agent.HostClient(replica.HostID)
+					client = c.agent.hostClient(replica.HostID)
 					c.clientHost[replica.HostID] = client
 				}
 				ping, ok := pings[replica.HostID]
@@ -103,13 +103,13 @@ func (c *shardClientManager) tick() {
 				}
 				return true
 			})
-			slices.SortFunc(members, func(a, b hostClientPing) int { return cmp.Compare(a.ping, b.ping) })
-			slices.SortFunc(replicas, func(a, b hostClientPing) int { return cmp.Compare(a.ping, b.ping) })
-			newMembers := orderedmap.NewOrderedMap[int64, HostClient]()
+			slices.SortFunc(members, byPingAsc)
+			slices.SortFunc(replicas, byPingAsc)
+			newMembers := orderedmap.NewOrderedMap[int64, hostClient]()
 			for _, item := range members {
 				newMembers.Set(item.ping, item.client)
 			}
-			newReplicas := orderedmap.NewOrderedMap[int64, HostClient]()
+			newReplicas := orderedmap.NewOrderedMap[int64, hostClient]()
 			for _, item := range replicas {
 				newReplicas.Set(item.ping, item.client)
 			}
@@ -121,14 +121,16 @@ func (c *shardClientManager) tick() {
 		})
 	})
 	if err == nil && shardCount > 0 {
-		c.log.Infof("%s Shard client manager updated. hosts: %d shards: %d replicas: %d time: %vms", c.agent.HostID(), len(pings), shardCount, replicaCount, float64(c.clock.Since(start)/time.Microsecond)/1000)
+		c.log.Infof("%s Shard client manager updated. hosts: %d shards: %d replicas: %d time: %vms", c.agent.hostID(), len(pings), shardCount, replicaCount, float64(c.clock.Since(start)/time.Microsecond)/1000)
 		c.index = index
 	}
 	return
 }
 
-func (c *shardClientManager) Stop() {
-	defer c.log.Infof(`Stopped shardClientManager`)
+func byPingAsc(a, b hostClientPing) int { return cmp.Compare(a.ping, b.ping) }
+
+func (c *clientManager) Stop() {
+	defer c.log.Infof(`Stopped clientManager`)
 	if c.ctxCancel != nil {
 		c.ctxCancel()
 	}

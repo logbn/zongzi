@@ -19,7 +19,7 @@ func newFsmStateRadix() *State {
 	metaSchema := &memdb.TableSchema{
 		Name: "meta",
 		Indexes: map[string]*memdb.IndexSchema{
-			"id": &memdb.IndexSchema{
+			"id": {
 				Name:    "id",
 				Unique:  true,
 				Indexer: &memdb.StringFieldIndex{Field: "Key"},
@@ -29,24 +29,24 @@ func newFsmStateRadix() *State {
 	hostSchema := &memdb.TableSchema{
 		Name: "host",
 		Indexes: map[string]*memdb.IndexSchema{
-			"id": &memdb.IndexSchema{
+			"id": {
 				Name:    "id",
 				Unique:  true,
 				Indexer: &memdb.UUIDFieldIndex{Field: "ID"},
 			},
-			"RaftAddress": &memdb.IndexSchema{
+			"RaftAddress": {
 				Name:         "RaftAddress",
 				Unique:       false,
 				AllowMissing: true,
 				Indexer:      &memdb.StringFieldIndex{Field: "RaftAddress"},
 			},
-			"Tags": &memdb.IndexSchema{
+			"Tags": {
 				Name:         "Tags",
 				Unique:       false,
 				AllowMissing: true,
 				Indexer:      &memdb.StringMapFieldIndex{Field: "Tags"},
 			},
-			"Updated": &memdb.IndexSchema{
+			"Updated": {
 				Name:         "Updated",
 				Unique:       false,
 				AllowMissing: true,
@@ -57,24 +57,24 @@ func newFsmStateRadix() *State {
 	shardSchema := &memdb.TableSchema{
 		Name: "shard",
 		Indexes: map[string]*memdb.IndexSchema{
-			"id": &memdb.IndexSchema{
+			"id": {
 				Name:    "id",
 				Unique:  true,
 				Indexer: &memdb.UintFieldIndex{Field: "ID"},
 			},
-			"Name": &memdb.IndexSchema{
+			"Name": {
 				Name:         "Name",
 				Unique:       true,
 				AllowMissing: true,
 				Indexer:      &memdb.StringFieldIndex{Field: "Name"},
 			},
-			"Tags": &memdb.IndexSchema{
+			"Tags": {
 				Name:         "Tags",
 				Unique:       false,
 				AllowMissing: true,
 				Indexer:      &memdb.StringMapFieldIndex{Field: "Tags"},
 			},
-			"Updated": &memdb.IndexSchema{
+			"Updated": {
 				Name:         "Updated",
 				Unique:       false,
 				AllowMissing: true,
@@ -85,22 +85,22 @@ func newFsmStateRadix() *State {
 	replicaSchema := &memdb.TableSchema{
 		Name: "replica",
 		Indexes: map[string]*memdb.IndexSchema{
-			"id": &memdb.IndexSchema{
+			"id": {
 				Name:    "id",
 				Unique:  true,
 				Indexer: &memdb.UintFieldIndex{Field: "ID"},
 			},
-			"HostID": &memdb.IndexSchema{
+			"HostID": {
 				Name:    "HostID",
 				Unique:  false,
 				Indexer: &memdb.UUIDFieldIndex{Field: "HostID"},
 			},
-			"ShardID": &memdb.IndexSchema{
+			"ShardID": {
 				Name:    "ShardID",
 				Unique:  false,
 				Indexer: &memdb.UintFieldIndex{Field: "ShardID"},
 			},
-			"Tags": &memdb.IndexSchema{
+			"Tags": {
 				Name:         "Tags",
 				Unique:       false,
 				AllowMissing: true,

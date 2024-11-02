@@ -72,37 +72,31 @@ func WithHostConfig(cfg HostConfig) AgentOption {
 	}
 }
 
-// WithHostMemLimit256 tunes the raft logger to use 256MB of ram
-func WithHostMemLimit256(cfg HostConfig) AgentOption {
+type HostMemory = LogDBConfig
+
+// WithHostMemory sets the maximum memory alloted to the raft log
+//
+//	zongzi.WithHostMemory(zongzi.HostMemory256)
+func WithHostMemoryLimit(limit HostMemory) AgentOption {
 	return func(a *Agent) error {
-		cfg.Expert.LogDB = config.GetTinyMemLogDBConfig()
+		a.hostConfig.Expert.LogDB = limit
 		return nil
 	}
 }
 
-// WithHostMemLimit1024 tunes the raft logger to use 1GB of ram
-func WithHostMemLimit1024(cfg HostConfig) AgentOption {
-	return func(a *Agent) error {
-		cfg.Expert.LogDB = config.GetSmallMemLogDBConfig()
-		return nil
-	}
-}
+var (
+	// HostMemory256 can be used to set max log memory usage to 256 MB
+	HostMemory256 = config.GetTinyMemLogDBConfig()
 
-// WithHostMemLimit4096 tunes the raft logger to use 4GB of ram
-func WithHostMemLimit4096(cfg HostConfig) AgentOption {
-	return func(a *Agent) error {
-		cfg.Expert.LogDB = config.GetMediumMemLogDBConfig()
-		return nil
-	}
-}
+	// HostMem1024 can be used to set max log memory usage to 1 GB
+	HostMemory1024 = config.GetSmallMemLogDBConfig()
 
-// WithHostMemLimit8192 tunes the raft logger to use 8GB of ram
-func WithHostMemLimit8192(cfg HostConfig) AgentOption {
-	return func(a *Agent) error {
-		cfg.Expert.LogDB = config.GetMediumMemLogDBConfig()
-		return nil
-	}
-}
+	// HostMem4096 can be used to set max log memory usage to 4 GB
+	HostMemory4096 = config.GetMediumMemLogDBConfig()
+
+	// HostMem8192 can be used to set max log memory usage to 8 GB (default)
+	HostMemory8192 = config.GetLargeMemLogDBConfig()
+)
 
 func WithRaftEventListener(listener RaftEventListener) AgentOption {
 	return func(a *Agent) error {
@@ -132,9 +126,9 @@ func WithReplicaConfig(cfg ReplicaConfig) AgentOption {
 	}
 }
 
-func WithShardController(c ShardController) AgentOption {
+func WithShardController(c Controller) AgentOption {
 	return func(a *Agent) error {
-		a.shardControllerManager.shardController = c
+		a.controllerManager.controller = c
 		return nil
 	}
 }

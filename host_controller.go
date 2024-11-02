@@ -16,6 +16,7 @@ type hostController struct {
 	ctxCancel context.CancelFunc
 	mutex     sync.RWMutex
 	index     uint64
+	done      chan bool
 }
 
 func newHostController(a *Agent) *hostController {
@@ -27,6 +28,7 @@ func newHostController(a *Agent) *hostController {
 func (c *hostController) Start() (err error) {
 	c.mutex.Lock()
 	c.ctx, c.ctxCancel = context.WithCancel(context.Background())
+	c.done = make(chan bool)
 	go func() {
 		t := time.NewTicker(waitPeriod)
 		defer t.Stop()
@@ -35,6 +37,7 @@ func (c *hostController) Start() (err error) {
 			case <-t.C:
 				err = c.tick()
 			case <-c.ctx.Done():
+				close(c.done)
 				return
 			}
 			if err != nil {
@@ -52,11 +55,11 @@ func (c *hostController) tick() (err error) {
 	var index uint64
 	var hadErr bool
 	var shard Shard
-	c.agent.Read(c.ctx, func(state *State) {
-		host, ok := state.Host(c.agent.HostID())
+	c.agent.State(c.ctx, func(state *State) {
+		host, ok := state.Host(c.agent.hostID())
 		if !ok {
 			hadErr = true
-			c.agent.log.Warningf("Host not found %s", c.agent.HostID())
+			c.agent.log.Warningf("Host not found %s", c.agent.hostID())
 			return
 		}
 		index = host.Updated
@@ -65,7 +68,7 @@ func (c *hostController) tick() (err error) {
 		}
 		// These are all the replicas that SHOULD exist on the host
 		var found = map[uint64]bool{}
-		state.ReplicaIterateByHostID(c.agent.HostID(), func(r Replica) bool {
+		state.ReplicaIterateByHostID(c.agent.hostID(), func(r Replica) bool {
 			if r.ShardID > 0 {
 				found[r.ID] = false
 			}
@@ -173,7 +176,7 @@ func (c *hostController) tick() (err error) {
 		err = nil
 		return
 	}
-	c.agent.log.Debugf("%s Finished processing %d", c.agent.HostID(), index)
+	c.agent.log.Debugf("%s Finished processing %d", c.agent.hostID(), index)
 	c.index = index
 	return
 }
@@ -181,26 +184,26 @@ func (c *hostController) tick() (err error) {
 // requestShardJoin requests host replica be added to a shard
 func (c *hostController) requestShardJoin(members map[uint64]string, shardID, replicaID uint64, isNonVoting bool) (v uint64) {
 	c.agent.log.Debugf("[%05d:%05d] Joining shard (isNonVoting: %v)", shardID, replicaID, isNonVoting)
-	var res *internal.ShardJoinResponse
+	var res *internal.AddResponse
 	var host Host
 	var ok bool
 	var err error
 	for _, hostID := range members {
-		c.agent.Read(c.ctx, func(s *State) {
+		c.agent.State(c.ctx, func(s *State) {
 			host, ok = s.Host(hostID)
 		})
 		if !ok {
 			c.agent.log.Warningf(`Host not found %s`, hostID)
 			continue
 		}
-		res, err = c.agent.grpcClientPool.get(host.ApiAddress).ShardJoin(raftCtx(), &internal.ShardJoinRequest{
-			HostId:      c.agent.HostID(),
+		res, err = c.agent.grpcClientPool.get(host.ApiAddress).Add(raftCtx(), &internal.AddRequest{
+			HostId:      c.agent.hostID(),
 			ShardId:     shardID,
 			ReplicaId:   replicaID,
 			IsNonVoting: isNonVoting,
 		})
 		if err != nil {
-			c.agent.log.Warningf(`[%05d:%05d] %s | %s Unable to join shard (%v): %v`, shardID, replicaID, c.agent.HostID(), hostID, isNonVoting, err)
+			c.agent.log.Warningf(`[%05d:%05d] %s | %s Unable to join shard (%v): %v`, shardID, replicaID, c.agent.hostID(), hostID, isNonVoting, err)
 		}
 		if err == nil && res != nil && res.Value > 0 {
 			v = res.Value
@@ -221,6 +224,7 @@ func (c *hostController) Stop() {
 	if c.ctxCancel != nil {
 		c.ctxCancel()
 	}
+	<-c.done
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	c.index = 0

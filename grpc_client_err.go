@@ -32,11 +32,11 @@ func (c *grpcClientErr) Join(ctx context.Context, in *internal.JoinRequest, opts
 	return nil, c.err
 }
 
-func (c *grpcClientErr) ShardJoin(ctx context.Context, in *internal.ShardJoinRequest, opts ...grpc.CallOption) (*internal.ShardJoinResponse, error) {
+func (c *grpcClientErr) Add(ctx context.Context, in *internal.AddRequest, opts ...grpc.CallOption) (*internal.AddResponse, error) {
 	return nil, c.err
 }
 
-func (c *grpcClientErr) ReadIndex(ctx context.Context, in *internal.ReadIndexRequest, opts ...grpc.CallOption) (*internal.ReadIndexResponse, error) {
+func (c *grpcClientErr) Index(ctx context.Context, in *internal.IndexRequest, opts ...grpc.CallOption) (*internal.IndexResponse, error) {
 	return nil, c.err
 }
 

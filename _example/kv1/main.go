@@ -44,13 +44,13 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	agent.RegisterStateMachine(uri, factory)
+	agent.StateMachineRegister(uri, factory)
 	if err = agent.Start(ctx); err != nil {
 		panic(err)
 	}
 	var clients = make([]zongzi.ShardClient, *shards)
 	for i := 0; i < *shards; i++ {
-		shard, _, err := agent.RegisterShard(ctx, uri,
+		shard, _, err := agent.ShardCreate(ctx, uri,
 			zongzi.WithName(fmt.Sprintf(`%s-%05d`, *name, i)),
 			zongzi.WithPlacementVary(`geo:zone`),
 			zongzi.WithPlacementMembers(3, `geo:region=`+*region))
@@ -58,7 +58,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		clients[i] = agent.ShardClient(shard.ID)
+		clients[i] = agent.GetClient(shard.ID)
 	}
 	// Start HTTP API
 	go func(s *http.Server) {
