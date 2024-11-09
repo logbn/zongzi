@@ -139,6 +139,8 @@ var (
 	ErrShardExists       = fmt.Errorf(`Shard already exists`)
 	ErrShardNotFound     = fmt.Errorf(`Shard not found`)
 
+	ErrInvalidNumberOfArguments = fmt.Errorf(`Invalid number of arguments`)
+
 	// ErrClusterNameInvalid indicates that the clusterName is invalid
 	// Base36 supports only lowercase alphanumeric characters
 	ErrClusterNameInvalid = fmt.Errorf("Invalid cluster name (base36 maxlen 12)")

@@ -41,3 +41,10 @@ func WithPlacementCover(tagKeys ...string) ShardOption {
 		return nil
 	}
 }
+
+func WithTag(k string, v any) ShardOption {
+	return func(s *Shard) error {
+		s.Tags[k] = fmt.Sprintf(`%v`, v)
+		return nil
+	}
+}

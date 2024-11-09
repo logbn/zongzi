@@ -344,7 +344,7 @@ func runAgentSubTestByShard(t *testing.T, agents []*Agent, shard Shard, op strin
 	var val uint64
 	for _, a := range agents {
 		val = 0
-		client := a.GetClient(shard.ID)
+		client := a.Client(shard.ID)
 		require.NotNil(t, client)
 		if op == "update" && stale {
 			err = client.Commit(raftCtx(), bytes.Repeat([]byte("test"), i+1))

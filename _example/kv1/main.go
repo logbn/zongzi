@@ -58,7 +58,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		clients[i] = agent.GetClient(shard.ID)
+		clients[i] = agent.Client(shard.ID)
 	}
 	// Start HTTP API
 	go func(s *http.Server) {
