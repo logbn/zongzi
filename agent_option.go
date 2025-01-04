@@ -33,9 +33,14 @@ func WithGossipAddress(advertiseAddress string, bindAddress ...string) AgentOpti
 	}
 }
 
-func WithRaftAddress(raftAddress string) AgentOption {
+func WithRaftAddress(raftAddress string, listenAddress ...string) AgentOption {
 	return func(a *Agent) error {
 		a.hostConfig.RaftAddress = raftAddress
+		if len(listenAddress) > 0 {
+			a.hostConfig.ListenAddress = listenAddress[0]
+		} else {
+			a.hostConfig.ListenAddress = fmt.Sprintf("0.0.0.0:%s", strings.Split(raftAddress, ":")[1])
+		}
 		return nil
 	}
 }
