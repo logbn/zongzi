@@ -8,3 +8,10 @@ func WithRetries(retries int) ClientOption {
 		return nil
 	}
 }
+
+func WithWriteToLeader() ClientOption {
+	return func(c *client) error {
+		c.writeToLeader = true
+		return nil
+	}
+}

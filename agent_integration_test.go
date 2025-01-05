@@ -148,12 +148,14 @@ func TestAgent(t *testing.T) {
 		}
 		for _, op := range []string{"update", "query", "watch"} {
 			for _, linearity := range []string{"linear", "non-linear"} {
-				t.Run(fmt.Sprintf(`%s %s %s host client`, sm, op, linearity), func(t *testing.T) {
-					runAgentSubTest(t, agents, shard, op, linearity != "linear")
-				})
-				t.Run(fmt.Sprintf(`%s %s %s shard client`, sm, op, linearity), func(t *testing.T) {
-					runAgentSubTestByShard(t, agents, shard, op, linearity != "linear")
-				})
+				for _, writeTarget := range []string{"all", "leader"} {
+					t.Run(fmt.Sprintf(`%s %s %s host client`, sm, op, linearity), func(t *testing.T) {
+						runAgentSubTest(t, agents, shard, op, linearity != "linear")
+					})
+					t.Run(fmt.Sprintf(`%s %s %s shard client`, sm, op, linearity), func(t *testing.T) {
+						runAgentSubTestByShard(t, agents, shard, op, linearity != "linear", writeTarget == "leader")
+					})
+				}
 			}
 		}
 	}
@@ -338,13 +340,16 @@ func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, op string, stal
 	}
 }
 
-func runAgentSubTestByShard(t *testing.T, agents []*Agent, shard Shard, op string, stale bool) {
+func runAgentSubTestByShard(t *testing.T, agents []*Agent, shard Shard, op string, stale, writeToleader bool) {
 	var i = 0
 	var err error
 	var val uint64
 	for _, a := range agents {
 		val = 0
 		client := a.Client(shard.ID)
+		if writeToleader {
+			client = a.Client(shard.ID, WithWriteToLeader())
+		}
 		require.NotNil(t, client)
 		if op == "update" && stale {
 			err = client.Commit(raftCtx(), bytes.Repeat([]byte("test"), i+1))

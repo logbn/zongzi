@@ -19,8 +19,9 @@ type Shard struct {
 	Status  ShardStatus       `json:"status"`
 	Tags    map[string]string `json:"tags"`
 
-	Type string `json:"type"`
-	Name string `json:"name"`
+	Type   string `json:"type"`
+	Name   string `json:"name"`
+	Leader uint64 `json:"leader"`
 }
 
 type Replica struct {

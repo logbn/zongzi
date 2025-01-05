@@ -165,6 +165,17 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 				return true
 			})
 			entry.Result.Value = 1
+		// Set Leader
+		case command_action_leader_set:
+			shard, ok := state.Shard(cmd.Shard.ID)
+			if !ok {
+				fsm.log.Warningf("%v: %#v", ErrShardNotFound, cmd)
+				break
+			}
+			shard.Leader = cmd.Shard.Leader
+			shard.Updated = entry.Index
+			state.shardPut(shard)
+			entry.Result.Value = 1
 		// Delete
 		case command_action_del:
 			shard, ok := state.Shard(cmd.Shard.ID)

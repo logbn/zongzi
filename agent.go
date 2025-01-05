@@ -92,8 +92,8 @@ func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent
 
 // Client returns a client for a specific shard.
 // It will send writes to the nearest member and send reads to the nearest replica (by ping).
-func (a *Agent) Client(shardID uint64) (c ShardClient) {
-	c, _ = newClient(a.clientManager, shardID)
+func (a *Agent) Client(shardID uint64, opts ...ClientOption) (c ShardClient) {
+	c, _ = newClient(a.clientManager, shardID, opts...)
 	return
 }
 
@@ -421,6 +421,15 @@ func (a *Agent) replicaDelete(replicaID uint64) (err error) {
 	_, err = a.primePropose(newCmdReplicaDelete(replicaID))
 	if err == nil {
 		a.log.Infof("Replica deleted %05d", replicaID)
+	}
+	return
+}
+
+// shardLeaderSet sets the leader of a shard
+func (a *Agent) shardLeaderSet(shardID, replicaID uint64) (err error) {
+	_, err = a.primePropose(newCmdShardLeaderSet(shardID, replicaID))
+	if err == nil {
+		a.log.Infof("Shard %05d leader set to %05d", shardID, replicaID)
 	}
 	return
 }

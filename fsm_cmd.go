@@ -18,6 +18,7 @@ const (
 	command_action_tags_set      = "tags-set"
 	command_action_tags_setnx    = "tags-setnx"
 	command_action_tags_remove   = "tags-remove"
+	command_action_leader_set    = "leader-set"
 )
 
 type command struct {
@@ -88,6 +89,17 @@ func newCmdShardStatusUpdate(id uint64, status ShardStatus) (b []byte) {
 	}, Shard{
 		ID:     id,
 		Status: status,
+	}})
+	return
+}
+
+func newCmdShardLeaderSet(shardID, replicaID uint64) (b []byte) {
+	b, _ = json.Marshal(commandShard{command{
+		Action: command_action_leader_set,
+		Type:   command_type_shard,
+	}, Shard{
+		ID:     shardID,
+		Leader: replicaID,
 	}})
 	return
 }

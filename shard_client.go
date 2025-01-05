@@ -16,9 +16,10 @@ type ShardClient interface {
 
 // The shard client
 type client struct {
-	manager *clientManager
-	shardID uint64
-	retries int
+	manager       *clientManager
+	shardID       uint64
+	retries       int
+	writeToLeader bool
 }
 
 func newClient(manager *clientManager, shardID uint64, opts ...ClientOption) (c *client, err error) {
@@ -53,6 +54,11 @@ func (c *client) Index(ctx context.Context) (err error) {
 }
 
 func (c *client) Apply(ctx context.Context, cmd []byte) (value uint64, data []byte, err error) {
+	if c.writeToLeader {
+		if client, ok := c.manager.clientLeader[c.shardID]; ok {
+			return client.Apply(ctx, c.shardID, cmd)
+		}
+	}
 	c.manager.mutex.RLock()
 	list, ok := c.manager.clientMember[c.shardID]
 	c.manager.mutex.RUnlock()
@@ -70,6 +76,11 @@ func (c *client) Apply(ctx context.Context, cmd []byte) (value uint64, data []by
 }
 
 func (c *client) Commit(ctx context.Context, cmd []byte) (err error) {
+	if c.writeToLeader {
+		if client, ok := c.manager.clientLeader[c.shardID]; ok {
+			return client.Commit(ctx, c.shardID, cmd)
+		}
+	}
 	c.manager.mutex.RLock()
 	list, ok := c.manager.clientMember[c.shardID]
 	c.manager.mutex.RUnlock()

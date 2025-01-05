@@ -18,6 +18,7 @@ type clientManager struct {
 	ctx             context.Context
 	ctxCancel       context.CancelFunc
 	clientHost      map[string]hostClient
+	clientLeader    map[uint64]hostClient
 	clientMember    map[uint64]*orderedmap.OrderedMap[int64, hostClient]
 	clientReplica   map[uint64]*orderedmap.OrderedMap[int64, hostClient]
 	index           uint64
@@ -33,6 +34,7 @@ func newClientManager(agent *Agent) *clientManager {
 		agent:         agent,
 		clock:         clock.New(),
 		clientHost:    map[string]hostClient{},
+		clientLeader:  map[uint64]hostClient{},
 		clientMember:  map[uint64]*orderedmap.OrderedMap[int64, hostClient]{},
 		clientReplica: map[uint64]*orderedmap.OrderedMap[int64, hostClient]{},
 	}
@@ -76,6 +78,7 @@ func (c *clientManager) tick() {
 		state.ShardIterateUpdatedAfter(c.index, func(shard Shard) bool {
 			shardCount++
 			index = shard.Updated
+			var leader hostClient
 			members := []hostClientPing{}
 			replicas := []hostClientPing{}
 			state.ReplicaIterateByShardID(shard.ID, func(replica Replica) bool {
@@ -101,6 +104,9 @@ func (c *clientManager) tick() {
 				} else {
 					members = append(members, hostClientPing{ping.Nanoseconds(), client})
 				}
+				if shard.Leader == replica.ID {
+					leader = client
+				}
 				return true
 			})
 			slices.SortFunc(members, byPingAsc)
@@ -114,6 +120,9 @@ func (c *clientManager) tick() {
 				newReplicas.Set(item.ping, item.client)
 			}
 			c.mutex.Lock()
+			if leader.agent != nil {
+				c.clientLeader[shard.ID] = leader
+			}
 			c.clientMember[shard.ID] = newMembers
 			c.clientReplica[shard.ID] = newReplicas
 			c.mutex.Unlock()
@@ -121,7 +130,13 @@ func (c *clientManager) tick() {
 		})
 	})
 	if err == nil && shardCount > 0 {
-		c.log.Infof("%s Shard client manager updated. hosts: %d shards: %d replicas: %d time: %vms", c.agent.hostID(), len(pings), shardCount, replicaCount, float64(c.clock.Since(start)/time.Microsecond)/1000)
+		c.log.Infof("%s Shard client manager updated. hosts: %d shards: %d replicas: %d leaders: %d time: %vms",
+			c.agent.hostID(),
+			len(pings),
+			shardCount,
+			replicaCount,
+			len(c.clientLeader),
+			float64(c.clock.Since(start)/time.Microsecond)/1000)
 		c.index = index
 	}
 	return

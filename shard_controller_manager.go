@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/benbjohnson/clock"
@@ -11,18 +12,16 @@ import (
 
 // The controllerManager creates and destroys replicas based on a shard tags.
 type controllerManager struct {
-	agent       *Agent
-	clock       clock.Clock
-	ctx         context.Context
-	ctxCancel   context.CancelFunc
-	index       uint64
-	isLeader    bool
-	lastHostID  string
-	leaderIndex uint64
-	log         Logger
-	mutex       sync.RWMutex
-	controller  Controller
-	wg          sync.WaitGroup
+	agent      *Agent
+	clock      clock.Clock
+	ctx        context.Context
+	ctxCancel  context.CancelFunc
+	index      uint64
+	isLeader   atomic.Bool
+	log        Logger
+	mutex      sync.RWMutex
+	controller Controller
+	wg         sync.WaitGroup
 }
 
 func newControllerManager(agent *Agent) *controllerManager {
@@ -68,7 +67,7 @@ func (c *controllerManager) tick() {
 	var index uint64
 	var updated = true
 	var controls = newControls(c.agent)
-	if c.isLeader {
+	if c.isLeader.Load() {
 		for updated {
 			updated = false
 			err = c.agent.State(c.ctx, func(state *State) {
@@ -117,10 +116,10 @@ func (c *controllerManager) tick() {
 func (c *controllerManager) LeaderUpdated(info LeaderInfo) {
 	c.log.Infof("[%05d:%05d] LeaderUpdated: %05d", info.ShardID, info.ReplicaID, info.LeaderID)
 	if info.ShardID == 0 {
-		c.mutex.Lock()
-		c.isLeader = info.LeaderID == info.ReplicaID
-		c.mutex.Unlock()
-		return
+		c.isLeader.Store(info.LeaderID == info.ReplicaID)
+	}
+	if c.index > 0 && c.isLeader.Load() {
+		c.agent.shardLeaderSet(info.ShardID, info.LeaderID)
 	}
 }
 
