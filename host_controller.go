@@ -196,7 +196,9 @@ func (c *hostController) requestShardJoin(members map[uint64]string, shardID, re
 			c.agent.log.Warningf(`Host not found %s`, hostID)
 			continue
 		}
-		res, err = c.agent.grpcClientPool.get(host.ApiAddress).Add(raftCtx(), &internal.AddRequest{
+		ctx, cancel := context.WithTimeout(context.Background(), raftTimeout)
+		defer cancel()
+		res, err = c.agent.grpcClientPool.get(host.ApiAddress).Add(ctx, &internal.AddRequest{
 			HostId:      c.agent.hostID(),
 			ShardId:     shardID,
 			ReplicaId:   replicaID,

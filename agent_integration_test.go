@@ -290,13 +290,19 @@ func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, op string, stal
 			require.NotNil(t, client)
 			if op == "update" && stale {
 				start := time.Now()
-				err = client.Commit(raftCtx(), shard.ID, bytes.Repeat([]byte("test"), i+1))
+				ctx, cancel := context.WithTimeout(context.Background(), raftTimeout)
+				defer cancel()
+				err = client.Commit(ctx, shard.ID, bytes.Repeat([]byte("test"), i+1))
 				update_time += time.Since(start)
 				updates++
 			} else if op == "update" && !stale {
-				val, _, err = client.Apply(raftCtx(), shard.ID, bytes.Repeat([]byte("test"), i+1))
+				ctx, cancel := context.WithTimeout(context.Background(), raftTimeout)
+				defer cancel()
+				val, _, err = client.Apply(ctx, shard.ID, bytes.Repeat([]byte("test"), i+1))
 			} else if op == "query" {
-				val, _, err = client.Read(raftCtx(), shard.ID, bytes.Repeat([]byte("test"), i+1), stale)
+				ctx, cancel := context.WithTimeout(context.Background(), raftTimeout)
+				defer cancel()
+				val, _, err = client.Read(ctx, shard.ID, bytes.Repeat([]byte("test"), i+1), stale)
 				assert.Nil(t, err)
 			} else if op == "watch" {
 				res := make(chan *Result)
@@ -317,7 +323,9 @@ func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, op string, stal
 						}
 					}
 				}()
-				err = client.Watch(raftCtx(), shard.ID, bytes.Repeat([]byte("test"), i+1), res, stale)
+				ctx, cancel := context.WithTimeout(context.Background(), raftTimeout)
+				defer cancel()
+				err = client.Watch(ctx, shard.ID, bytes.Repeat([]byte("test"), i+1), res, stale)
 				close(done)
 				wg.Wait()
 				assert.Equal(t, uint64((i+1)*4), n)
@@ -351,12 +359,14 @@ func runAgentSubTestByShard(t *testing.T, agents []*Agent, shard Shard, op strin
 			client = a.Client(shard.ID, WithWriteToLeader())
 		}
 		require.NotNil(t, client)
+		ctx, cancel := context.WithTimeout(context.Background(), raftTimeout)
+		defer cancel()
 		if op == "update" && stale {
-			err = client.Commit(raftCtx(), bytes.Repeat([]byte("test"), i+1))
+			err = client.Commit(ctx, bytes.Repeat([]byte("test"), i+1))
 		} else if op == "update" && !stale {
-			val, _, err = client.Apply(raftCtx(), bytes.Repeat([]byte("test"), i+1))
+			val, _, err = client.Apply(ctx, bytes.Repeat([]byte("test"), i+1))
 		} else if op == "query" {
-			val, _, err = client.Read(raftCtx(), bytes.Repeat([]byte("test"), i+1), stale)
+			val, _, err = client.Read(ctx, bytes.Repeat([]byte("test"), i+1), stale)
 		} else if op == "watch" {
 			res := make(chan *Result)
 			done := make(chan bool)
@@ -376,7 +386,7 @@ func runAgentSubTestByShard(t *testing.T, agents []*Agent, shard Shard, op strin
 					}
 				}
 			}()
-			err = client.Watch(raftCtx(), bytes.Repeat([]byte("test"), i+1), res, stale)
+			err = client.Watch(ctx, bytes.Repeat([]byte("test"), i+1), res, stale)
 			close(done)
 			wg.Wait()
 			assert.Equal(t, uint64((i+1)*4), n)

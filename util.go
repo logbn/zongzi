@@ -46,14 +46,14 @@ var (
 	}
 	DefaultReplicaConfig = ReplicaConfig{
 		CheckQuorum:             true,
-		CompactionOverhead:      1000,
+		CompactionOverhead:      10000,
 		ElectionRTT:             100,
 		EntryCompressionType:    config.Snappy,
 		HeartbeatRTT:            10,
 		OrderedConfigChange:     true,
 		Quiesce:                 false,
 		SnapshotCompressionType: config.Snappy,
-		SnapshotEntries:         1000,
+		SnapshotEntries:         10000,
 	}
 )
 
@@ -238,15 +238,6 @@ func base36Decode(name string) (uint64, error) {
 
 func base36Encode(id uint64) string {
 	return strconv.FormatUint(id, 36)
-}
-
-func raftCtx(ctxs ...context.Context) (ctx context.Context) {
-	ctx = context.Background()
-	if len(ctxs) > 0 {
-		ctx = ctxs[0]
-	}
-	ctx, _ = context.WithTimeout(ctx, raftTimeout)
-	return
 }
 
 type compositeRaftEventListener struct {

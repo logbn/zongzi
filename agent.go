@@ -460,7 +460,10 @@ func (a *Agent) resolvePeerGossipSeed() (gossip []string, err error) {
 				gossip = append(gossip, a.hostConfig.Gossip.AdvertiseAddress)
 				continue
 			}
-			res, err := a.grpcClientPool.get(peerApiAddr).Probe(raftCtx(), &internal.ProbeRequest{})
+			var res *internal.ProbeResponse
+			ctx, cancel := context.WithTimeout(context.Background(), raftTimeout)
+			defer cancel()
+			res, err = a.grpcClientPool.get(peerApiAddr).Probe(ctx, &internal.ProbeRequest{})
 			if err == nil && res != nil {
 				gossip = append(gossip, res.GossipAdvertiseAddress)
 			} else if err != nil && !strings.HasSuffix(err.Error(), `connect: connection refused"`) {
@@ -498,7 +501,9 @@ func (a *Agent) resolvePrimeMembership() (members map[uint64]string, init bool, 
 					HostId:    a.hostID(),
 				}
 			} else {
-				info, err = a.grpcClientPool.get(apiAddr).Info(raftCtx(), &internal.InfoRequest{})
+				ctx, cancel := context.WithTimeout(context.Background(), raftTimeout)
+				defer cancel()
+				info, err = a.grpcClientPool.get(apiAddr).Info(ctx, &internal.InfoRequest{})
 				if err != nil {
 					return
 				}
@@ -539,7 +544,9 @@ func (a *Agent) resolvePrimeMembership() (members map[uint64]string, init bool, 
 					continue
 				}
 				if _, ok := uninitialized[apiAddr]; !ok {
-					res, err = a.grpcClientPool.get(apiAddr).Members(raftCtx(), &internal.MembersRequest{})
+					ctx, cancel := context.WithTimeout(context.Background(), raftTimeout)
+					defer cancel()
+					res, err = a.grpcClientPool.get(apiAddr).Members(ctx, &internal.MembersRequest{})
 					if err != nil {
 						return
 					}
@@ -588,7 +595,9 @@ func (a *Agent) joinPrimeShard() (replicaID uint64, err error) {
 	a.log.Debugf("Joining prime shard")
 	var res *internal.JoinResponse
 	for _, peerApiAddr := range a.peers {
-		res, err = a.grpcClientPool.get(peerApiAddr).Join(raftCtx(), &internal.JoinRequest{
+		ctx, cancel := context.WithTimeout(context.Background(), raftTimeout)
+		defer cancel()
+		res, err = a.grpcClientPool.get(peerApiAddr).Join(ctx, &internal.JoinRequest{
 			HostId:      a.hostID(),
 			IsNonVoting: a.replicaConfig.IsNonVoting,
 		})
@@ -686,20 +695,24 @@ func (a *Agent) joinPrimeReplica(hostID string, shardID uint64, isNonVoting bool
 }
 
 func (a *Agent) joinShardReplica(hostID string, shardID, replicaID uint64, isNonVoting bool) (res uint64, err error) {
-	m, err := a.host.SyncGetShardMembership(raftCtx(), shardID)
+	ctx, cancel := context.WithTimeout(context.Background(), raftTimeout)
+	defer cancel()
+	m, err := a.host.SyncGetShardMembership(ctx, shardID)
 	if err != nil {
 		return
 	}
+	ctx, cancel = context.WithTimeout(context.Background(), raftTimeout)
+	defer cancel()
 	if isNonVoting {
 		if _, ok := m.NonVotings[replicaID]; ok {
 			return replicaID, nil
 		}
-		err = a.host.SyncRequestAddNonVoting(raftCtx(), shardID, replicaID, hostID, m.ConfigChangeID)
+		err = a.host.SyncRequestAddNonVoting(ctx, shardID, replicaID, hostID, m.ConfigChangeID)
 	} else {
 		if _, ok := m.Nodes[replicaID]; ok {
 			return replicaID, nil
 		}
-		err = a.host.SyncRequestAddReplica(raftCtx(), shardID, replicaID, hostID, m.ConfigChangeID)
+		err = a.host.SyncRequestAddReplica(ctx, shardID, replicaID, hostID, m.ConfigChangeID)
 	}
 	if err != nil {
 		return
@@ -724,7 +737,9 @@ func (a *Agent) parseMeta(nhid string) (apiAddr string, err error) {
 }
 
 func (a *Agent) primePropose(cmd []byte) (Result, error) {
-	return a.host.SyncPropose(raftCtx(), a.host.GetNoOPSession(a.replicaConfig.ShardID), cmd)
+	ctx, cancel := context.WithTimeout(context.Background(), raftTimeout)
+	defer cancel()
+	return a.host.SyncPropose(ctx, a.host.GetNoOPSession(a.replicaConfig.ShardID), cmd)
 }
 
 // primeInit proposes addition of initial cluster state to prime shard
