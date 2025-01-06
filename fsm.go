@@ -36,7 +36,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 	var cmd any
 	var cmdBase command
 	if err = json.Unmarshal(entry.Cmd, &cmdBase); err != nil {
-		fsm.log.Errorf("Invalid entry %#v, %v", entry, err)
+		fsm.log.Errorf("Invalid entry %d - %v, %v", entry.Index, string(entry.Cmd), err)
 		return entry.Result, nil
 	}
 	switch cmdBase.Type {
