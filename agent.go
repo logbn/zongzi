@@ -206,6 +206,11 @@ func (a *Agent) Start(ctx context.Context) (err error) {
 		}
 	}()
 	// Resolve member gossip addresses
+	a.hostConfig.Gossip.AdvertiseAddress, err = a.gossipIP(a.hostConfig.Gossip.AdvertiseAddress)
+	if err != nil {
+		a.log.Errorf(`Failed to resolve gossip advertise address: %v`, err)
+		return
+	}
 	a.hostConfig.Gossip.Seed, err = a.resolvePeerGossipSeed()
 	if err != nil {
 		a.log.Errorf(`Failed to resolve gossip seeds: %v`, err)
@@ -502,6 +507,7 @@ func (a *Agent) resolvePeerGossipSeed() (gossip []string, err error) {
 				a.log.Warningf("No probe response for %s %+v %v", peerApiAddr, res, err.Error())
 			}
 		}
+		a.log.Infof("Peers: %#v", a.peers)
 		a.log.Infof("Found %d of %d peers %+v", len(gossip), len(a.peers), gossip)
 		if len(gossip) < len(a.peers) {
 			select {
