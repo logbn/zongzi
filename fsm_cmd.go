@@ -93,13 +93,14 @@ func newCmdShardStatusUpdate(id uint64, status ShardStatus) (b []byte) {
 	return
 }
 
-func newCmdShardLeaderSet(shardID, replicaID uint64) (b []byte) {
+func newCmdShardLeaderSet(shardID, replicaID, term uint64) (b []byte) {
 	b, _ = json.Marshal(commandShard{command{
 		Action: command_action_leader_set,
 		Type:   command_type_shard,
 	}, Shard{
 		ID:     shardID,
 		Leader: replicaID,
+		Term:   term,
 	}})
 	return
 }

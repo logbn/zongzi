@@ -173,6 +173,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 				break
 			}
 			shard.Leader = cmd.Shard.Leader
+			shard.Term = cmd.Shard.Term
 			shard.Updated = entry.Index
 			state.shardPut(shard)
 			entry.Result.Value = 1

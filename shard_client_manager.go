@@ -18,7 +18,7 @@ type clientManager struct {
 	ctx             context.Context
 	ctxCancel       context.CancelFunc
 	clientHost      map[string]hostClient
-	clientLeader    map[uint64]hostClient
+	clientLeader    map[uint64]hostClientLeader
 	clientMember    map[uint64]*orderedmap.OrderedMap[int64, hostClient]
 	clientReplica   map[uint64]*orderedmap.OrderedMap[int64, hostClient]
 	index           uint64
@@ -28,13 +28,19 @@ type clientManager struct {
 	wg              sync.WaitGroup
 }
 
+type hostClientLeader struct {
+	client    hostClient
+	replicaID uint64
+	term      uint64
+}
+
 func newClientManager(agent *Agent) *clientManager {
 	return &clientManager{
 		log:           agent.log,
 		agent:         agent,
 		clock:         clock.New(),
 		clientHost:    map[string]hostClient{},
-		clientLeader:  map[uint64]hostClient{},
+		clientLeader:  map[uint64]hostClientLeader{},
 		clientMember:  map[uint64]*orderedmap.OrderedMap[int64, hostClient]{},
 		clientReplica: map[uint64]*orderedmap.OrderedMap[int64, hostClient]{},
 	}
@@ -78,7 +84,7 @@ func (c *clientManager) tick() {
 		state.ShardIterateUpdatedAfter(c.index, func(shard Shard) bool {
 			shardCount++
 			index = shard.Updated
-			var leader hostClient
+			var leaderClient hostClient
 			members := []hostClientPing{}
 			replicas := []hostClientPing{}
 			state.ReplicaIterateByShardID(shard.ID, func(replica Replica) bool {
@@ -105,7 +111,7 @@ func (c *clientManager) tick() {
 					members = append(members, hostClientPing{ping.Nanoseconds(), client})
 				}
 				if shard.Leader == replica.ID {
-					leader = client
+					leaderClient = client
 				}
 				return true
 			})
@@ -120,8 +126,10 @@ func (c *clientManager) tick() {
 				newReplicas.Set(item.ping, item.client)
 			}
 			c.mutex.Lock()
-			if leader.agent != nil {
-				c.clientLeader[shard.ID] = leader
+			if leaderClient.agent != nil {
+				c.clientLeader[shard.ID] = hostClientLeader{leaderClient, shard.Leader, shard.Term}
+			} else {
+				delete(c.clientLeader, shard.ID)
 			}
 			c.clientMember[shard.ID] = newMembers
 			c.clientReplica[shard.ID] = newReplicas

@@ -7,9 +7,10 @@ import (
 // ShardClient can be used to interact with a shard regardless of its placement in the cluster
 // Requests will be forwarded to the appropriate host based on ping
 type ShardClient interface {
-	Index(ctx context.Context) (err error)
 	Apply(ctx context.Context, cmd []byte) (value uint64, data []byte, err error)
 	Commit(ctx context.Context, cmd []byte) (err error)
+	Index(ctx context.Context) (err error)
+	Leader() (uint64, uint64)
 	Read(ctx context.Context, query []byte, stale bool) (value uint64, data []byte, err error)
 	Watch(ctx context.Context, query []byte, results chan<- *Result, stale bool) (err error)
 }
@@ -53,10 +54,24 @@ func (c *client) Index(ctx context.Context) (err error) {
 	return
 }
 
+func (c *client) Leader() (replicaID, term uint64) {
+	c.manager.mutex.RLock()
+	leader, ok := c.manager.clientLeader[c.shardID]
+	c.manager.mutex.RUnlock()
+	if ok {
+		replicaID = leader.replicaID
+		term = leader.term
+	}
+	return
+}
+
 func (c *client) Apply(ctx context.Context, cmd []byte) (value uint64, data []byte, err error) {
 	if c.writeToLeader {
-		if client, ok := c.manager.clientLeader[c.shardID]; ok {
-			return client.Apply(ctx, c.shardID, cmd)
+		c.manager.mutex.RLock()
+		leader, ok := c.manager.clientLeader[c.shardID]
+		c.manager.mutex.RUnlock()
+		if ok {
+			return leader.client.Apply(ctx, c.shardID, cmd)
 		}
 	}
 	c.manager.mutex.RLock()
@@ -77,8 +92,11 @@ func (c *client) Apply(ctx context.Context, cmd []byte) (value uint64, data []by
 
 func (c *client) Commit(ctx context.Context, cmd []byte) (err error) {
 	if c.writeToLeader {
-		if client, ok := c.manager.clientLeader[c.shardID]; ok {
-			return client.Commit(ctx, c.shardID, cmd)
+		c.manager.mutex.RLock()
+		leader, ok := c.manager.clientLeader[c.shardID]
+		c.manager.mutex.RUnlock()
+		if ok {
+			return leader.client.Commit(ctx, c.shardID, cmd)
 		}
 	}
 	c.manager.mutex.RLock()
@@ -121,8 +139,8 @@ func (c *client) Read(ctx context.Context, query []byte, stale bool) (value uint
 		}
 	}
 	if c.writeToLeader {
-		if client, ok := c.manager.clientLeader[c.shardID]; ok {
-			return client.Read(ctx, c.shardID, query, stale)
+		if leader, ok := c.manager.clientLeader[c.shardID]; ok {
+			return leader.client.Read(ctx, c.shardID, query, stale)
 		}
 	}
 	c.manager.mutex.RLock()
@@ -165,8 +183,8 @@ func (c *client) Watch(ctx context.Context, query []byte, results chan<- *Result
 		}
 	}
 	if c.writeToLeader {
-		if client, ok := c.manager.clientLeader[c.shardID]; ok {
-			return client.Watch(ctx, c.shardID, query, results, stale)
+		if leader, ok := c.manager.clientLeader[c.shardID]; ok {
+			return leader.client.Watch(ctx, c.shardID, query, results, stale)
 		}
 	}
 	c.manager.mutex.RLock()

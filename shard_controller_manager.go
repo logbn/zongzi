@@ -114,12 +114,12 @@ func (c *controllerManager) tick() {
 }
 
 func (c *controllerManager) LeaderUpdated(info LeaderInfo) {
-	c.log.Infof("[%05d:%05d] LeaderUpdated: %05d", info.ShardID, info.ReplicaID, info.LeaderID)
+	c.log.Infof("[%05d:%05d] LeaderUpdated: %05d (term %d)", info.ShardID, info.ReplicaID, info.LeaderID, info.Term)
 	if info.ShardID == 0 {
 		c.isLeader.Store(info.LeaderID == info.ReplicaID)
 	}
-	if c.index > 0 && c.isLeader.Load() {
-		c.agent.shardLeaderSet(info.ShardID, info.LeaderID)
+	if c.isLeader.Load() {
+		c.agent.shardLeaderSet(info.ShardID, info.LeaderID, info.Term)
 	}
 }
 

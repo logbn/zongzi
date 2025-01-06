@@ -432,8 +432,8 @@ func (a *Agent) replicaDelete(replicaID uint64) (err error) {
 }
 
 // shardLeaderSet sets the leader of a shard
-func (a *Agent) shardLeaderSet(shardID, replicaID uint64) (err error) {
-	_, err = a.primePropose(newCmdShardLeaderSet(shardID, replicaID))
+func (a *Agent) shardLeaderSet(shardID, replicaID, term uint64) (err error) {
+	_, err = a.primePropose(newCmdShardLeaderSet(shardID, replicaID, term))
 	if err == nil {
 		a.log.Infof("Shard %05d leader set to %05d", shardID, replicaID)
 	}
