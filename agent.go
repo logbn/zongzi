@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net"
 	"regexp"
 	"sort"
 	"strings"
@@ -449,6 +450,27 @@ func (a *Agent) stopReplica(cfg ReplicaConfig) (err error) {
 	return
 }
 
+func (a *Agent) gossipIP(peerApiAddr string) (ipAddr string, err error) {
+	parts := strings.Split(peerApiAddr, ":")
+	if len(parts) != 2 {
+		err = fmt.Errorf("%w: %s", ErrInvalidGossipAddr, peerApiAddr)
+		return
+	}
+	if net.ParseIP(parts[0]) != nil {
+		return peerApiAddr, nil
+	}
+	ips, err := net.LookupIP(parts[0])
+	if err != nil {
+		return
+	}
+	if len(ips) == 0 {
+		err = fmt.Errorf("%w: %s", ErrInvalidGossipAddr, peerApiAddr)
+	} else {
+		ipAddr = ips[0].String() + ":" + parts[1]
+	}
+	return
+}
+
 // resolvePeerGossipSeed resolves peer api address list to peer gossip address list
 func (a *Agent) resolvePeerGossipSeed() (gossip []string, err error) {
 	a.wg.Add(1)
@@ -457,7 +479,12 @@ func (a *Agent) resolvePeerGossipSeed() (gossip []string, err error) {
 		gossip = gossip[:0]
 		for _, peerApiAddr := range a.peers {
 			if peerApiAddr == a.advertiseAddress {
-				gossip = append(gossip, a.hostConfig.Gossip.AdvertiseAddress)
+				ipAddr, err := a.gossipIP(a.hostConfig.Gossip.AdvertiseAddress)
+				if err == nil {
+					gossip = append(gossip, ipAddr)
+				} else {
+					a.log.Warningf(err.Error())
+				}
 				continue
 			}
 			var res *internal.ProbeResponse
@@ -465,7 +492,12 @@ func (a *Agent) resolvePeerGossipSeed() (gossip []string, err error) {
 			defer cancel()
 			res, err = a.grpcClientPool.get(peerApiAddr).Probe(ctx, &internal.ProbeRequest{})
 			if err == nil && res != nil {
-				gossip = append(gossip, res.GossipAdvertiseAddress)
+				ipAddr, err := a.gossipIP(res.GossipAdvertiseAddress)
+				if err == nil {
+					gossip = append(gossip, ipAddr)
+				} else {
+					a.log.Warningf(err.Error())
+				}
 			} else if err != nil && !strings.HasSuffix(err.Error(), `connect: connection refused"`) {
 				a.log.Warningf("No probe response for %s %+v %v", peerApiAddr, res, err.Error())
 			}

@@ -133,6 +133,7 @@ var (
 	ErrHostNotFound      = fmt.Errorf(`Host not found`)
 	ErrIDOutOfRange      = fmt.Errorf(`ID out of range`)
 	ErrInvalidFactory    = fmt.Errorf(`Invalid Factory`)
+	ErrInvalidGossipAddr = fmt.Errorf(`Invalid gossip address`)
 	ErrReplicaNotActive  = fmt.Errorf("Replica not active")
 	ErrReplicaNotAllowed = fmt.Errorf("Replica not allowed")
 	ErrReplicaNotFound   = fmt.Errorf("Replica not found")
