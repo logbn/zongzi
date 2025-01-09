@@ -118,8 +118,9 @@ func (c *controllerManager) LeaderUpdated(info LeaderInfo) {
 	if info.ShardID == 0 {
 		c.isLeader.Store(info.LeaderID == info.ReplicaID)
 	}
-	if c.isLeader.Load() {
+	if c.isLeader.Load() && c.agent.Status() == AgentStatus_Ready && info.LeaderID != 0 {
 		c.agent.shardLeaderSet(info.ShardID, info.LeaderID, info.Term)
+		c.log.Warningf("[%05d:%05d] Leader Set: %d (term %d)", info.ShardID, info.ReplicaID, info.LeaderID, info.Term)
 	}
 }
 

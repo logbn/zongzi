@@ -37,7 +37,6 @@ var (
 		NodeHostDir:    "/var/lib/zongzi/raft",
 		RaftAddress:    DefaultRaftAddress,
 		RTTMillisecond: 10,
-		NotifyCommit:   true,
 		WALDir:         "/var/lib/zongzi/wal",
 		Expert: config.ExpertConfig{
 			LogDBFactory: tan.Factory,
@@ -64,6 +63,7 @@ type (
 	ReplicaConfig = config.Config
 	GossipConfig  = config.GossipConfig
 	LogDBConfig   = config.LogDBConfig
+	EngineConfig  = config.EngineConfig
 
 	LeaderInfo          = raftio.LeaderInfo
 	RaftEventListener   = raftio.IRaftEventListener
@@ -83,7 +83,11 @@ type (
 	ReplicaStatus string
 )
 
-var GetLogger = logger.GetLogger
+var (
+	GetLogger = logger.GetLogger
+
+	GetDefaultEngineConfig = config.GetDefaultEngineConfig
+)
 
 const (
 	LogLevelCritical = logger.CRITICAL
@@ -269,6 +273,9 @@ func SetLogLevel(level LogLevel) {
 	logger.GetLogger("rsm").SetLevel(level)
 	logger.GetLogger("transport").SetLevel(level)
 	logger.GetLogger("zongzi").SetLevel(level)
+	logger.GetLogger("tan").SetLevel(level)
+	logger.GetLogger("registry").SetLevel(level)
+	logger.GetLogger("config").SetLevel(level)
 }
 
 // SetLogLevelDebug sets a debug log level for most loggers.
