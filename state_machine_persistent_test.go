@@ -59,8 +59,9 @@ var _ StateMachinePersistent = (*mockStateMachinePersistent)(nil)
 type mockStateMachinePersistent struct {
 	mockOpen                func(stopc <-chan struct{}) (index uint64, err error)
 	mockUpdate              func(commands []Entry) []Entry
-	mockQuery               func(ctx context.Context, data []byte) *Result
-	mockWatch               func(ctx context.Context, data []byte, result chan<- *Result)
+	mockQuery               func(ctx context.Context, query []byte) *Result
+	mockStream              func(ctx context.Context, query []byte, result chan<- *Result)
+	mockWatch               func(ctx context.Context, query <-chan []byte, result chan<- *Result)
 	mockPrepareSnapshot     func() (cursor any, err error)
 	mockSaveSnapshot        func(cursor any, w io.Writer, close <-chan struct{}) error
 	mockRecoverFromSnapshot func(r io.Reader, close <-chan struct{}) error
@@ -76,12 +77,16 @@ func (shim *mockStateMachinePersistent) Update(commands []Entry) []Entry {
 	return shim.mockUpdate(commands)
 }
 
-func (shim *mockStateMachinePersistent) Query(ctx context.Context, data []byte) *Result {
-	return shim.mockQuery(ctx, data)
+func (shim *mockStateMachinePersistent) Query(ctx context.Context, query []byte) *Result {
+	return shim.mockQuery(ctx, query)
 }
 
-func (shim *mockStateMachinePersistent) Watch(ctx context.Context, data []byte, result chan<- *Result) {
-	shim.mockWatch(ctx, data, result)
+func (shim *mockStateMachinePersistent) Stream(ctx context.Context, query []byte, result chan<- *Result) {
+	shim.mockStream(ctx, query, result)
+}
+
+func (shim *mockStateMachinePersistent) Watch(ctx context.Context, query <-chan []byte, result chan<- *Result) {
+	shim.mockWatch(ctx, query, result)
 }
 
 func (shim *mockStateMachinePersistent) Sync() error {

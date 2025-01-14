@@ -29,6 +29,7 @@ const (
 	Internal_Apply_FullMethodName   = "/zongzi.Internal/Apply"
 	Internal_Commit_FullMethodName  = "/zongzi.Internal/Commit"
 	Internal_Read_FullMethodName    = "/zongzi.Internal/Read"
+	Internal_Stream_FullMethodName  = "/zongzi.Internal/Stream"
 	Internal_Watch_FullMethodName   = "/zongzi.Internal/Watch"
 )
 
@@ -61,8 +62,10 @@ type InternalClient interface {
 	Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*CommitResponse, error)
 	// Read provides unary request/response query forwarding
 	Read(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*ReadResponse, error)
-	// Watch provides streaming query response forwarding
-	Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (Internal_WatchClient, error)
+	// Stream provides streaming query response forwarding
+	Stream(ctx context.Context, in *StreamRequest, opts ...grpc.CallOption) (Internal_StreamClient, error)
+	// Watch provides streaming response forwarding for queries and proposals
+	Watch(ctx context.Context, opts ...grpc.CallOption) (Internal_WatchClient, error)
 }
 
 type internalClient struct {
@@ -163,12 +166,12 @@ func (c *internalClient) Read(ctx context.Context, in *ReadRequest, opts ...grpc
 	return out, nil
 }
 
-func (c *internalClient) Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (Internal_WatchClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Internal_ServiceDesc.Streams[0], Internal_Watch_FullMethodName, opts...)
+func (c *internalClient) Stream(ctx context.Context, in *StreamRequest, opts ...grpc.CallOption) (Internal_StreamClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Internal_ServiceDesc.Streams[0], Internal_Stream_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &internalWatchClient{stream}
+	x := &internalStreamClient{stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -178,13 +181,44 @@ func (c *internalClient) Watch(ctx context.Context, in *WatchRequest, opts ...gr
 	return x, nil
 }
 
+type Internal_StreamClient interface {
+	Recv() (*StreamResponse, error)
+	grpc.ClientStream
+}
+
+type internalStreamClient struct {
+	grpc.ClientStream
+}
+
+func (x *internalStreamClient) Recv() (*StreamResponse, error) {
+	m := new(StreamResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *internalClient) Watch(ctx context.Context, opts ...grpc.CallOption) (Internal_WatchClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Internal_ServiceDesc.Streams[1], Internal_Watch_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &internalWatchClient{stream}
+	return x, nil
+}
+
 type Internal_WatchClient interface {
+	Send(*WatchRequest) error
 	Recv() (*WatchResponse, error)
 	grpc.ClientStream
 }
 
 type internalWatchClient struct {
 	grpc.ClientStream
+}
+
+func (x *internalWatchClient) Send(m *WatchRequest) error {
+	return x.ClientStream.SendMsg(m)
 }
 
 func (x *internalWatchClient) Recv() (*WatchResponse, error) {
@@ -224,8 +258,10 @@ type InternalServer interface {
 	Commit(context.Context, *CommitRequest) (*CommitResponse, error)
 	// Read provides unary request/response query forwarding
 	Read(context.Context, *ReadRequest) (*ReadResponse, error)
-	// Watch provides streaming query response forwarding
-	Watch(*WatchRequest, Internal_WatchServer) error
+	// Stream provides streaming query response forwarding
+	Stream(*StreamRequest, Internal_StreamServer) error
+	// Watch provides streaming response forwarding for queries and proposals
+	Watch(Internal_WatchServer) error
 	mustEmbedUnimplementedInternalServer()
 }
 
@@ -263,7 +299,10 @@ func (UnimplementedInternalServer) Commit(context.Context, *CommitRequest) (*Com
 func (UnimplementedInternalServer) Read(context.Context, *ReadRequest) (*ReadResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Read not implemented")
 }
-func (UnimplementedInternalServer) Watch(*WatchRequest, Internal_WatchServer) error {
+func (UnimplementedInternalServer) Stream(*StreamRequest, Internal_StreamServer) error {
+	return status.Errorf(codes.Unimplemented, "method Stream not implemented")
+}
+func (UnimplementedInternalServer) Watch(Internal_WatchServer) error {
 	return status.Errorf(codes.Unimplemented, "method Watch not implemented")
 }
 func (UnimplementedInternalServer) mustEmbedUnimplementedInternalServer() {}
@@ -459,16 +498,34 @@ func _Internal_Read_Handler(srv interface{}, ctx context.Context, dec func(inter
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Internal_Watch_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(WatchRequest)
+func _Internal_Stream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(StreamRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(InternalServer).Watch(m, &internalWatchServer{stream})
+	return srv.(InternalServer).Stream(m, &internalStreamServer{stream})
+}
+
+type Internal_StreamServer interface {
+	Send(*StreamResponse) error
+	grpc.ServerStream
+}
+
+type internalStreamServer struct {
+	grpc.ServerStream
+}
+
+func (x *internalStreamServer) Send(m *StreamResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _Internal_Watch_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(InternalServer).Watch(&internalWatchServer{stream})
 }
 
 type Internal_WatchServer interface {
 	Send(*WatchResponse) error
+	Recv() (*WatchRequest, error)
 	grpc.ServerStream
 }
 
@@ -478,6 +535,14 @@ type internalWatchServer struct {
 
 func (x *internalWatchServer) Send(m *WatchResponse) error {
 	return x.ServerStream.SendMsg(m)
+}
+
+func (x *internalWatchServer) Recv() (*WatchRequest, error) {
+	m := new(WatchRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // Internal_ServiceDesc is the grpc.ServiceDesc for Internal service.
@@ -530,9 +595,15 @@ var Internal_ServiceDesc = grpc.ServiceDesc{
 	},
 	Streams: []grpc.StreamDesc{
 		{
+			StreamName:    "Stream",
+			Handler:       _Internal_Stream_Handler,
+			ServerStreams: true,
+		},
+		{
 			StreamName:    "Watch",
 			Handler:       _Internal_Watch_Handler,
 			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "zongzi.proto",

@@ -12,6 +12,8 @@ type grpcClientErr struct {
 	err error
 }
 
+var _ internal.InternalClient = new(grpcClientErr)
+
 func (c *grpcClientErr) Ping(ctx context.Context, in *internal.PingRequest, opts ...grpc.CallOption) (*internal.PingResponse, error) {
 	return nil, c.err
 }
@@ -52,6 +54,10 @@ func (c *grpcClientErr) Read(ctx context.Context, in *internal.ReadRequest, opts
 	return nil, c.err
 }
 
-func (c *grpcClientErr) Watch(ctx context.Context, in *internal.WatchRequest, opts ...grpc.CallOption) (internal.Internal_WatchClient, error) {
+func (c *grpcClientErr) Stream(ctx context.Context, in *internal.StreamRequest, opts ...grpc.CallOption) (internal.Internal_StreamClient, error) {
+	return nil, c.err
+}
+
+func (c *grpcClientErr) Watch(ctx context.Context, opts ...grpc.CallOption) (internal.Internal_WatchClient, error) {
 	return nil, c.err
 }

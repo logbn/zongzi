@@ -27,7 +27,8 @@ func stateMachineFactoryShim(fn StateMachineFactory) statemachine.CreateConcurre
 type StateMachine interface {
 	Update(entries []Entry) []Entry
 	Query(ctx context.Context, query []byte) *Result
-	Watch(ctx context.Context, query []byte, result chan<- *Result)
+	Stream(ctx context.Context, query []byte, result chan<- *Result)
+	Watch(ctx context.Context, query <-chan []byte, result chan<- *Result)
 	PrepareSnapshot() (cursor any, err error)
 	SaveSnapshot(cursor any, w io.Writer, c SnapshotFileCollection, close <-chan struct{}) error
 	RecoverFromSnapshot(r io.Reader, f []SnapshotFile, close <-chan struct{}) error
@@ -53,6 +54,10 @@ func (shim *stateMachineShim) Update(entries []Entry) (responses []Entry, err er
 func (shim *stateMachineShim) Lookup(query any) (res any, err error) {
 	if q, ok := query.(*lookupQuery); ok {
 		res = shim.sm.Query(q.ctx, q.data)
+		return
+	}
+	if q, ok := query.(*streamQuery); ok {
+		shim.sm.Stream(q.ctx, q.data, q.result)
 		return
 	}
 	if q, ok := query.(*watchQuery); ok {

@@ -24,7 +24,8 @@ type StateMachinePersistent interface {
 	Open(stopc <-chan struct{}) (index uint64, err error)
 	Update(entries []Entry) []Entry
 	Query(ctx context.Context, query []byte) *Result
-	Watch(ctx context.Context, query []byte, result chan<- *Result)
+	Stream(ctx context.Context, query []byte, result chan<- *Result)
+	Watch(ctx context.Context, query <-chan []byte, result chan<- *Result)
 	PrepareSnapshot() (cursor any, err error)
 	SaveSnapshot(cursor any, w io.Writer, close <-chan struct{}) error
 	RecoverFromSnapshot(r io.Reader, close <-chan struct{}) error
@@ -55,6 +56,10 @@ func (shim *stateMachinePersistentShim) Update(entries []Entry) (responses []Ent
 func (shim *stateMachinePersistentShim) Lookup(query any) (res any, err error) {
 	if q, ok := query.(*lookupQuery); ok {
 		res = shim.sm.Query(q.ctx, q.data)
+		return
+	}
+	if q, ok := query.(*streamQuery); ok {
+		shim.sm.Stream(q.ctx, q.data, q.result)
 		return
 	}
 	if q, ok := query.(*watchQuery); ok {

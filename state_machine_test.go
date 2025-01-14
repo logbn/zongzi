@@ -126,8 +126,9 @@ var _ StateMachine = (*mockStateMachine)(nil)
 
 type mockStateMachine struct {
 	mockUpdate              func(commands []Entry) []Entry
-	mockQuery               func(ctx context.Context, data []byte) *Result
-	mockWatch               func(ctx context.Context, data []byte, result chan<- *Result)
+	mockQuery               func(ctx context.Context, query []byte) *Result
+	mockWatch               func(ctx context.Context, query <-chan []byte, result chan<- *Result)
+	mockStream              func(ctx context.Context, query []byte, result chan<- *Result)
 	mockPrepareSnapshot     func() (cursor any, err error)
 	mockSaveSnapshot        func(cursor any, w io.Writer, c SnapshotFileCollection, close <-chan struct{}) error
 	mockRecoverFromSnapshot func(r io.Reader, f []SnapshotFile, close <-chan struct{}) error
@@ -138,12 +139,16 @@ func (shim *mockStateMachine) Update(commands []Entry) []Entry {
 	return shim.mockUpdate(commands)
 }
 
-func (shim *mockStateMachine) Query(ctx context.Context, data []byte) *Result {
-	return shim.mockQuery(ctx, data)
+func (shim *mockStateMachine) Query(ctx context.Context, query []byte) *Result {
+	return shim.mockQuery(ctx, query)
 }
 
-func (shim *mockStateMachine) Watch(ctx context.Context, data []byte, result chan<- *Result) {
-	shim.mockWatch(ctx, data, result)
+func (shim *mockStateMachine) Watch(ctx context.Context, query <-chan []byte, result chan<- *Result) {
+	shim.mockWatch(ctx, query, result)
+}
+
+func (shim *mockStateMachine) Stream(ctx context.Context, query []byte, result chan<- *Result) {
+	shim.mockStream(ctx, query, result)
 }
 
 func (shim *mockStateMachine) PrepareSnapshot() (cursor any, err error) {

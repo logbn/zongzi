@@ -304,7 +304,7 @@ func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, op string, stal
 				defer cancel()
 				val, _, err = client.Read(ctx, shard.ID, bytes.Repeat([]byte("test"), i+1), stale)
 				assert.Nil(t, err)
-			} else if op == "watch" {
+			} else if op == "stream" {
 				res := make(chan *Result)
 				done := make(chan bool)
 				n := uint64(0)
@@ -325,7 +325,7 @@ func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, op string, stal
 				}()
 				ctx, cancel := context.WithTimeout(context.Background(), raftTimeout)
 				defer cancel()
-				err = client.Watch(ctx, shard.ID, bytes.Repeat([]byte("test"), i+1), res, stale)
+				err = client.Stream(ctx, shard.ID, bytes.Repeat([]byte("test"), i+1), res, stale)
 				close(done)
 				wg.Wait()
 				assert.Equal(t, uint64((i+1)*4), n)
@@ -367,7 +367,7 @@ func runAgentSubTestByShard(t *testing.T, agents []*Agent, shard Shard, op strin
 			val, _, err = client.Apply(ctx, bytes.Repeat([]byte("test"), i+1))
 		} else if op == "query" {
 			val, _, err = client.Read(ctx, bytes.Repeat([]byte("test"), i+1), stale)
-		} else if op == "watch" {
+		} else if op == "stream" {
 			res := make(chan *Result)
 			done := make(chan bool)
 			n := uint64(0)
@@ -386,7 +386,7 @@ func runAgentSubTestByShard(t *testing.T, agents []*Agent, shard Shard, op strin
 					}
 				}
 			}()
-			err = client.Watch(ctx, bytes.Repeat([]byte("test"), i+1), res, stale)
+			err = client.Stream(ctx, bytes.Repeat([]byte("test"), i+1), res, stale)
 			close(done)
 			wg.Wait()
 			assert.Equal(t, uint64((i+1)*4), n)
@@ -425,7 +425,7 @@ var mockConcurrentSM = func(shardID uint64, replicaID uint64) StateMachine {
 		mockQuery: func(ctx context.Context, data []byte) *Result {
 			return &Result{Value: uint64(len(data))}
 		},
-		mockWatch: func(ctx context.Context, data []byte, results chan<- *Result) {
+		mockStream: func(ctx context.Context, data []byte, results chan<- *Result) {
 			for i := 0; i < len(data); i++ {
 				results <- &Result{Value: uint64(i)}
 			}
@@ -466,7 +466,7 @@ var mockPersistentSM = func(shardID uint64, replicaID uint64) StateMachinePersis
 		mockQuery: func(ctx context.Context, data []byte) *Result {
 			return &Result{Value: uint64(len(data))}
 		},
-		mockWatch: func(ctx context.Context, data []byte, results chan<- *Result) {
+		mockStream: func(ctx context.Context, data []byte, results chan<- *Result) {
 			for i := 0; i < len(data); i++ {
 				results <- &Result{Value: uint64(i)}
 			}

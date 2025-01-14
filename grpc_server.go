@@ -2,6 +2,8 @@ package zongzi
 
 import (
 	"context"
+	"io"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -195,9 +197,9 @@ func (s *grpcServer) Read(ctx context.Context, req *internal.ReadRequest) (res *
 	return
 }
 
-func (s *grpcServer) Watch(req *internal.WatchRequest, srv internal.Internal_WatchServer) (err error) {
-	// s.agent.log.Debugf(`gRPC Req Query: %#v`, req)
-	query := getWatchQuery()
+func (s *grpcServer) Stream(req *internal.StreamRequest, srv internal.Internal_StreamServer) (err error) {
+	// s.agent.log.Debugf(`gRPC Create Stream: %#v`, req)
+	query := getStreamQuery()
 	query.ctx = srv.Context()
 	query.data = req.Data
 	query.result = make(chan *Result)
@@ -210,12 +212,12 @@ func (s *grpcServer) Watch(req *internal.WatchRequest, srv internal.Internal_Wat
 		for {
 			select {
 			case result := <-query.result:
-				err := srv.Send(&internal.WatchResponse{
+				err := srv.Send(&internal.StreamResponse{
 					Value: result.Value,
 					Data:  result.Data,
 				})
 				if err != nil {
-					s.agent.log.Errorf(`Error sending watch response: %s`, err.Error())
+					s.agent.log.Errorf(`Error sending stream response: %s`, err.Error())
 				}
 				ReleaseResult(result)
 			case <-done:
@@ -230,6 +232,85 @@ func (s *grpcServer) Watch(req *internal.WatchRequest, srv internal.Internal_Wat
 	}
 	close(done)
 	wg.Wait()
+	return
+}
+
+func (s *grpcServer) Watch(srv internal.Internal_WatchServer) (err error) {
+	// s.agent.log.Debugf(`gRPC Create Watch`)
+	log.Println("grpcServer.Watch(main): 1")
+	query := getWatchQuery()
+	query.ctx = srv.Context()
+	query.data = make(chan []byte)
+	query.result = make(chan *Result)
+	defer query.Release()
+	log.Println("grpcServer.Watch(main): 2")
+	var shardID uint64
+	var done = make(chan bool)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		log.Println("grpcServer.Watch(result): 1")
+		for {
+			log.Println("grpcServer.Watch(result): 2")
+			select {
+			case result := <-query.result:
+				log.Println("grpcServer.Watch(result): 3a")
+				err := srv.Send(&internal.WatchResponse{
+					Value: result.Value,
+					Data:  result.Data,
+				})
+				if err != nil {
+					s.agent.log.Errorf(`Error forwarding watch response: %s`, err.Error())
+				}
+				ReleaseResult(result)
+			case <-done:
+				log.Println("grpcServer.Watch(result): 3b")
+				return
+			}
+			log.Println("grpcServer.Watch(result): 4")
+		}
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		log.Println("grpcServer.Watch(recv): 1")
+		for {
+			log.Println("grpcServer.Watch(recv): 2")
+			req, err := srv.Recv()
+			if err != nil {
+				if err != io.EOF {
+					s.agent.log.Errorf(`Error forwarding watch request: %s`, err.Error())
+				}
+				break
+			}
+			if shardID == 0 {
+				shardID = req.ShardId
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					log.Println("grpcServer.Watch(read): 1")
+					ctx, cancel := context.WithTimeout(srv.Context(), time.Hour)
+					defer cancel()
+					if _, err = s.agent.host.SyncRead(ctx, req.ShardId, query); err != nil {
+						log.Println("grpcServer.Watch(read): 2a - " + err.Error())
+					}
+					close(done)
+					log.Println("grpcServer.Watch(read): 3")
+				}()
+			}
+			if shardID != req.ShardId {
+				log.Println("INVALID SHARD ID")
+			}
+			log.Println("grpcServer.Watch(recv): 3")
+			query.data <- req.Data
+			log.Println("grpcServer.Watch(recv): 4")
+		}
+	}()
+	select {
+	case <-srv.Context().Done():
+	case <-done:
+	}
 	return
 }
 

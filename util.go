@@ -161,9 +161,14 @@ type (
 		ctx  context.Context
 		data []byte
 	}
-	watchQuery struct {
+	streamQuery struct {
 		ctx    context.Context
 		data   []byte
+		result chan *Result
+	}
+	watchQuery struct {
+		ctx    context.Context
+		data   chan []byte
 		result chan *Result
 	}
 )
@@ -187,9 +192,30 @@ func newLookupQuery(ctx context.Context, data []byte) (q *lookupQuery) {
 	return q
 }
 
-func (q *watchQuery) Release() {
+func (q *streamQuery) Release() {
 	q.ctx = nil
 	q.data = q.data[:0]
+	q.result = nil
+	streamQueryPool.Put(q)
+}
+
+var streamQueryPool = sync.Pool{New: func() any { return &streamQuery{} }}
+
+func getStreamQuery() *streamQuery {
+	return streamQueryPool.Get().(*streamQuery)
+}
+
+func newStreamQuery(ctx context.Context, data []byte, result chan *Result) (q *streamQuery) {
+	q = streamQueryPool.Get().(*streamQuery)
+	q.ctx = ctx
+	q.data = data
+	q.result = result
+	return
+}
+
+func (q *watchQuery) Release() {
+	q.ctx = nil
+	q.data = nil
 	q.result = nil
 	watchQueryPool.Put(q)
 }
@@ -200,7 +226,7 @@ func getWatchQuery() *watchQuery {
 	return watchQueryPool.Get().(*watchQuery)
 }
 
-func newWatchQuery(ctx context.Context, data []byte, result chan *Result) (q *watchQuery) {
+func newWatchQuery(ctx context.Context, data chan []byte, result chan *Result) (q *watchQuery) {
 	q = watchQueryPool.Get().(*watchQuery)
 	q.ctx = ctx
 	q.data = data
