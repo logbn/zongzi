@@ -140,6 +140,9 @@ func (s *grpcServer) Apply(ctx context.Context, req *internal.ApplyRequest) (res
 					Value: r.GetResult().Value,
 					Data:  r.GetResult().Data,
 				}
+				// Result cannot be released because ApplyResponse may not be serialized
+				// This occurs as an optimization in hostClient for requests that do not require forwarding
+				// ReleaseResult(r.GetResult())
 			} else if r.Aborted() {
 				err = ErrAborted
 			} else if r.Dropped() {
@@ -190,7 +193,9 @@ func (s *grpcServer) Read(ctx context.Context, req *internal.ReadRequest) (res *
 	if result, ok := r.(*Result); ok && result != nil {
 		res.Value = result.Value
 		res.Data = result.Data
-		ReleaseResult(result)
+		// Result cannot be released because ReadResponse may not be serialized
+		// This occurs as an optimization in hostClient for requests that do not require forwarding
+		// ReleaseResult(result)
 	}
 	return
 }
@@ -217,7 +222,9 @@ func (s *grpcServer) Watch(req *internal.WatchRequest, srv internal.Internal_Wat
 				if err != nil {
 					s.agent.log.Errorf(`Error sending watch response: %s`, err.Error())
 				}
-				ReleaseResult(result)
+				// Result cannot be released because WatchResponse may not be serialized
+				// This occurs as an optimization in hostClient for requests that do not require forwarding
+				// ReleaseResult(result)
 			case <-done:
 				return
 			}
