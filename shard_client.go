@@ -139,7 +139,10 @@ func (c *client) Read(ctx context.Context, query []byte, stale bool) (value uint
 		}
 	}
 	if c.writeToLeader {
-		if leader, ok := c.manager.clientLeader[c.shardID]; ok {
+		c.manager.mutex.RLock()
+		leader, ok := c.manager.clientLeader[c.shardID]
+		c.manager.mutex.RUnlock()
+		if ok {
 			return leader.client.Read(ctx, c.shardID, query, stale)
 		}
 	}
@@ -183,7 +186,10 @@ func (c *client) Watch(ctx context.Context, query []byte, results chan<- *Result
 		}
 	}
 	if c.writeToLeader {
-		if leader, ok := c.manager.clientLeader[c.shardID]; ok {
+		c.manager.mutex.RLock()
+		leader, ok := c.manager.clientLeader[c.shardID]
+		c.manager.mutex.RUnlock()
+		if ok {
 			return leader.client.Watch(ctx, c.shardID, query, results, stale)
 		}
 	}
