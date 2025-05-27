@@ -88,6 +88,14 @@ func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent
 	a.hostConfig.Gossip.Meta = []byte(a.advertiseAddress)
 	a.grpcClientPool = newGrpcClientPool(1e4)
 	a.grpcServer = newGrpcServer(a.bindAddress)
+	if parts := strings.Split(a.advertiseAddress, ":"); len(parts) > 1 {
+		// Append port from advertise addr to peer list for convenience
+		for i, addr := range peers {
+			if !strings.Contains(addr, ":") {
+				peers[i] = fmt.Sprintf("%s:%s", addr, parts[1])
+			}
+		}
+	}
 	return a, nil
 }
 
