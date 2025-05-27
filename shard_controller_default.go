@@ -199,7 +199,7 @@ func (c *shardControllerDefault) Reconcile(state *State, shard Shard, controls C
 	// Add missing replicas
 	for _, group := range groups {
 		var n = missingReplicaCount[group]
-		for i := 0; i < n; i++ {
+		for range n {
 			if len(matches[group]) == 0 {
 				err = fmt.Errorf(`No more matching hosts`)
 				break
@@ -241,7 +241,7 @@ func (c *shardControllerDefault) Reconcile(state *State, shard Shard, controls C
 					// Host already occupied
 					continue
 				}
-				if c.matchTagFilter(host.Tags, varyTags) {
+				if len(varyTags) == 0 || c.matchTagFilter(host.Tags, varyTags) {
 					replicaID, err = controls.Create(host.ID, shard.ID, group != `member`)
 					if err != nil {
 						return
