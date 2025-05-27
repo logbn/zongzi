@@ -376,6 +376,14 @@ func (a *Agent) Stop() {
 }
 
 // hostID returns host ID if host is initialized, otherwise empty string.
+func (a *Agent) HostID() (id string) {
+	if a.host != nil {
+		return a.host.ID()
+	}
+	return ""
+}
+
+// hostID returns host ID if host is initialized, otherwise empty string.
 func (a *Agent) hostID() (id string) {
 	if a.host != nil {
 		return a.host.ID()
