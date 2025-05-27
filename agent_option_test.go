@@ -7,11 +7,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestWithApiAddress(t *testing.T) {
+func TestWithAddrApi(t *testing.T) {
 	t.Run(`withBind`, func(t *testing.T) {
 		a, err := NewAgent(`test001`, nil)
 		require.Nil(t, err)
-		o := WithApiAddress(`127.0.0.1:80000`)
+		o := WithAddrApi(`127.0.0.1:80000`)
 		o(a)
 		assert.Equal(t, `127.0.0.1:80000`, a.advertiseAddress)
 		assert.Equal(t, `0.0.0.0:80000`, a.bindAddress)
@@ -19,7 +19,7 @@ func TestWithApiAddress(t *testing.T) {
 	t.Run(`withoutBind`, func(t *testing.T) {
 		a, err := NewAgent(`test001`, nil)
 		require.Nil(t, err)
-		o := WithApiAddress(`127.0.0.1:80001`, `127.0.0.1:80002`)
+		o := WithAddrApi(`127.0.0.1:80001`, `127.0.0.1:80002`)
 		o(a)
 		assert.Equal(t, `127.0.0.1:80001`, a.advertiseAddress)
 		assert.Equal(t, `127.0.0.1:80002`, a.bindAddress)
@@ -30,7 +30,7 @@ func TestWithGossipAddress(t *testing.T) {
 	t.Run(`with-bind`, func(t *testing.T) {
 		a, err := NewAgent(`test001`, nil)
 		require.Nil(t, err)
-		o := WithGossipAddress(`127.0.0.1:80000`)
+		o := WithAddrGossip(`127.0.0.1:80000`)
 		o(a)
 		assert.Equal(t, `127.0.0.1:80000`, a.hostConfig.Gossip.AdvertiseAddress)
 		assert.Equal(t, `0.0.0.0:80000`, a.hostConfig.Gossip.BindAddress)
@@ -38,7 +38,7 @@ func TestWithGossipAddress(t *testing.T) {
 	t.Run(`without-bind`, func(t *testing.T) {
 		a, err := NewAgent(`test001`, nil)
 		require.Nil(t, err)
-		o := WithGossipAddress(`127.0.0.1:80001`, `127.0.0.1:80002`)
+		o := WithAddrGossip(`127.0.0.1:80001`, `127.0.0.1:80002`)
 		o(a)
 		assert.Equal(t, `127.0.0.1:80001`, a.hostConfig.Gossip.AdvertiseAddress)
 		assert.Equal(t, `127.0.0.1:80002`, a.hostConfig.Gossip.BindAddress)

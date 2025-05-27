@@ -9,7 +9,7 @@ import (
 
 type AgentOption func(*Agent) error
 
-func WithApiAddress(advertiseAddress string, bindAddress ...string) AgentOption {
+func WithAddrApi(advertiseAddress string, bindAddress ...string) AgentOption {
 	return func(a *Agent) error {
 		a.advertiseAddress = advertiseAddress
 		if len(bindAddress) > 0 {
@@ -21,7 +21,7 @@ func WithApiAddress(advertiseAddress string, bindAddress ...string) AgentOption 
 	}
 }
 
-func WithGossipAddress(advertiseAddress string, bindAddress ...string) AgentOption {
+func WithAddrGossip(advertiseAddress string, bindAddress ...string) AgentOption {
 	return func(a *Agent) error {
 		a.hostConfig.Gossip.AdvertiseAddress = advertiseAddress
 		if len(bindAddress) > 0 {
@@ -33,7 +33,7 @@ func WithGossipAddress(advertiseAddress string, bindAddress ...string) AgentOpti
 	}
 }
 
-func WithRaftAddress(raftAddress string, listenAddress ...string) AgentOption {
+func WithAddrRaft(raftAddress string, listenAddress ...string) AgentOption {
 	return func(a *Agent) error {
 		a.hostConfig.RaftAddress = raftAddress
 		if len(listenAddress) > 0 {
@@ -45,14 +45,14 @@ func WithRaftAddress(raftAddress string, listenAddress ...string) AgentOption {
 	}
 }
 
-func WithRaftDir(dir string) AgentOption {
+func WithDirRaft(dir string) AgentOption {
 	return func(a *Agent) error {
 		a.hostConfig.NodeHostDir = dir
 		return nil
 	}
 }
 
-func WithWALDir(dir string) AgentOption {
+func WithDirWAL(dir string) AgentOption {
 	return func(a *Agent) error {
 		a.hostConfig.WALDir = dir
 		return nil

@@ -67,8 +67,7 @@ an astonomically large number. Having a materialized view of the global cluster 
 cluster makes it simple and efficient to derefence a replicaID to the correct host and shard. Dragonboat can't do this
 alone because its cluster state is decentralized.
 
-3. Any host may have at most one active replica of any shard. No host may ever have more than one active replica of
-any shard. This aligns with many Dragonboat host operations like
+3. Any host may have at most one active replica of any shard. This aligns with many Dragonboat host operations like
 [(*NodeHost).StopShard](https://pkg.go.dev/github.com/lni/dragonboat/v4#NodeHost.StopShard) which assumes no more than
 one active replica per shard per host.
 

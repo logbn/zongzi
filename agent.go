@@ -70,8 +70,8 @@ func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent
 	a.controllerManager = newControllerManager(a)
 	a.clientManager = newClientManager(a)
 	for _, opt := range append([]AgentOption{
-		WithApiAddress(DefaultApiAddress),
-		WithGossipAddress(DefaultGossipAddress),
+		WithAddrApi(DefaultApiAddress),
+		WithAddrGossip(DefaultGossipAddress),
 		WithHostConfig(DefaultHostConfig),
 		WithReplicaConfig(DefaultReplicaConfig),
 	}, opts...) {
@@ -341,7 +341,7 @@ func (a *Agent) State(ctx context.Context, fn func(*State)) (err error) {
 	return
 }
 
-// StateMachineRegister registers a non-persistent shard type. Call before Starting agent.
+// StateMachineRegister registers a shard type. Call before Starting agent.
 func (a *Agent) StateMachineRegister(uri string, factory any, config ...ReplicaConfig) (err error) {
 	cfg := DefaultReplicaConfig
 	if len(config) > 0 {

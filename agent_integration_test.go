@@ -32,8 +32,8 @@ func TestAgent(t *testing.T) {
 	start := func(t *testing.T, peers []string, class string, notifyCommit bool, addresses ...[]string) {
 		for i, addr := range addresses {
 			a, err := NewAgent(`test001`, peers,
-				WithApiAddress(addr[0]),
-				WithGossipAddress(addr[2]),
+				WithAddrApi(addr[0]),
+				WithAddrGossip(addr[2]),
 				WithHostConfig(HostConfig{
 					WALDir:         fmt.Sprintf(basedir+`/agent-%d/wal`, len(agents)),
 					NodeHostDir:    fmt.Sprintf(basedir+`/agent-%d/raft`, len(agents)),

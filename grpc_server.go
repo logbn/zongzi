@@ -27,6 +27,44 @@ func newGrpcServer(listenAddr string, opts ...grpc.ServerOption) *grpcServer {
 	}
 }
 
+func (s *grpcServer) Start(a *Agent) error {
+	// a.log.Errorf("Starting gRPC server on %s", s.listenAddr)
+	s.agent = a
+	lis, err := net.Listen("tcp", s.listenAddr)
+	if err != nil {
+		return err
+	}
+	// https://github.com/grpc/grpc-go/tree/master/examples/features/authentication
+	// opts = append(opts, grpc.UnaryInterceptor(ensureValidToken))
+	s.server = grpc.NewServer(s.serverOpts...)
+	internal.RegisterInternalServer(s.server, s)
+	var done = make(chan bool)
+	go func() {
+		err = s.server.Serve(lis)
+		close(done)
+	}()
+	select {
+	case <-a.ctx.Done():
+	case <-done:
+	}
+	return err
+}
+
+func (s *grpcServer) Stop() {
+	if s.server != nil {
+		var ch = make(chan bool)
+		go func() {
+			s.server.GracefulStop()
+			close(ch)
+		}()
+		select {
+		case <-ch:
+		case <-time.After(5 * time.Second):
+			s.server.Stop()
+		}
+	}
+}
+
 func (s *grpcServer) Ping(ctx context.Context,
 	req *internal.PingRequest,
 ) (resp *internal.PingResponse, err error) {
@@ -260,42 +298,4 @@ func (s *grpcServer) Watch(req *internal.WatchRequest, srv internal.Internal_Wat
 	close(done)
 	wg.Wait()
 	return
-}
-
-func (s *grpcServer) Start(a *Agent) error {
-	// a.log.Errorf("Starting gRPC server on %s", s.listenAddr)
-	s.agent = a
-	lis, err := net.Listen("tcp", s.listenAddr)
-	if err != nil {
-		return err
-	}
-	// https://github.com/grpc/grpc-go/tree/master/examples/features/authentication
-	// opts = append(opts, grpc.UnaryInterceptor(ensureValidToken))
-	s.server = grpc.NewServer(s.serverOpts...)
-	internal.RegisterInternalServer(s.server, s)
-	var done = make(chan bool)
-	go func() {
-		err = s.server.Serve(lis)
-		close(done)
-	}()
-	select {
-	case <-a.ctx.Done():
-	case <-done:
-	}
-	return err
-}
-
-func (s *grpcServer) Stop() {
-	if s.server != nil {
-		var ch = make(chan bool)
-		go func() {
-			s.server.GracefulStop()
-			close(ch)
-		}()
-		select {
-		case <-ch:
-		case <-time.After(5 * time.Second):
-			s.server.Stop()
-		}
-	}
 }

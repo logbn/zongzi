@@ -23,6 +23,8 @@ type client struct {
 	writeToLeader bool
 }
 
+var _ ShardClient = new(client)
+
 func newClient(manager *clientManager, shardID uint64, opts ...ClientOption) (c *client, err error) {
 	c = &client{
 		manager: manager,
