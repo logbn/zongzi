@@ -110,7 +110,6 @@ func (c *controllerManager) tick() {
 		// c.agent.dumpState()
 		c.index = index
 	}
-	return
 }
 
 func (c *controllerManager) LeaderUpdated(info LeaderInfo) {

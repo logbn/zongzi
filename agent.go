@@ -331,12 +331,15 @@ func (a *Agent) Start(ctx context.Context) (err error) {
 //
 // State read will be stale (non-linearizable) when ctx is nil.
 func (a *Agent) State(ctx context.Context, fn func(*State)) (err error) {
-	if ctx != nil {
-		err = a.index(ctx, a.replicaConfig.ShardID)
-		if err != nil {
-			return
-		}
+	err = a.index(ctx, a.replicaConfig.ShardID)
+	if err != nil {
+		return
 	}
+	fn(a.fsm.state.withTxn(false))
+	return
+}
+
+func (a *Agent) StateLocal(fn func(*State)) (err error) {
 	fn(a.fsm.state.withTxn(false))
 	return
 }
@@ -351,11 +354,11 @@ func (a *Agent) StateMachineRegister(uri string, factory any, config ...ReplicaC
 		Config: cfg,
 		Uri:    uri,
 	}
-	switch factory.(type) {
+	switch f := factory.(type) {
 	case StateMachineFactory:
-		t.StateMachineFactory = factory.(StateMachineFactory)
+		t.StateMachineFactory = f
 	case StateMachinePersistentFactory:
-		t.StateMachinePersistentFactory = factory.(StateMachinePersistentFactory)
+		t.StateMachinePersistentFactory = f
 	default:
 		return ErrInvalidFactory
 	}
@@ -879,7 +882,7 @@ func (a *Agent) findLocalReplicaID(shardID uint64) (id uint64) {
 }
 
 func (a *Agent) dumpState() {
-	a.State(nil, func(state *State) {
+	a.StateLocal(func(state *State) {
 		// Print snapshot
 		buf := bytes.NewBufferString("")
 		state.Save(buf)

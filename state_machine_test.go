@@ -164,6 +164,4 @@ func (shim *mockStateMachine) Close() error {
 
 type mockSnapshotFileCollection struct{}
 
-func (*mockSnapshotFileCollection) AddFile(fileID uint64, path string, metadata []byte) {
-	return
-}
+func (*mockSnapshotFileCollection) AddFile(fileID uint64, path string, metadata []byte) {}

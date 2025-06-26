@@ -80,7 +80,7 @@ func (c *clientManager) tick() {
 	var shardCount int
 	var replicaCount int
 	var pings = map[string]time.Duration{}
-	err = c.agent.State(nil, func(state *State) {
+	err = c.agent.StateLocal(func(state *State) {
 		state.ShardIterateUpdatedAfter(c.index, func(shard Shard) bool {
 			shardCount++
 			index = shard.Updated
@@ -147,7 +147,6 @@ func (c *clientManager) tick() {
 			float64(c.clock.Since(start)/time.Microsecond)/1000)
 		c.index = index
 	}
-	return
 }
 
 func byPingAsc(a, b hostClientPing) int { return cmp.Compare(a.ping, b.ping) }

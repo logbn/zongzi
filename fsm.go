@@ -67,10 +67,9 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 	state := fsm.state.withTxn(true)
 	defer state.commit()
 	// fsm.log.Debugf(`Update: %d %d %s`, entry.Index, state.Index(), string(entry.Cmd))
-	switch cmd.(type) {
+	switch cmd := cmd.(type) {
 	// Host
 	case commandHost:
-		var cmd = cmd.(commandHost)
 		switch cmd.Action {
 		// Put
 		case command_action_put:
@@ -114,7 +113,6 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 		}
 	// Shard
 	case commandShard:
-		var cmd = cmd.(commandShard)
 		switch cmd.Action {
 		// Post
 		case command_action_post:
@@ -203,7 +201,6 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 		}
 	// Replica
 	case commandReplica:
-		var cmd = cmd.(commandReplica)
 		switch cmd.Action {
 		// Post
 		case command_action_post:
