@@ -15,6 +15,9 @@ import (
 	"github.com/lni/dragonboat/v4/statemachine"
 )
 
+// force google.golang.org/genproto v0.0.0-20250303144028-a0af3efb3deb to stay in go.mod
+import _ "google.golang.org/genproto/protobuf/ptype"
+
 const (
 	projectName = "zongzi"
 	projectUri  = "zongzi://github.com/logbn/zongzi"
