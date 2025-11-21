@@ -161,37 +161,6 @@ func (a *Agent) ShardFind(ctx context.Context, id uint64) (shard Shard, err erro
 	return
 }
 
-// ReplicaAwait waits for local shard replica to be ready
-func (a *Agent) ReplicaAwait(ctx context.Context, d time.Duration, shardID uint64) (err error) {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	var replica Replica
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			err = fmt.Errorf("%w: %#v", ErrReplicaNotActive, replica)
-			return
-		default:
-		}
-		err = a.State(ctx, func(state *State) {
-			state.ReplicaIterateByShardID(shardID, func(r Replica) bool {
-				if r.HostID != a.HostID() {
-					return true
-				}
-				replica = r
-				return false
-			})
-		})
-		if replica.Status == ReplicaStatus_Active {
-			break
-		}
-		a.clock.Sleep(250 * time.Millisecond)
-	}
-	return
-}
-
 // ShardUpdate creates a new shard. If shard name option is provided and shard exists, found shard is returned.
 func (a *Agent) ShardUpdate(ctx context.Context, id uint64, opts ...ShardOption) (shard Shard, err error) {
 	var found Shard
