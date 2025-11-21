@@ -119,6 +119,7 @@ func (c *hostController) tick() (err error) {
 			item.Config.ShardID = shard.ID
 			item.Config.ReplicaID = replica.ID
 			item.Config.IsNonVoting = replica.IsNonVoting
+			item.Config.WaitReady = true
 			c.agent.log.Infof("[%05d:%05d] Host Controller: Starting replica: %s", shard.ID, replica.ID, shard.Type)
 			if item.StateMachineFactory != nil {
 				shim := stateMachineFactoryShim(item.StateMachineFactory)
