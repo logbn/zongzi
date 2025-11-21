@@ -6,11 +6,11 @@ import (
 )
 
 const (
-	command_type_host     = "host"
-	command_type_replica  = "replica"
-	command_type_shard    = "shard"
-	command_type_snapshot = "snapshot"
+	command_type_host    = "host"
+	command_type_replica = "replica"
+	command_type_shard   = "shard"
 
+	command_action_touch         = "touch"
 	command_action_del           = "del"
 	command_action_put           = "put"
 	command_action_post          = "post"
@@ -115,6 +115,16 @@ func newCmdShardDel(shardID uint64) (b []byte) {
 	return
 }
 
+func newCmdShardTouch(shardID uint64) (b []byte) {
+	b, _ = json.Marshal(commandShard{command{
+		Action: command_action_touch,
+		Type:   command_type_shard,
+	}, Shard{
+		ID: shardID,
+	}})
+	return
+}
+
 func newCmdReplicaPost(nhid string, shardID uint64, isNonVoting bool) (b []byte) {
 	b, _ = json.Marshal(commandReplica{command{
 		Action: command_action_post,
@@ -175,13 +185,13 @@ func newCmdTagsRemove(subject any, tagList ...string) []byte {
 }
 
 func newCmdTags(action string, subject any, tagList []string) (b []byte) {
-	switch subject.(type) {
+	switch subject := subject.(type) {
 	case Host:
 		b, _ = json.Marshal(commandHost{command{
 			Action: action,
 			Type:   command_type_host,
 		}, Host{
-			ID:   subject.(Host).ID,
+			ID:   subject.ID,
 			Tags: tagMapFromList(tagList),
 		}})
 	case Shard:
@@ -189,7 +199,7 @@ func newCmdTags(action string, subject any, tagList []string) (b []byte) {
 			Action: action,
 			Type:   command_type_shard,
 		}, Shard{
-			ID:   subject.(Shard).ID,
+			ID:   subject.ID,
 			Tags: tagMapFromList(tagList),
 		}})
 	case Replica:
@@ -197,7 +207,7 @@ func newCmdTags(action string, subject any, tagList []string) (b []byte) {
 			Action: action,
 			Type:   command_type_replica,
 		}, Replica{
-			ID:   subject.(Replica).ID,
+			ID:   subject.ID,
 			Tags: tagMapFromList(tagList),
 		}})
 	}

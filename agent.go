@@ -126,6 +126,10 @@ func (a *Agent) ShardCreate(ctx context.Context, uri string, opts ...ShardOption
 		})
 		if ok {
 			shard = found
+			// Triggers shard controller for cover replicas
+			// TODO - Make it so shards can subscribe to host tags
+			//        Maybe rearchitect the whole reconcile process to be more pub/sub
+			_, err = a.primePropose(newCmdShardTouch(shard.ID))
 			return
 		}
 	}

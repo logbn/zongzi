@@ -129,6 +129,14 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			cmd.Shard.Updated = entry.Index
 			state.shardPut(cmd.Shard)
 			entry.Result.Value = cmd.Shard.ID
+		// Touch
+		case command_action_touch:
+			state.shardTouch(cmd.Shard.ID, entry.Index)
+			state.ReplicaIterateByShardID(cmd.Shard.ID, func(r Replica) bool {
+				state.hostTouch(r.HostID, entry.Index)
+				return true
+			})
+			entry.Result.Value = cmd.Shard.ID
 		// Put
 		case command_action_put:
 			if old, ok := state.Shard(cmd.Shard.ID); ok {

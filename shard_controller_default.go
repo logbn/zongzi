@@ -37,39 +37,40 @@ func (c *shardControllerDefault) Reconcile(state *State, shard Shard, controls C
 		if !strings.HasPrefix(tagKey, "placement:") {
 			continue
 		}
-		if tagKey == `placement:vary` {
+		tagKey = tagKey[len("placement:"):]
+		if tagKey == `vary` {
 			// ex: placement:vary=geo:zone
 			vary[tagValue] = true
-		} else if tagKey == `placement:member` {
+		} else if tagKey == `member` {
 			// ex: placement:member=3;geo:region=us-central1
 			parts := strings.Split(tagValue, ";")
 			i, err := strconv.Atoi(parts[0])
 			if err != nil {
-				c.log.Warningf(`Invalid tag placement:member %s %s`, tagKey, err.Error())
+				c.log.Warningf(`Invalid tag placement:%s %s`, tagKey, err.Error())
 				continue
 			}
 			desired[`member`] = i
 			filters[`member`] = parts[1:]
-		} else if strings.HasPrefix(tagKey, `placement:replica:`) {
-			// ex: placement:replica:read=6;host:class=storage-replica
-			group := tagKey[len(`placement:replica:`):]
+		} else if strings.HasPrefix(tagKey, `replica:`) {
+			// ex: placement:replica:read=6;host:class=storage-replica;geo:region=us-central1
+			group := tagKey[len(`replica:`):]
 			if len(group) == 0 {
-				c.log.Warningf(`Invalid tag placement:replica - "%s"`, tagKey)
+				c.log.Warningf(`Invalid tag placement:%s - group name missing.`, tagKey)
 				continue
 			}
 			if group == `member` {
-				c.log.Warningf(`Invalid tag placement:replica - group name "member" is reserved.`)
+				c.log.Warningf(`Invalid tag placement:%s - group name "member" is reserved.`, tagKey)
 				continue
 			}
 			parts := strings.Split(tagValue, ";")
 			i, err := strconv.Atoi(parts[0])
 			if err != nil {
-				c.log.Warningf(`Invalid tag placement:replica %s %s`, tagKey, err.Error())
+				c.log.Warningf(`Invalid tag placement:%s %s`, tagKey, err.Error())
 				continue
 			}
 			desired[group] = i
 			filters[group] = parts[1:]
-		} else if tagKey == `placement:cover` {
+		} else if tagKey == `cover` {
 			// ex: placement:cover=host:class=compute
 			for _, t := range strings.Split(tagValue, ";") {
 				k, v := c.parseTag(t)
@@ -201,7 +202,7 @@ func (c *shardControllerDefault) Reconcile(state *State, shard Shard, controls C
 		var n = missingReplicaCount[group]
 		for range n {
 			if len(matches[group]) == 0 {
-				err = fmt.Errorf(`No more matching hosts`)
+				err = fmt.Errorf(`No more matching hosts for %s`, group)
 				break
 			}
 			// Find the vary tag values with the fewest replicas
@@ -222,8 +223,8 @@ func (c *shardControllerDefault) Reconcile(state *State, shard Shard, controls C
 				err = fmt.Errorf(`Failed to find an available host matching vary criteria`)
 				break
 			}
-			// TODO - Ensure a host is available with the full tag set rather than each individually to avoid pathological edge case w/ multiple vary tags.
-			// Build vary tag set with fewest replicas
+			// TODO - Ensure a host is available with the full tag set rather than each individually to avoid
+			// pathological edge case w/ multiple vary tags. Build vary tag set with fewest replicas
 			var varyTags []string
 			for tagKey, replicaCount := range varyTagCounts {
 				if replicaCount > 0 && group == `member` {
@@ -242,6 +243,7 @@ func (c *shardControllerDefault) Reconcile(state *State, shard Shard, controls C
 					continue
 				}
 				if len(varyTags) == 0 || c.matchTagFilter(host.Tags, varyTags) {
+					// Finally, create a new replica if required and return
 					replicaID, err = controls.Create(host.ID, shard.ID, group != `member`)
 					if err != nil {
 						return

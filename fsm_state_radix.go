@@ -36,19 +36,16 @@ func newFsmStateRadix() *State {
 			},
 			"RaftAddress": {
 				Name:         "RaftAddress",
-				Unique:       false,
 				AllowMissing: true,
 				Indexer:      &memdb.StringFieldIndex{Field: "RaftAddress"},
 			},
 			"Tags": {
 				Name:         "Tags",
-				Unique:       false,
 				AllowMissing: true,
 				Indexer:      &memdb.StringMapFieldIndex{Field: "Tags"},
 			},
 			"Updated": {
 				Name:         "Updated",
-				Unique:       false,
 				AllowMissing: true,
 				Indexer:      &memdb.UintFieldIndex{Field: "Updated"},
 			},
@@ -70,13 +67,11 @@ func newFsmStateRadix() *State {
 			},
 			"Tags": {
 				Name:         "Tags",
-				Unique:       false,
 				AllowMissing: true,
 				Indexer:      &memdb.StringMapFieldIndex{Field: "Tags"},
 			},
 			"Updated": {
 				Name:         "Updated",
-				Unique:       false,
 				AllowMissing: true,
 				Indexer:      &memdb.UintFieldIndex{Field: "Updated"},
 			},
@@ -92,17 +87,14 @@ func newFsmStateRadix() *State {
 			},
 			"HostID": {
 				Name:    "HostID",
-				Unique:  false,
 				Indexer: &memdb.UUIDFieldIndex{Field: "HostID"},
 			},
 			"ShardID": {
 				Name:    "ShardID",
-				Unique:  false,
 				Indexer: &memdb.UintFieldIndex{Field: "ShardID"},
 			},
 			"Tags": {
 				Name:         "Tags",
-				Unique:       false,
 				AllowMissing: true,
 				Indexer:      &memdb.StringMapFieldIndex{Field: "Tags"},
 			},
@@ -138,7 +130,7 @@ func (fsm *State) commit() {
 	fsm.txn.Commit()
 }
 
-func (fsm *State) rollback() {
+func (fsm *State) abort() {
 	fsm.txn.Abort()
 }
 
