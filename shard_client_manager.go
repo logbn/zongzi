@@ -105,9 +105,8 @@ func (c *clientManager) tick() {
 					}
 					pings[replica.HostID] = ping
 				}
-				if replica.IsNonVoting {
-					replicas = append(replicas, hostClientPing{ping.Nanoseconds(), client})
-				} else {
+				replicas = append(replicas, hostClientPing{ping.Nanoseconds(), client})
+				if !replica.IsNonVoting {
 					members = append(members, hostClientPing{ping.Nanoseconds(), client})
 				}
 				if shard.Leader == replica.ID {

@@ -40,7 +40,7 @@ func newClient(manager *clientManager, shardID uint64, opts ...ClientOption) (c 
 
 func (c *client) Index(ctx context.Context) (err error) {
 	c.manager.mutex.RLock()
-	list, ok := c.manager.clientMember[c.shardID]
+	list, ok := c.manager.clientReplica[c.shardID]
 	c.manager.mutex.RUnlock()
 	if !ok {
 		err = ErrShardNotReady
@@ -122,7 +122,7 @@ func (c *client) Read(ctx context.Context, query []byte, stale bool) (value uint
 	var run bool
 	if stale {
 		c.manager.mutex.RLock()
-		list, ok := c.manager.clientMember[c.shardID]
+		list, ok := c.manager.clientReplica[c.shardID]
 		c.manager.mutex.RUnlock()
 		if !ok {
 			err = ErrShardNotReady
@@ -158,10 +158,9 @@ func (c *client) Read(ctx context.Context, query []byte, stale bool) (value uint
 }
 
 func (c *client) Watch(ctx context.Context, query []byte, results chan<- *Result, stale bool) (err error) {
-	var run bool
 	if stale {
 		c.manager.mutex.RLock()
-		list, ok := c.manager.clientMember[c.shardID]
+		list, ok := c.manager.clientReplica[c.shardID]
 		c.manager.mutex.RUnlock()
 		if !ok {
 			err = ErrShardNotReady
@@ -169,14 +168,9 @@ func (c *client) Watch(ctx context.Context, query []byte, results chan<- *Result
 		}
 		el := list.Front()
 		for ; el != nil; el = el.Next() {
-			run = true
-			err = el.Value.Watch(ctx, c.shardID, query, results, stale)
-			if err == nil {
-				break
+			if err = el.Value.Watch(ctx, c.shardID, query, results, stale); err == nil {
+				return
 			}
-		}
-		if run && err == nil {
-			return
 		}
 	}
 	c.manager.mutex.RLock()
