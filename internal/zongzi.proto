@@ -45,7 +45,7 @@ service Internal {
   rpc Watch(WatchRequest) returns (stream WatchResponse) {}
 
   // Stream provides streaming proposal forwarding
-  // rpc Stream(stream Request) returns (stream Response) {}
+  rpc Stream(stream StreamRequest) returns (stream StreamResponse) {}
 }
 
 message PingRequest {}
@@ -123,6 +123,25 @@ message WatchRequest {
   bytes data = 3;
 }
 message WatchResponse {
+  uint64 value = 1;
+  bytes data = 2;
+}
+
+message StreamRequest {
+  oneof request_union {
+    StreamConnect stream_connect = 1;
+    StreamMessage stream_message = 2;
+  }
+}
+message StreamConnect {
+  uint64 shard_id = 1;
+  bool stale = 2;
+}
+message StreamMessage {
+  uint64 shard_id = 1;
+  bytes data = 2;
+}
+message StreamResponse {
   uint64 value = 1;
   bytes data = 2;
 }

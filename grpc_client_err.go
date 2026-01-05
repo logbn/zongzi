@@ -55,3 +55,7 @@ func (c *grpcClientErr) Read(ctx context.Context, in *internal.ReadRequest, opts
 func (c *grpcClientErr) Watch(ctx context.Context, in *internal.WatchRequest, opts ...grpc.CallOption) (internal.Internal_WatchClient, error) {
 	return nil, c.err
 }
+
+func (c *grpcClientErr) Stream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[internal.StreamRequest, internal.StreamResponse], error) {
+	return nil, c.err
+}

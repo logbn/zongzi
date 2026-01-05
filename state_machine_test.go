@@ -128,6 +128,7 @@ type mockStateMachine struct {
 	mockUpdate              func(commands []Entry) []Entry
 	mockQuery               func(ctx context.Context, data []byte) *Result
 	mockWatch               func(ctx context.Context, data []byte, result chan<- *Result)
+	mockStream              func(ctx context.Context, in <-chan []byte, out chan<- *Result)
 	mockPrepareSnapshot     func() (cursor any, err error)
 	mockSaveSnapshot        func(cursor any, w io.Writer, c SnapshotFileCollection, close <-chan struct{}) error
 	mockRecoverFromSnapshot func(r io.Reader, f []SnapshotFile, close <-chan struct{}) error
@@ -144,6 +145,10 @@ func (shim *mockStateMachine) Query(ctx context.Context, data []byte) *Result {
 
 func (shim *mockStateMachine) Watch(ctx context.Context, data []byte, result chan<- *Result) {
 	shim.mockWatch(ctx, data, result)
+}
+
+func (shim *mockStateMachine) Stream(ctx context.Context, in <-chan []byte, out chan<- *Result) {
+	shim.mockStream(ctx, in, out)
 }
 
 func (shim *mockStateMachine) PrepareSnapshot() (cursor any, err error) {

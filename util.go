@@ -56,6 +56,7 @@ var (
 		Quiesce:                 false,
 		SnapshotCompressionType: config.Snappy,
 		SnapshotEntries:         10000,
+		WaitReady:               true,
 	}
 )
 
@@ -147,6 +148,9 @@ var (
 	ErrShardExists       = fmt.Errorf(`Shard already exists`)
 	ErrShardNotFound     = fmt.Errorf(`Shard not found`)
 
+	ErrStreamConnectMissing   = fmt.Errorf(`First message of stream should be connect message`)
+	ErrStreamConnectDuplicate = fmt.Errorf(`Connect message already received`)
+
 	ErrInvalidNumberOfArguments = fmt.Errorf(`Invalid number of arguments`)
 
 	// ErrClusterNameInvalid indicates that the clusterName is invalid
@@ -168,6 +172,11 @@ type (
 		ctx    context.Context
 		data   []byte
 		result chan *Result
+	}
+	streamQuery struct {
+		ctx context.Context
+		in  chan []byte
+		out chan *Result
 	}
 )
 
@@ -208,6 +217,27 @@ func newWatchQuery(ctx context.Context, data []byte, result chan *Result) (q *wa
 	q.ctx = ctx
 	q.data = data
 	q.result = result
+	return
+}
+
+func (q *streamQuery) Release() {
+	q.ctx = nil
+	q.in = nil
+	q.out = nil
+	streamQueryPool.Put(q)
+}
+
+var streamQueryPool = sync.Pool{New: func() any { return &streamQuery{} }}
+
+func getStreamQuery() *streamQuery {
+	return streamQueryPool.Get().(*streamQuery)
+}
+
+func newStreamQuery(ctx context.Context, in chan []byte, out chan *Result) (q *streamQuery) {
+	q = streamQueryPool.Get().(*streamQuery)
+	q.ctx = ctx
+	q.in = in
+	q.out = out
 	return
 }
 

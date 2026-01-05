@@ -13,6 +13,7 @@ type ShardClient interface {
 	Leader() (uint64, uint64)
 	Read(ctx context.Context, query []byte, stale bool) (value uint64, data []byte, err error)
 	Watch(ctx context.Context, query []byte, results chan<- *Result, stale bool) (err error)
+	Stream(ctx context.Context, in <-chan []byte, out chan<- *Result, stale bool) (err error)
 }
 
 // The shard client
@@ -183,6 +184,39 @@ func (c *client) Watch(ctx context.Context, query []byte, results chan<- *Result
 	el := list.Front()
 	for ; el != nil; el = el.Next() {
 		err = el.Value.Watch(ctx, c.shardID, query, results, stale)
+		if err == nil {
+			break
+		}
+	}
+	return
+}
+
+func (c *client) Stream(ctx context.Context, in <-chan []byte, out chan<- *Result, stale bool) (err error) {
+	if stale {
+		c.manager.mutex.RLock()
+		list, ok := c.manager.clientReplica[c.shardID]
+		c.manager.mutex.RUnlock()
+		if !ok {
+			err = ErrShardNotReady
+			return
+		}
+		el := list.Front()
+		for ; el != nil; el = el.Next() {
+			if err = el.Value.Stream(ctx, c.shardID, in, out, stale); err == nil {
+				return
+			}
+		}
+	}
+	c.manager.mutex.RLock()
+	list, ok := c.manager.clientMember[c.shardID]
+	c.manager.mutex.RUnlock()
+	if !ok {
+		err = ErrShardNotReady
+		return
+	}
+	el := list.Front()
+	for ; el != nil; el = el.Next() {
+		err = el.Value.Stream(ctx, c.shardID, in, out, stale)
 		if err == nil {
 			break
 		}

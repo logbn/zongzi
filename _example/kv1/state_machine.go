@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/logbn/zongzi"
 )
@@ -86,6 +87,9 @@ func (fsm *StateMachine) Query(ctx context.Context, data []byte) (result *zongzi
 	}
 	switch query.Op {
 	case queryOpRead:
+		if query.Key == "/timeoutTest" {
+			time.Sleep(15 * time.Minute)
+		}
 		if record, ok := fsm.data[query.Key]; ok {
 			b, _ := json.Marshal(record)
 			result.Value = ResultCodeSuccess

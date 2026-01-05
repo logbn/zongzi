@@ -106,6 +106,18 @@ func (a *Agent) Client(shardID uint64, opts ...ClientOption) (c ShardClient) {
 	return
 }
 
+// ClientByName returns a client for a specific shard.
+func (a *Agent) ClientByName(name string, opts ...ClientOption) (c ShardClient) {
+	var shard Shard
+	a.StateLocal(func(s *State) {
+		shard, _ = s.ShardFindByName(name)
+	})
+	if shard.ID > 0 {
+		c, _ = newClient(a.clientManager, shard.ID, opts...)
+	}
+	return
+}
+
 // ShardCreate creates a new shard. If shard name option is provided and shard exists, found shard is returned.
 func (a *Agent) ShardCreate(ctx context.Context, uri string, opts ...ShardOption) (shard Shard, created bool, err error) {
 	shard = Shard{

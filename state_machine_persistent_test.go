@@ -61,6 +61,7 @@ type mockStateMachinePersistent struct {
 	mockUpdate              func(commands []Entry) []Entry
 	mockQuery               func(ctx context.Context, data []byte) *Result
 	mockWatch               func(ctx context.Context, data []byte, result chan<- *Result)
+	mockStream              func(ctx context.Context, in <-chan []byte, out chan<- *Result)
 	mockPrepareSnapshot     func() (cursor any, err error)
 	mockSaveSnapshot        func(cursor any, w io.Writer, close <-chan struct{}) error
 	mockRecoverFromSnapshot func(r io.Reader, close <-chan struct{}) error
@@ -82,6 +83,10 @@ func (shim *mockStateMachinePersistent) Query(ctx context.Context, data []byte) 
 
 func (shim *mockStateMachinePersistent) Watch(ctx context.Context, data []byte, result chan<- *Result) {
 	shim.mockWatch(ctx, data, result)
+}
+
+func (shim *mockStateMachinePersistent) Stream(ctx context.Context, in <-chan []byte, out chan<- *Result) {
+	shim.mockStream(ctx, in, out)
 }
 
 func (shim *mockStateMachinePersistent) Sync() error {

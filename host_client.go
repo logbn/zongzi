@@ -2,6 +2,8 @@ package zongzi
 
 import (
 	"context"
+	"io"
+	"sync"
 	"time"
 
 	"github.com/benbjohnson/clock"
@@ -43,19 +45,15 @@ func (c *hostClient) ReadIndex(ctx context.Context, shardID uint64) (err error) 
 }
 
 func (c *hostClient) Apply(ctx context.Context, shardID uint64, cmd []byte) (value uint64, data []byte, err error) {
+	var req = &internal.ApplyRequest{
+		ShardId: shardID,
+		Data:    cmd,
+	}
 	var res *internal.ApplyResponse
 	if c.host.ID == c.agent.hostID() {
-		c.agent.log.Debugf(`gRPC hostClient Apply Local: %s`, string(cmd))
-		res, err = c.agent.grpcServer.Apply(ctx, &internal.ApplyRequest{
-			ShardId: shardID,
-			Data:    cmd,
-		})
+		res, err = c.agent.grpcServer.Apply(ctx, req)
 	} else {
-		c.agent.log.Debugf(`gRPC hostClient Apply Remote: %s`, string(cmd))
-		res, err = c.agent.grpcClientPool.get(c.host.ApiAddress).Apply(ctx, &internal.ApplyRequest{
-			ShardId: shardID,
-			Data:    cmd,
-		})
+		res, err = c.agent.grpcClientPool.get(c.host.ApiAddress).Apply(ctx, req)
 	}
 	if err != nil {
 		return
@@ -66,39 +64,29 @@ func (c *hostClient) Apply(ctx context.Context, shardID uint64, cmd []byte) (val
 }
 
 func (c *hostClient) Commit(ctx context.Context, shardID uint64, cmd []byte) (err error) {
-	if c.host.ID == c.agent.hostID() {
-		c.agent.log.Debugf(`gRPC hostClient Commit Local: %s`, string(cmd))
-		_, err = c.agent.grpcServer.Commit(ctx, &internal.CommitRequest{
-			ShardId: shardID,
-			Data:    cmd,
-		})
-	} else {
-		c.agent.log.Debugf(`gRPC hostClient Commit Remote: %s`, string(cmd))
-		_, err = c.agent.grpcClientPool.get(c.host.ApiAddress).Commit(ctx, &internal.CommitRequest{
-			ShardId: shardID,
-			Data:    cmd,
-		})
+	var req = &internal.CommitRequest{
+		ShardId: shardID,
+		Data:    cmd,
 	}
-	if err != nil {
-		return
+	if c.host.ID == c.agent.hostID() {
+		_, err = c.agent.grpcServer.Commit(ctx, req)
+	} else {
+		_, err = c.agent.grpcClientPool.get(c.host.ApiAddress).Commit(ctx, req)
 	}
 	return
 }
 
 func (c *hostClient) Read(ctx context.Context, shardID uint64, query []byte, stale bool) (value uint64, data []byte, err error) {
+	var req = &internal.ReadRequest{
+		ShardId: shardID,
+		Stale:   stale,
+		Data:    query,
+	}
 	var res *internal.ReadResponse
 	if c.host.ID == c.agent.hostID() {
-		res, err = c.agent.grpcServer.Read(ctx, &internal.ReadRequest{
-			ShardId: shardID,
-			Stale:   stale,
-			Data:    query,
-		})
+		res, err = c.agent.grpcServer.Read(ctx, req)
 	} else {
-		res, err = c.agent.grpcClientPool.get(c.host.ApiAddress).Read(ctx, &internal.ReadRequest{
-			ShardId: shardID,
-			Stale:   stale,
-			Data:    query,
-		})
+		res, err = c.agent.grpcClientPool.get(c.host.ApiAddress).Read(ctx, req)
 	}
 	if err != nil {
 		return
@@ -135,19 +123,16 @@ func (s *watchServer) Send(res *internal.WatchResponse) error {
 }
 
 func (c *hostClient) Watch(ctx context.Context, shardID uint64, query []byte, results chan<- *Result, stale bool) (err error) {
+	var req = &internal.WatchRequest{
+		ShardId: shardID,
+		Stale:   stale,
+		Data:    query,
+	}
 	var client internal.Internal_WatchClient
 	if c.host.ID == c.agent.hostID() {
-		err = c.agent.grpcServer.Watch(&internal.WatchRequest{
-			ShardId: shardID,
-			Stale:   stale,
-			Data:    query,
-		}, newWatchServer(ctx, results))
+		err = c.agent.grpcServer.Watch(req, newWatchServer(ctx, results))
 	} else {
-		client, err = c.agent.grpcClientPool.get(c.host.ApiAddress).Watch(ctx, &internal.WatchRequest{
-			ShardId: shardID,
-			Stale:   stale,
-			Data:    query,
-		})
+		client, err = c.agent.grpcClientPool.get(c.host.ApiAddress).Watch(ctx, req)
 		for {
 			res, err := client.Recv()
 			if err != nil {
@@ -158,6 +143,131 @@ func (c *hostClient) Watch(ctx context.Context, shardID uint64, query []byte, re
 				Data:  res.Data,
 			}
 		}
+	}
+	if err != nil {
+		return
+	}
+	return
+}
+
+type streamServer struct {
+	grpc.BidiStreamingServer[internal.StreamRequest, internal.StreamResponse]
+
+	ctx     context.Context
+	in      <-chan []byte
+	init    bool
+	out     chan<- *Result
+	shardID uint64
+	stale   bool
+}
+
+func newStreamServer(ctx context.Context, shardID uint64, in <-chan []byte, out chan<- *Result, stale bool) *streamServer {
+	return &streamServer{
+		ctx:     ctx,
+		in:      in,
+		out:     out,
+		shardID: shardID,
+		stale:   stale,
+	}
+}
+
+func (s *streamServer) Context() context.Context {
+	return s.ctx
+}
+
+func (s *streamServer) Recv() (req *internal.StreamRequest, err error) {
+	if !s.init {
+		req = &internal.StreamRequest{
+			RequestUnion: &internal.StreamRequest_StreamConnect{
+				StreamConnect: &internal.StreamConnect{
+					ShardId: s.shardID,
+					Stale:   s.stale,
+				},
+			},
+		}
+		s.init = true
+	} else {
+		select {
+		case data := <-s.in:
+			req = &internal.StreamRequest{
+				RequestUnion: &internal.StreamRequest_StreamMessage{
+					StreamMessage: &internal.StreamMessage{
+						ShardId: s.shardID,
+						Data:    data,
+					},
+				},
+			}
+		case <-s.ctx.Done():
+			err = io.EOF
+			return
+		}
+	}
+	return
+}
+
+func (s *streamServer) Send(res *internal.StreamResponse) error {
+	s.out <- &Result{
+		Value: res.Value,
+		Data:  res.Data,
+	}
+	return nil
+}
+
+func (c *hostClient) Stream(ctx context.Context, shardID uint64, in <-chan []byte, out chan<- *Result, stale bool) (err error) {
+	var wg sync.WaitGroup
+	var client internal.Internal_StreamClient
+	var done = make(chan bool)
+	if c.host.ID == c.agent.hostID() {
+		err = c.agent.grpcServer.Stream(newStreamServer(ctx, shardID, in, out, stale))
+	} else {
+		client, err = c.agent.grpcClientPool.get(c.host.ApiAddress).Stream(ctx)
+		wg.Go(func() {
+			err = client.Send(&internal.StreamRequest{
+				RequestUnion: &internal.StreamRequest_StreamConnect{
+					StreamConnect: &internal.StreamConnect{
+						ShardId: shardID,
+						Stale:   stale,
+					},
+				},
+			})
+			if err != nil {
+				return
+			}
+			for {
+				select {
+				case data := <-in:
+					err := client.Send(&internal.StreamRequest{
+						RequestUnion: &internal.StreamRequest_StreamMessage{
+							StreamMessage: &internal.StreamMessage{
+								ShardId: shardID,
+								Data:    data,
+							},
+						},
+					})
+					if err != nil {
+						panic(err)
+					}
+				case <-done:
+					return
+				}
+			}
+		})
+		wg.Go(func() {
+			for {
+				res, err := client.Recv()
+				if err != nil {
+					if err == io.EOF {
+						close(done)
+					}
+					return
+				}
+				out <- &Result{
+					Value: res.Value,
+					Data:  res.Data,
+				}
+			}
+		})
+		wg.Wait()
 	}
 	if err != nil {
 		return

@@ -146,7 +146,7 @@ func TestAgent(t *testing.T) {
 		for _, a := range agents {
 			require.Nil(t, a.index(ctx, shard.ID))
 		}
-		for _, op := range []string{"update", "query", "watch"} {
+		for _, op := range []string{"update", "query", "watch", "stream"} {
 			for _, linearity := range []string{"linear", "non-linear"} {
 				for _, writeTarget := range []string{"all", "leader"} {
 					t.Run(fmt.Sprintf(`%s %s %s host client`, sm, op, linearity), func(t *testing.T) {
@@ -330,13 +330,46 @@ func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, op string, stal
 				wg.Wait()
 				assert.Equal(t, uint64((i+1)*4), n)
 				assert.Nil(t, err)
+			} else if op == "stream" {
+				in := make(chan []byte)
+				out := make(chan *Result)
+				var n uint64
+				var wg sync.WaitGroup
+				var done = make(chan bool)
+				ctx := context.Background()
+				wg.Go(func() {
+					for {
+						select {
+						case result := <-out:
+							require.Equal(t, int(n), len(result.Data))
+							n++
+						case <-done:
+							return
+						}
+					}
+				})
+				wg.Go(func() {
+					for i := range 5 {
+						in <- bytes.Repeat([]byte("A"), i)
+					}
+					in <- []byte(`done`)
+				})
+				timeout(t, time.Second, func() {
+					err = client.Stream(ctx, shard.ID, in, out, stale)
+				})
+				close(done)
+				timeout(t, time.Second, func() {
+					wg.Wait()
+				})
+				assert.Equal(t, uint64(5), n)
+				assert.Nil(t, err)
 			} else {
 				t.Error("Invalid op" + op)
 			}
 			require.Nil(t, err, `%v, %v, %#v`, i, err, client)
 			if op == "update" && stale {
 				assert.Equal(t, uint64(0), val)
-			} else {
+			} else if op != "stream" {
 				assert.Equal(t, uint64((i+1)*4), val)
 			}
 			i++
@@ -391,13 +424,45 @@ func runAgentSubTestByShard(t *testing.T, agents []*Agent, shard Shard, op strin
 			wg.Wait()
 			assert.Equal(t, uint64((i+1)*4), n)
 			assert.Nil(t, err)
+		} else if op == "stream" {
+			in := make(chan []byte)
+			out := make(chan *Result)
+			var n uint64
+			var wg sync.WaitGroup
+			var done = make(chan bool)
+			wg.Go(func() {
+				for {
+					select {
+					case result := <-out:
+						require.Equal(t, int(n), len(result.Data))
+						n++
+					case <-done:
+						return
+					}
+				}
+			})
+			wg.Go(func() {
+				for i := range 5 {
+					in <- bytes.Repeat([]byte("A"), i)
+				}
+				in <- []byte(`done`)
+			})
+			timeout(t, time.Second, func() {
+				err = client.Stream(context.Background(), in, out, stale)
+			})
+			close(done)
+			timeout(t, time.Second, func() {
+				wg.Wait()
+			})
+			assert.Equal(t, uint64(5), n)
+			assert.Nil(t, err)
 		} else {
 			t.Error("Invalid op" + op)
 		}
 		require.Nil(t, err, `%v, %v, %#v`, i, err, client)
 		if op == "update" && stale {
 			assert.Equal(t, uint64(0), val)
-		} else {
+		} else if op != "stream" {
 			assert.Equal(t, uint64((i+1)*4), val)
 		}
 		i++
@@ -414,6 +479,21 @@ func await(d, n time.Duration, fn func() bool) bool {
 	return false
 }
 
+func timeout(t *testing.T, d time.Duration, fn func()) {
+	done := make(chan bool)
+	go func() {
+		fn()
+		close(done)
+	}()
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-timer.C:
+		panic(`Timeout`)
+	}
+}
+
 var mockConcurrentSM = func(shardID uint64, replicaID uint64) StateMachine {
 	return &mockStateMachine{
 		mockUpdate: func(e []Entry) []Entry {
@@ -426,8 +506,16 @@ var mockConcurrentSM = func(shardID uint64, replicaID uint64) StateMachine {
 			return &Result{Value: uint64(len(data))}
 		},
 		mockWatch: func(ctx context.Context, data []byte, results chan<- *Result) {
-			for i := 0; i < len(data); i++ {
+			for i := range len(data) {
 				results <- &Result{Value: uint64(i)}
+			}
+		},
+		mockStream: func(ctx context.Context, in <-chan []byte, out chan<- *Result) {
+			for b := range in {
+				if bytes.Equal(b, []byte(`done`)) {
+					return
+				}
+				out <- &Result{Data: b}
 			}
 		},
 		mockPrepareSnapshot: func() (cursor any, err error) {
@@ -467,8 +555,16 @@ var mockPersistentSM = func(shardID uint64, replicaID uint64) StateMachinePersis
 			return &Result{Value: uint64(len(data))}
 		},
 		mockWatch: func(ctx context.Context, data []byte, results chan<- *Result) {
-			for i := 0; i < len(data); i++ {
+			for i := range len(data) {
 				results <- &Result{Value: uint64(i)}
+			}
+		},
+		mockStream: func(ctx context.Context, in <-chan []byte, out chan<- *Result) {
+			for b := range in {
+				if bytes.Equal(b, []byte(`done`)) {
+					return
+				}
+				out <- &Result{Data: b}
 			}
 		},
 		mockPrepareSnapshot: func() (cursor any, err error) {

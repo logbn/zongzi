@@ -246,7 +246,7 @@ func (s *grpcServer) Read(ctx context.Context,
 	if req.Stale {
 		r, err = s.agent.host.StaleRead(req.ShardId, query)
 	} else {
-		ctx, cancel := context.WithTimeout(ctx, raftTimeout)
+		ctx, cancel := context.WithTimeout(ctx, time.Hour<<20) // 1 million hours 🤙
 		defer cancel()
 		r, err = s.agent.host.SyncRead(ctx, req.ShardId, query)
 	}
@@ -293,7 +293,73 @@ func (s *grpcServer) Watch(req *internal.WatchRequest, srv internal.Internal_Wat
 	if req.Stale {
 		_, err = s.agent.host.StaleRead(req.ShardId, query)
 	} else {
-		_, err = s.agent.host.SyncRead(srv.Context(), req.ShardId, query)
+		ctx, cancel := context.WithTimeout(srv.Context(), time.Hour<<20) // 1 million hours 🤙
+		defer cancel()
+		_, err = s.agent.host.SyncRead(ctx, req.ShardId, query)
+	}
+	close(done)
+	wg.Wait()
+	return
+}
+
+func (s *grpcServer) Stream(srv grpc.BidiStreamingServer[internal.StreamRequest, internal.StreamResponse]) (err error) {
+	var in = make(chan []byte)
+	var out = make(chan *Result)
+	var wg sync.WaitGroup
+	var done = make(chan bool)
+	wg.Go(func() {
+		for {
+			select {
+			case res := <-out:
+				err := srv.Send(&internal.StreamResponse{
+					Value: res.Value,
+					Data:  res.Data,
+				})
+				if err != nil {
+					s.agent.log.Errorf(`Error sending stream response: %s`, err.Error())
+				}
+			case <-done:
+				return
+			}
+		}
+	})
+	var query = getStreamQuery()
+	var connectReq *internal.StreamConnect
+	first, err := srv.Recv()
+	if err != nil {
+		return
+	}
+	switch ut := first.RequestUnion.(type) {
+	case *internal.StreamRequest_StreamConnect:
+		connectReq = ut.StreamConnect
+		query.ctx = srv.Context()
+		query.in = in
+		query.out = out
+	default:
+		err = ErrStreamConnectMissing
+		return
+	}
+	go func() {
+		for {
+			req, err := srv.Recv()
+			if err != nil {
+				return
+			}
+			switch ut := req.RequestUnion.(type) {
+			case *internal.StreamRequest_StreamMessage:
+				in <- ut.StreamMessage.Data
+			default:
+				err = ErrStreamConnectDuplicate
+				return
+			}
+		}
+	}()
+	if connectReq.Stale {
+		_, err = s.agent.host.StaleRead(connectReq.ShardId, query)
+	} else {
+		ctx, cancel := context.WithTimeout(srv.Context(), time.Hour<<20) // 1 million hours 🤙
+		defer cancel()
+		_, err = s.agent.host.SyncRead(ctx, connectReq.ShardId, query)
 	}
 	close(done)
 	wg.Wait()
