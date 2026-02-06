@@ -221,18 +221,21 @@ func (c *hostClient) Stream(ctx context.Context, shardID uint64, in <-chan []byt
 		err = c.agent.grpcServer.Stream(newStreamServer(ctx, shardID, in, out, stale))
 	} else {
 		client, err = c.agent.grpcClientPool.get(c.host.ApiAddress).Stream(ctx)
-		wg.Go(func() {
-			err = client.Send(&internal.StreamRequest{
-				RequestUnion: &internal.StreamRequest_StreamConnect{
-					StreamConnect: &internal.StreamConnect{
-						ShardId: shardID,
-						Stale:   stale,
-					},
+		if err != nil {
+			return
+		}
+		err = client.Send(&internal.StreamRequest{
+			RequestUnion: &internal.StreamRequest_StreamConnect{
+				StreamConnect: &internal.StreamConnect{
+					ShardId: shardID,
+					Stale:   stale,
 				},
-			})
-			if err != nil {
-				return
-			}
+			},
+		})
+		if err != nil {
+			return
+		}
+		wg.Go(func() {
 			for {
 				select {
 				case data := <-in:
@@ -268,9 +271,6 @@ func (c *hostClient) Stream(ctx context.Context, shardID uint64, in <-chan []byt
 			}
 		})
 		wg.Wait()
-	}
-	if err != nil {
-		return
 	}
 	return
 }

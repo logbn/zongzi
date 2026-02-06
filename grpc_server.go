@@ -74,7 +74,6 @@ func (s *grpcServer) Ping(ctx context.Context,
 func (s *grpcServer) Probe(ctx context.Context,
 	req *internal.ProbeRequest,
 ) (resp *internal.ProbeResponse, err error) {
-	// s.agent.log.Debugf(`gRPC Req Probe: %#v`, req)
 	return &internal.ProbeResponse{
 		GossipAdvertiseAddress: s.agent.hostConfig.Gossip.AdvertiseAddress,
 	}, nil
@@ -83,7 +82,6 @@ func (s *grpcServer) Probe(ctx context.Context,
 func (s *grpcServer) Info(ctx context.Context,
 	req *internal.InfoRequest,
 ) (resp *internal.InfoResponse, err error) {
-	// s.agent.log.Debugf(`gRPC Req Info: %#v`, req)
 	return &internal.InfoResponse{
 		HostId:    s.agent.hostID(),
 		ReplicaId: s.agent.replicaConfig.ReplicaID,
@@ -93,7 +91,6 @@ func (s *grpcServer) Info(ctx context.Context,
 func (s *grpcServer) Members(ctx context.Context,
 	req *internal.MembersRequest,
 ) (resp *internal.MembersResponse, err error) {
-	// s.agent.log.Debugf(`gRPC Req Members: %#v`, req)
 	return &internal.MembersResponse{
 		Members: s.agent.members,
 	}, nil
@@ -102,7 +99,6 @@ func (s *grpcServer) Members(ctx context.Context,
 func (s *grpcServer) Join(ctx context.Context,
 	req *internal.JoinRequest,
 ) (resp *internal.JoinResponse, err error) {
-	// s.agent.log.Debugf(`gRPC Req Join: %#v`, req)
 	resp = &internal.JoinResponse{}
 	if s.agent.Status() != AgentStatus_Ready {
 		err = ErrAgentNotReady
@@ -115,7 +111,6 @@ func (s *grpcServer) Join(ctx context.Context,
 func (s *grpcServer) Add(ctx context.Context,
 	req *internal.AddRequest,
 ) (resp *internal.AddResponse, err error) {
-	// s.agent.log.Debugf(`gRPC Req Join: %#v`, req)
 	resp = &internal.AddResponse{}
 	if s.agent.Status() != AgentStatus_Ready {
 		err = ErrAgentNotReady
@@ -130,7 +125,6 @@ var emptyCommitResponse = &internal.CommitResponse{}
 func (s *grpcServer) Commit(ctx context.Context,
 	req *internal.CommitRequest,
 ) (resp *internal.CommitResponse, err error) {
-	// s.agent.log.Debugf(`gRPC Req Propose: %#v`, req)
 	if !s.agent.hostConfig.NotifyCommit {
 		s.agent.log.Warningf(`%v`, ErrNotifyCommitDisabled)
 	}
@@ -176,7 +170,6 @@ func (s *grpcServer) Commit(ctx context.Context,
 func (s *grpcServer) Apply(ctx context.Context,
 	req *internal.ApplyRequest,
 ) (resp *internal.ApplyResponse, err error) {
-	// s.agent.log.Debugf(`gRPC Req Propose: %#v`, req)
 	if s.agent.Status() != AgentStatus_Ready {
 		err = ErrAgentNotReady
 		return
@@ -194,9 +187,6 @@ func (s *grpcServer) Apply(ctx context.Context,
 					Value: r.GetResult().Value,
 					Data:  r.GetResult().Data,
 				}
-				// Result cannot be released because ApplyResponse may not be serialized
-				// This occurs as an optimization in hostClient for requests that do not require forwarding
-				// ReleaseResult(r.GetResult())
 			} else if r.Aborted() {
 				err = ErrAborted
 			} else if r.Dropped() {
@@ -227,7 +217,6 @@ var emptyIndexResponse = &internal.IndexResponse{}
 func (s *grpcServer) Index(ctx context.Context,
 	req *internal.IndexRequest,
 ) (resp *internal.IndexResponse, err error) {
-	// s.agent.log.Debugf(`gRPC Req Query: %#v`, req)
 	resp = emptyIndexResponse
 	err = s.agent.index(ctx, req.ShardId)
 	return
@@ -236,7 +225,6 @@ func (s *grpcServer) Index(ctx context.Context,
 func (s *grpcServer) Read(ctx context.Context,
 	req *internal.ReadRequest,
 ) (resp *internal.ReadResponse, err error) {
-	// s.agent.log.Debugf(`gRPC Req Query: %#v`, req)
 	resp = &internal.ReadResponse{}
 	query := getLookupQuery()
 	query.ctx = ctx
@@ -253,25 +241,19 @@ func (s *grpcServer) Read(ctx context.Context,
 	if result, ok := r.(*Result); ok && result != nil {
 		resp.Value = result.Value
 		resp.Data = result.Data
-		// Result cannot be released because ReadResponse may not be serialized
-		// This occurs as an optimization in hostClient for requests that do not require forwarding
-		// ReleaseResult(result)
 	}
 	return
 }
 
 func (s *grpcServer) Watch(req *internal.WatchRequest, srv internal.Internal_WatchServer) (err error) {
-	// s.agent.log.Debugf(`gRPC Req Query: %#v`, req)
+	done := make(chan bool)
 	query := getWatchQuery()
 	query.ctx = srv.Context()
 	query.data = req.Data
 	query.result = make(chan *Result)
 	defer query.Release()
-	var done = make(chan bool)
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg := sync.WaitGroup{}
+	wg.Go(func() {
 		for {
 			select {
 			case result := <-query.result:
@@ -282,14 +264,11 @@ func (s *grpcServer) Watch(req *internal.WatchRequest, srv internal.Internal_Wat
 				if err != nil {
 					s.agent.log.Errorf(`Error sending watch response: %s`, err.Error())
 				}
-				// Result cannot be released because WatchResponse may not be serialized
-				// This occurs as an optimization in hostClient for requests that do not require forwarding
-				// ReleaseResult(result)
 			case <-done:
 				return
 			}
 		}
-	}()
+	})
 	if req.Stale {
 		_, err = s.agent.host.StaleRead(req.ShardId, query)
 	} else {
@@ -303,14 +282,29 @@ func (s *grpcServer) Watch(req *internal.WatchRequest, srv internal.Internal_Wat
 }
 
 func (s *grpcServer) Stream(srv grpc.BidiStreamingServer[internal.StreamRequest, internal.StreamResponse]) (err error) {
-	var in = make(chan []byte)
-	var out = make(chan *Result)
-	var wg sync.WaitGroup
-	var done = make(chan bool)
+	first, err := srv.Recv()
+	if err != nil {
+		return
+	}
+	var req *internal.StreamConnect
+	switch ut := first.RequestUnion.(type) {
+	case *internal.StreamRequest_StreamConnect:
+		req = ut.StreamConnect
+	default:
+		err = ErrStreamConnectMissing
+		return
+	}
+	done := make(chan bool)
+	query := getStreamQuery()
+	query.ctx = srv.Context()
+	query.in = make(chan []byte)
+	query.out = make(chan *Result)
+	defer query.Release()
+	wg := sync.WaitGroup{}
 	wg.Go(func() {
 		for {
 			select {
-			case res := <-out:
+			case res := <-query.out:
 				err := srv.Send(&internal.StreamResponse{
 					Value: res.Value,
 					Data:  res.Data,
@@ -323,22 +317,6 @@ func (s *grpcServer) Stream(srv grpc.BidiStreamingServer[internal.StreamRequest,
 			}
 		}
 	})
-	var query = getStreamQuery()
-	var connectReq *internal.StreamConnect
-	first, err := srv.Recv()
-	if err != nil {
-		return
-	}
-	switch ut := first.RequestUnion.(type) {
-	case *internal.StreamRequest_StreamConnect:
-		connectReq = ut.StreamConnect
-		query.ctx = srv.Context()
-		query.in = in
-		query.out = out
-	default:
-		err = ErrStreamConnectMissing
-		return
-	}
 	go func() {
 		for {
 			req, err := srv.Recv()
@@ -347,19 +325,19 @@ func (s *grpcServer) Stream(srv grpc.BidiStreamingServer[internal.StreamRequest,
 			}
 			switch ut := req.RequestUnion.(type) {
 			case *internal.StreamRequest_StreamMessage:
-				in <- ut.StreamMessage.Data
+				query.in <- ut.StreamMessage.Data
 			default:
 				err = ErrStreamConnectDuplicate
 				return
 			}
 		}
 	}()
-	if connectReq.Stale {
-		_, err = s.agent.host.StaleRead(connectReq.ShardId, query)
+	if req.Stale {
+		_, err = s.agent.host.StaleRead(req.ShardId, query)
 	} else {
 		ctx, cancel := context.WithTimeout(srv.Context(), time.Hour<<20) // 1 million hours 🤙
 		defer cancel()
-		_, err = s.agent.host.SyncRead(ctx, connectReq.ShardId, query)
+		_, err = s.agent.host.SyncRead(ctx, req.ShardId, query)
 	}
 	close(done)
 	wg.Wait()
