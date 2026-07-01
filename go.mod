@@ -7,7 +7,7 @@ require (
 	github.com/elliotchance/orderedmap/v2 v2.2.0
 	github.com/hashicorp/go-memdb v1.3.4
 	github.com/hashicorp/golang-lru/v2 v2.0.7
-	github.com/lni/dragonboat/v4 v4.0.0-20231222133740-1d6e2d76cd57
+	github.com/lni/dragonboat/v4 v4.0.0-20250723143628-076c7f6497dc
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/genproto v0.0.0-20250721164621-a45f3dfb1074
 	google.golang.org/grpc v1.79.3
