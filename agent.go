@@ -413,6 +413,10 @@ func (a *Agent) StateMachineRegister(uri string, factory any, config ...ReplicaC
 	return
 }
 
+func (a *Agent) ClusterName() string {
+	return a.clusterName
+}
+
 // Status returns the agent status.
 func (a *Agent) Status() AgentStatus {
 	a.mutex.RLock()

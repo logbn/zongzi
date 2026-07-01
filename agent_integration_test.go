@@ -38,7 +38,7 @@ func TestAgent(t *testing.T) {
 					WALDir:         fmt.Sprintf(basedir+`/agent-%d/wal`, len(agents)),
 					NodeHostDir:    fmt.Sprintf(basedir+`/agent-%d/raft`, len(agents)),
 					RaftAddress:    addr[1],
-					RTTMillisecond: 5,
+					RTTMillisecond: 10,
 					NotifyCommit:   notifyCommit,
 				}),
 				WithHostTags(
@@ -46,7 +46,9 @@ func TestAgent(t *testing.T) {
 					`node:class=`+class,
 					`test:tag=1234`,
 					`test:novalue`,
-				))
+				),
+				WithHostMemoryLimit(HostMemory256),
+			)
 			require.Nil(t, err)
 			// a.log.SetLevel(LogLevelDebug)
 			agents = append(agents, a)
@@ -234,6 +236,49 @@ func TestAgent(t *testing.T) {
 			return replicaCount == len(agents)
 		}), `%+v`, replicas)
 	})
+	/*
+		t.Run(`load`, func(t *testing.T) {
+			var wg sync.WaitGroup
+			for i := range 100 {
+				shard, created, err := agents[0].ShardCreate(ctx, `concurrent`,
+					WithPlacementVary(`geo:zone`),
+					WithPlacementMembers(3, `node:class=concurrent`),
+					WithPlacementCover(`node:class=concurrent`),
+					WithName(fmt.Sprintf(`load-test-%d`, i)))
+				require.Nil(t, err)
+				require.True(t, created)
+				var replicas []Replica
+				// 10 seconds for replicas to be active on all hosts
+				wg.Go(func() {
+					require.True(t, await(10, 100, func() bool {
+						var replicaCount = 0
+						replicas = replicas[:0]
+						agents[0].State(ctx, func(s *State) {
+							s.ReplicaIterateByShardID(shard.ID, func(r Replica) bool {
+								replicas = append(replicas, r)
+								if r.Status == ReplicaStatus_Active {
+									replicaCount++
+								}
+								return true
+							})
+						})
+						return replicaCount == len(agents)
+					}), `%+v`, replicas)
+				})
+			}
+			wg.Wait()
+		})
+		time.Sleep(time.Second)
+		var rep int
+		agents[0].State(ctx, func(s *State) {
+			s.ReplicaIterate(func(r Replica) bool {
+				rep++
+				return true
+			})
+		})
+		fmt.Printf("pause - Replicas: %d\n\n\n", rep)
+		time.Sleep(time.Hour)
+	*/
 	t.Run(`host restart`, func(t *testing.T) {
 		t.Run(`stop`, func(t *testing.T) {
 			agents[0].Stop()
@@ -354,11 +399,11 @@ func runAgentSubTest(t *testing.T, agents []*Agent, shard Shard, op string, stal
 					}
 					in <- []byte(`done`)
 				})
-				timeout(t, time.Second, func() {
+				timeout(time.Second, func() {
 					err = client.Stream(ctx, shard.ID, in, out, stale)
 				})
 				close(done)
-				timeout(t, time.Second, func() {
+				timeout(time.Second, func() {
 					wg.Wait()
 				})
 				assert.Equal(t, uint64(5), n)
@@ -447,11 +492,11 @@ func runAgentSubTestByShard(t *testing.T, agents []*Agent, shard Shard, op strin
 				}
 				in <- []byte(`done`)
 			})
-			timeout(t, time.Second, func() {
+			timeout(time.Second, func() {
 				err = client.Stream(context.Background(), in, out, stale)
 			})
 			close(done)
-			timeout(t, time.Second, func() {
+			timeout(time.Second, func() {
 				wg.Wait()
 			})
 			assert.Equal(t, uint64(5), n)
@@ -479,7 +524,7 @@ func await(d, n time.Duration, fn func() bool) bool {
 	return false
 }
 
-func timeout(t *testing.T, d time.Duration, fn func()) {
+func timeout(d time.Duration, fn func()) {
 	done := make(chan bool)
 	go func() {
 		fn()

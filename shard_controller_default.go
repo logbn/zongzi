@@ -42,7 +42,7 @@ func (c *shardControllerDefault) Reconcile(state *State, shard Shard, controls C
 			// ex: placement:vary=geo:zone
 			vary[tagValue] = true
 		} else if tagKey == `member` {
-			// ex: placement:member=3;geo:region=us-central1
+			// ex: placement:member=3;host:class=storage
 			parts := strings.Split(tagValue, ";")
 			i, err := strconv.Atoi(parts[0])
 			if err != nil {
@@ -71,7 +71,7 @@ func (c *shardControllerDefault) Reconcile(state *State, shard Shard, controls C
 			desired[group] = i
 			filters[group] = parts[1:]
 		} else if tagKey == `cover` {
-			// ex: placement:cover=host:class=compute
+			// ex: placement:cover=host:group=banana
 			for _, t := range strings.Split(tagValue, ";") {
 				k, v := c.parseTag(t)
 				state.HostIterateByTag(k, func(h Host) bool {
