@@ -1,9 +1,9 @@
 # Zongzi
 
 <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://user-images.githubusercontent.com/20638/228140399-d7b5cb5f-b2e4-4452-8de0-3decbe35bb36.png">
-    <source media="(prefers-color-scheme: light)" srcset="https://user-images.githubusercontent.com/20638/228140399-d7b5cb5f-b2e4-4452-8de0-3decbe35bb36.png">
-    <img alt="chibi style zongzi rice pyramid" src="https://user-images.githubusercontent.com/20638/228140399-d7b5cb5f-b2e4-4452-8de0-3decbe35bb36.png" width="220" height="180" align="right" />
+    <source media="(prefers-color-scheme: dark)" srcset="docs/zongzi.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/zongzi.png">
+    <img alt="chibi style zongzi rice pyramid" src="docs/zongzi.png" width="220" height="180" align="right" />
 </picture>
 
 A cluster coordinator for Dragonboat
