@@ -12,7 +12,7 @@ A cluster coordinator for Dragonboat
 [![Go Report Card](https://goreportcard.com/badge/github.com/logbn/zongzi?4)](https://goreportcard.com/report/github.com/logbn/zongzi)
 [![Go Coverage](https://github.com/logbn/zongzi/wiki/coverage.svg)](https://raw.githack.com/wiki/logbn/zongzi/coverage.html)
 
-This package provides a centralized coordination layer for Dragonboat multi-group Raft consesus clusters.
+This package provides a centralized coordination layer for Dragonboat multi-group Raft consensus clusters.
 
 ### Components
 
@@ -22,7 +22,7 @@ This package provides a centralized coordination layer for Dragonboat multi-grou
   - All cluster state changes pass through the Zongzi agent
 - Message Bus
   - Internal gPRC
-  - Facilitates cluster boostrap
+  - Facilitates cluster bootstrap
   - Forwards proposals and queries between nodes
 - Host Controller
   - Manages replicas on all hosts (start, stop, recover, delete, etc)
@@ -67,8 +67,8 @@ not serializable. See [ADR: Message Bus](/docs/adr/sessions.md)
 per shard, Zongzi replica IDs are unique per cluster. Having independent replica ids simplifies many replica operations
 which may have previously required both a shard id and replica id to be passed together up and down the callstack. The
 loss of address space (`uint64 * uint64` vs `uint64`) is not expected to be a concern as 18.4 quintillion is still
-an astonomically large number. Having a materialized view of the global cluster state replicated to every host in the
-cluster makes it simple and efficient to derefence a replicaID to the correct host and shard. Dragonboat can't do this
+an astronomically large number. Having a materialized view of the global cluster state replicated to every host in the
+cluster makes it simple and efficient to dereference a replicaID to the correct host and shard. Dragonboat can't do this
 alone because its cluster state is decentralized.
 
 3. Any host may have at most one active replica of any shard. This aligns with many Dragonboat host operations like
