@@ -21,9 +21,7 @@ import _ "google.golang.org/genproto/protobuf/ptype"
 const (
 	projectName = "zongzi"
 	projectUri  = "zongzi://github.com/logbn/zongzi"
-	minReplicas = 3
 	raftTimeout = time.Second
-	joinTimeout = 5 * time.Second
 	waitPeriod  = 500 * time.Millisecond
 )
 
