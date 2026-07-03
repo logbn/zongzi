@@ -14,6 +14,21 @@ A cluster coordinator for Dragonboat
 
 This package provides a centralized coordination layer for Dragonboat multi-group Raft consensus clusters.
 
+## Usage
+
+The Zongzi Agent simplifies multi-host operations using an internal API that automatically coordinates the
+necessary multi-host actions required to achieve the desired cluster state.
+
+1. Call `zongzi.(*Agent).CreateReplica` from any host in the cluster
+2. The desired replica state will be stored in the registry
+3. The responsible host controller will start the replica on the desired host
+
+The cluster state registry is replicated to every host in the cluster so every host always has an eventually consistent
+snapshot of the cluster topology for command/query forwarding. Changes to the cluster can be proposed via internal API
+so cluster changes are as simple as writing to the registry and the host controllers will reconcile the difference.
+
+There is no need to import the dragonboat package or interact with the dragonboat host directly.
+
 ### Components
 
 - Registry
@@ -38,21 +53,6 @@ This package provides a centralized coordination layer for Dragonboat multi-grou
   - Intelligently routes proposals and queries to active shard replicas
   - Selects nearest replica based on ping
   - Load balances stale reads across replicas
-
-## Usage
-
-The Zongzi Agent simplifies multi-host operations using an internal API that automatically coordinates the
-necessary multi-host actions required to achieve the desired cluster state.
-
-1. Call `zongzi.(*Agent).CreateReplica` from any host in the cluster
-2. The desired replica state will be stored in the registry
-3. The responsible host controller will start the replica on the desired host
-
-The cluster state registry is replicated to every host in the cluster so every host always has an eventually consistent
-snapshot of the cluster topology for command/query forwarding. Changes to the cluster can be proposed via internal API
-so cluster changes are as simple as writing to the registry and the host controllers will reconcile the difference.
-
-There is no need to import the dragonboat package or interact with the dragonboat host directly.
 
 ## Architectural Constraints
 
