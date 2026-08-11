@@ -21,15 +21,15 @@ import (
 type Agent struct {
 	advertiseAddress  string
 	bindAddress       string
-	clusterName       string
-	hostController    *hostController
-	controllerManager *controllerManager
 	clientManager     *clientManager
+	clusterName       string
+	controllerManager *controllerManager
 	fsm               *fsm
 	grpcClientPool    *grpcClientPool
 	grpcServer        *grpcServer
 	host              *dragonboat.NodeHost
 	hostConfig        HostConfig
+	hostController    *hostController
 	hostTags          []string
 	log               logger.ILogger
 	members           map[uint64]string

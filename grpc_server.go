@@ -325,7 +325,11 @@ func (s *grpcServer) Stream(srv grpc.BidiStreamingServer[internal.StreamRequest,
 			}
 			switch ut := req.RequestUnion.(type) {
 			case *internal.StreamRequest_StreamMessage:
-				query.in <- ut.StreamMessage.Data
+				select {
+				case query.in <- ut.StreamMessage.Data:
+				case <-done:
+					return
+				}
 			default:
 				err = ErrStreamConnectDuplicate
 				return

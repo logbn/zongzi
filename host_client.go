@@ -115,9 +115,12 @@ func (s *watchServer) Context() context.Context {
 }
 
 func (s *watchServer) Send(res *internal.WatchResponse) error {
-	s.results <- &Result{
+	select {
+	case s.results <- &Result{
 		Value: res.Value,
 		Data:  res.Data,
+	}:
+	case <-s.ctx.Done():
 	}
 	return nil
 }
@@ -206,9 +209,12 @@ func (s *streamServer) Recv() (req *internal.StreamRequest, err error) {
 }
 
 func (s *streamServer) Send(res *internal.StreamResponse) error {
-	s.out <- &Result{
+	select {
+	case s.out <- &Result{
 		Value: res.Value,
 		Data:  res.Data,
+	}:
+	case <-s.ctx.Done():
 	}
 	return nil
 }
