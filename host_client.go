@@ -254,6 +254,9 @@ func (c *hostClient) Stream(ctx context.Context, shardID uint64, in <-chan []byt
 						},
 					})
 					if err != nil {
+						if err == io.EOF {
+							return
+						}
 						panic(err)
 					}
 				case <-done:

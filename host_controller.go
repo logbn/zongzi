@@ -13,6 +13,7 @@ import (
 type hostController struct {
 	agent     *Agent
 	ctx       context.Context
+	log       Logger
 	ctxCancel context.CancelFunc
 	mutex     sync.RWMutex
 	index     uint64
@@ -22,6 +23,7 @@ type hostController struct {
 func newHostController(a *Agent) *hostController {
 	return &hostController{
 		agent: a,
+		log:   a.log,
 	}
 }
 
@@ -131,10 +133,13 @@ func (c *hostController) tick() (err error) {
 					}
 					err = c.agent.host.StartConcurrentReplica(members, false, shim, item.Config)
 				case ReplicaStatus_Joining:
-					res := c.requestShardJoin(members, shard.ID, replica.ID, replica.IsNonVoting)
-					if res == 0 {
-						err = fmt.Errorf(`[%05d:%05d] Unable to join shard`, shard.ID, replica.ID)
-						break
+					for {
+						res := c.requestShardJoin(members, shard.ID, replica.ID, replica.IsNonVoting)
+						if res > 0 {
+							break
+						}
+						c.log.Errorf(`[%05d:%05d] Unable to join shard`, shard.ID, replica.ID)
+						time.Sleep(time.Second)
 					}
 					err = c.agent.host.StartConcurrentReplica(nil, true, shim, item.Config)
 				case ReplicaStatus_Active:
@@ -150,10 +155,13 @@ func (c *hostController) tick() (err error) {
 					}
 					err = c.agent.host.StartOnDiskReplica(members, false, shim, item.Config)
 				case ReplicaStatus_Joining:
-					res := c.requestShardJoin(members, shard.ID, replica.ID, replica.IsNonVoting)
-					if res == 0 {
-						err = fmt.Errorf(`[%05d:%05d] Unable to join persistent shard`, shard.ID, replica.ID)
-						break
+					for {
+						res := c.requestShardJoin(members, shard.ID, replica.ID, replica.IsNonVoting)
+						if res > 0 {
+							break
+						}
+						c.log.Errorf(`[%05d:%05d] Unable to join persistent shard`, shard.ID, replica.ID)
+						time.Sleep(time.Second)
 					}
 					err = c.agent.host.StartOnDiskReplica(nil, true, shim, item.Config)
 				case ReplicaStatus_Active:
@@ -199,14 +207,19 @@ func (c *hostController) requestShardJoin(members map[uint64]string, shardID, re
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), raftTimeout)
 		defer cancel()
-		res, err = c.agent.grpcClientPool.get(host.ApiAddress).Add(ctx, &internal.AddRequest{
-			HostId:      c.agent.hostID(),
-			ShardId:     shardID,
-			ReplicaId:   replicaID,
-			IsNonVoting: isNonVoting,
-		})
-		if err != nil {
-			c.agent.log.Warningf(`[%05d:%05d] %s | %s Unable to join shard (%v): %v`, shardID, replicaID, c.agent.hostID(), hostID, isNonVoting, err)
+		for {
+			res, err = c.agent.grpcClientPool.get(host.ApiAddress).Add(ctx, &internal.AddRequest{
+				HostId:      c.agent.hostID(),
+				ShardId:     shardID,
+				ReplicaId:   replicaID,
+				IsNonVoting: isNonVoting,
+			})
+			if err != nil {
+				c.log.Warningf(`[%05d:%05d] %s | %s Unable to join shard (%v): %v`, shardID, replicaID, c.agent.hostID(), hostID, isNonVoting, err)
+				time.Sleep(time.Second)
+			} else {
+				break
+			}
 		}
 		if err == nil && res != nil && res.Value > 0 {
 			v = res.Value

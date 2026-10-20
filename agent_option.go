@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/lni/dragonboat/v4/config"
+	"github.com/lni/dragonboat/v4/logger"
 )
 
 type AgentOption func(*Agent) error
@@ -134,6 +135,13 @@ func WithReplicaConfig(cfg ReplicaConfig) AgentOption {
 func WithShardController(c Controller) AgentOption {
 	return func(a *Agent) error {
 		a.controllerManager.controller = c
+		return nil
+	}
+}
+
+func WithLogLevel(level logger.LogLevel) AgentOption {
+	return func(a *Agent) error {
+		a.log.SetLevel(level)
 		return nil
 	}
 }
