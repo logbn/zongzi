@@ -70,6 +70,10 @@ type (
 	LeaderInfo          = raftio.LeaderInfo
 	RaftEventListener   = raftio.IRaftEventListener
 	SystemEventListener = raftio.ISystemEventListener
+	NodeInfo            = raftio.NodeInfo
+	ConnectionInfo      = raftio.ConnectionInfo
+	SnapshotInfo        = raftio.SnapshotInfo
+	EntryInfo           = raftio.EntryInfo
 
 	Entry                  = statemachine.Entry
 	Result                 = statemachine.Result
@@ -276,22 +280,6 @@ func base36Encode(id uint64) string {
 	return strconv.FormatUint(id, 36)
 }
 
-type compositeRaftEventListener struct {
-	listeners []raftio.IRaftEventListener
-}
-
-func newCompositeRaftEventListener(listeners ...raftio.IRaftEventListener) raftio.IRaftEventListener {
-	return &compositeRaftEventListener{listeners}
-}
-
-func (c *compositeRaftEventListener) LeaderUpdated(info LeaderInfo) {
-	for _, listener := range c.listeners {
-		if listener != nil {
-			listener.LeaderUpdated(info)
-		}
-	}
-}
-
 // SetLogLevel sets log level for all zongzi and dragonboat loggers.
 //
 // Recommend [LogLevelWarning] for production.
@@ -347,12 +335,124 @@ func sliceContains[T comparable](slice []T, value T) bool {
 	return false
 }
 
-func sliceWithout[T comparable](slice []T, exclude T) []T {
-	var out []T
-	for _, v := range slice {
-		if v != exclude {
-			out = append(out, v)
-		}
+type eventListenerRaft struct {
+	agent *Agent
+}
+
+func newEventListenerRaft(a *Agent) *eventListenerRaft {
+	if a.hostConfig.RaftEventListener != nil {
+		a.eventListenersRaft = append(a.eventListenersRaft, a.hostConfig.RaftEventListener)
 	}
-	return out
+	return &eventListenerRaft{agent: a}
+}
+
+func (e *eventListenerRaft) LeaderUpdated(info LeaderInfo) {
+	e.agent.controllerManager.LeaderUpdated(info)
+	for _, listener := range e.agent.eventListenersRaft {
+		listener.LeaderUpdated(info)
+	}
+}
+
+type eventListenerSystem struct {
+	agent *Agent
+}
+
+func newEventListenerSystem(a *Agent) *eventListenerSystem {
+	return &eventListenerSystem{agent: a}
+}
+
+func (e *eventListenerSystem) NodeHostShuttingDown() {
+	for _, listener := range e.agent.eventListenersSystem {
+		listener.NodeHostShuttingDown()
+	}
+}
+
+func (e *eventListenerSystem) NodeUnloaded(info NodeInfo) {
+	for _, listener := range e.agent.eventListenersSystem {
+		listener.NodeUnloaded(info)
+	}
+}
+
+func (e *eventListenerSystem) NodeDeleted(info NodeInfo) {
+	for _, listener := range e.agent.eventListenersSystem {
+		listener.NodeDeleted(info)
+	}
+}
+
+func (e *eventListenerSystem) NodeReady(info NodeInfo) {
+	for _, listener := range e.agent.eventListenersSystem {
+		listener.NodeReady(info)
+	}
+}
+
+func (e *eventListenerSystem) MembershipChanged(info NodeInfo) {
+	for _, listener := range e.agent.eventListenersSystem {
+		listener.MembershipChanged(info)
+	}
+}
+
+func (e *eventListenerSystem) ConnectionEstablished(info ConnectionInfo) {
+	for _, listener := range e.agent.eventListenersSystem {
+		listener.ConnectionEstablished(info)
+	}
+}
+
+func (e *eventListenerSystem) ConnectionFailed(info ConnectionInfo) {
+	for _, listener := range e.agent.eventListenersSystem {
+		listener.ConnectionFailed(info)
+	}
+}
+
+func (e *eventListenerSystem) SendSnapshotStarted(info SnapshotInfo) {
+	for _, listener := range e.agent.eventListenersSystem {
+		listener.SendSnapshotStarted(info)
+	}
+}
+
+func (e *eventListenerSystem) SendSnapshotCompleted(info SnapshotInfo) {
+	for _, listener := range e.agent.eventListenersSystem {
+		listener.SendSnapshotCompleted(info)
+	}
+}
+
+func (e *eventListenerSystem) SendSnapshotAborted(info SnapshotInfo) {
+	for _, listener := range e.agent.eventListenersSystem {
+		listener.SendSnapshotAborted(info)
+	}
+}
+
+func (e *eventListenerSystem) SnapshotReceived(info SnapshotInfo) {
+	for _, listener := range e.agent.eventListenersSystem {
+		listener.SnapshotReceived(info)
+	}
+}
+
+func (e *eventListenerSystem) SnapshotRecovered(info SnapshotInfo) {
+	for _, listener := range e.agent.eventListenersSystem {
+		listener.SnapshotRecovered(info)
+	}
+}
+
+func (e *eventListenerSystem) SnapshotCreated(info SnapshotInfo) {
+	for _, listener := range e.agent.eventListenersSystem {
+		listener.SnapshotCreated(info)
+	}
+}
+
+func (e *eventListenerSystem) SnapshotCompacted(info SnapshotInfo) {
+	for _, listener := range e.agent.eventListenersSystem {
+		listener.SnapshotCompacted(info)
+	}
+}
+
+func (e *eventListenerSystem) LogCompacted(info EntryInfo) {
+	for _, listener := range e.agent.eventListenersSystem {
+		listener.LogCompacted(info)
+	}
+}
+
+func (e *eventListenerSystem) LogDBCompacted(info EntryInfo) {
+	for _, listener := range e.agent.eventListenersSystem {
+		listener.LogDBCompacted(info)
+	}
 }

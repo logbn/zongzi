@@ -213,7 +213,6 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 		// Post
 		case command_action_post:
 			cmd.Replica.ID = state.replicaIncr()
-			fsm.log.Infof(`command_action_post - %d - %s - %v`, cmd.Replica.ID, cmd.Replica.HostID, cmd.Replica.IsNonVoting)
 			cmd.Replica.Created = entry.Index
 			cmd.Replica.Updated = entry.Index
 			if !cmd.Replica.IsNonVoting && len(state.ShardMembers(cmd.Replica.ShardID)) < 3 {
@@ -221,6 +220,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			} else {
 				cmd.Replica.Status = ReplicaStatus_Joining
 			}
+			fsm.log.Debugf(`Replica post %+v`, cmd.Replica)
 			state.replicaPut(cmd.Replica)
 			state.hostTouch(cmd.Replica.HostID, entry.Index)
 			state.shardTouch(cmd.Replica.ShardID, entry.Index)

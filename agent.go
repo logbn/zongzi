@@ -19,24 +19,26 @@ import (
 )
 
 type Agent struct {
-	advertiseAddress  string
-	bindAddress       string
-	clientManager     *clientManager
-	clusterName       string
-	controllerManager *controllerManager
-	fsm               *fsm
-	grpcClientPool    *grpcClientPool
-	grpcServer        *grpcServer
-	host              *dragonboat.NodeHost
-	hostConfig        HostConfig
-	hostController    *hostController
-	hostTags          []string
-	log               logger.ILogger
-	members           map[uint64]string
-	peers             []string
-	replicaConfig     ReplicaConfig
-	shardTypes        map[string]shardType
-	status            AgentStatus
+	advertiseAddress     string
+	bindAddress          string
+	clientManager        *clientManager
+	clusterName          string
+	controllerManager    *controllerManager
+	eventListenersRaft   []RaftEventListener
+	eventListenersSystem []SystemEventListener
+	fsm                  *fsm
+	grpcClientPool       *grpcClientPool
+	grpcServer           *grpcServer
+	host                 *dragonboat.NodeHost
+	hostConfig           HostConfig
+	hostController       *hostController
+	hostTags             []string
+	log                  logger.ILogger
+	members              map[uint64]string
+	peers                []string
+	replicaConfig        ReplicaConfig
+	shardTypes           map[string]shardType
+	status               AgentStatus
 
 	clock     clock.Clock
 	ctx       context.Context
@@ -78,14 +80,12 @@ func NewAgent(clusterName string, peers []string, opts ...AgentOption) (a *Agent
 		opt(a)
 	}
 	a.hostController = newHostController(a)
-	a.hostConfig.RaftEventListener = newCompositeRaftEventListener(
-		a.controllerManager,
-		a.hostConfig.RaftEventListener,
-	)
 	a.replicaConfig.ShardID = ShardID
 	a.hostConfig.DeploymentID = mustBase36Decode(clusterName)
 	a.hostConfig.DefaultNodeRegistryEnabled = true
 	a.hostConfig.Gossip.Meta = []byte(a.advertiseAddress)
+	a.hostConfig.RaftEventListener = newEventListenerRaft(a)
+	a.hostConfig.SystemEventListener = newEventListenerSystem(a)
 	a.grpcClientPool = newGrpcClientPool(1e4)
 	a.grpcServer = newGrpcServer(a.bindAddress)
 	if parts := strings.Split(a.advertiseAddress, ":"); len(parts) > 1 {

@@ -257,8 +257,8 @@ func (fsm *State) HostIterateByShardType(shardType string, fn func(h Host) bool)
 
 // HostIterateByTag executes a callback for every host in the cluster matching the specified tag,
 // ordered by host id ascending. Return true to continue iterating, false to stop.
-func (fsm *State) HostIterateByTag(tag string, fn func(h Host) bool) {
-	iter, err := fsm.txn.Get(`host`, `Tags`, tag)
+func (fsm *State) HostIterateByTag(tag, val string, fn func(h Host) bool) {
+	iter, err := fsm.txn.Get(`host`, `Tags`, tag, val)
 	if err != nil {
 		panic(err)
 	}
@@ -373,8 +373,8 @@ func (fsm *State) ShardIterate(fn func(s Shard) bool) {
 
 // ShardIterateByTag executes a callback for every shard in the cluster matching the specified tag,
 // ordered by shard id ascending. Return true to continue iterating, false to stop.
-func (fsm *State) ShardIterateByTag(tag string, fn func(r Shard) bool) {
-	iter, err := fsm.txn.Get(`shard`, `Tags`, tag)
+func (fsm *State) ShardIterateByTag(tag, val string, fn func(r Shard) bool) {
+	iter, err := fsm.txn.Get(`shard`, `Tags`, tag, val)
 	if err != nil {
 		panic(err)
 	}
@@ -494,8 +494,8 @@ func (fsm *State) ReplicaIterateByHostID(hostID string, fn func(r Replica) bool)
 
 // ReplicaIterateByTag executes a callback for every host in the cluster matching the specified tag,
 // ordered by host id ascending. Return true to continue iterating, false to stop.
-func (fsm *State) ReplicaIterateByTag(tag string, fn func(r Replica) bool) {
-	iter, err := fsm.txn.Get(`replica`, `Tags`, tag)
+func (fsm *State) ReplicaIterateByTag(tag, val string, fn func(r Replica) bool) {
+	iter, err := fsm.txn.Get(`replica`, `Tags`, tag, val)
 	if err != nil {
 		panic(err)
 	}

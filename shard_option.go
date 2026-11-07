@@ -48,3 +48,12 @@ func WithTag(k string, v any) ShardOption {
 		return nil
 	}
 }
+
+func WithTags(m map[string]string) ShardOption {
+	return func(s *Shard) error {
+		for k, v := range m {
+			s.Tags[k] = v
+		}
+		return nil
+	}
+}

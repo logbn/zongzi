@@ -1,5 +1,5 @@
 test:
-	@go test
+	@go test -v
 
 unit:
 	@go test -tags unit

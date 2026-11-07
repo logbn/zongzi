@@ -106,14 +106,14 @@ var (
 
 func WithRaftEventListener(listener RaftEventListener) AgentOption {
 	return func(a *Agent) error {
-		a.hostConfig.RaftEventListener = listener
+		a.eventListenersRaft = append(a.eventListenersRaft, listener)
 		return nil
 	}
 }
 
 func WithSystemEventListener(listener SystemEventListener) AgentOption {
 	return func(a *Agent) error {
-		a.hostConfig.SystemEventListener = listener
+		a.eventListenersSystem = append(a.eventListenersSystem, listener)
 		return nil
 	}
 }

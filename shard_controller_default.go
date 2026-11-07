@@ -74,7 +74,10 @@ func (c *shardControllerDefault) Reconcile(state *State, shard Shard, controls C
 			// ex: placement:cover=host:group=banana
 			for _, t := range strings.Split(tagValue, ";") {
 				k, v := c.parseTag(t)
-				state.HostIterateByTag(k, func(h Host) bool {
+				state.HostIterate(func(h Host) bool {
+					if _, ok := h.Tags[k]; !ok {
+						return true
+					}
 					if v == "" || h.Tags[k] == v {
 						desired[`cover`]++
 					}
