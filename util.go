@@ -348,6 +348,8 @@ func newEventListenerRaft(a *Agent) *eventListenerRaft {
 
 func (e *eventListenerRaft) LeaderUpdated(info LeaderInfo) {
 	e.agent.controllerManager.LeaderUpdated(info)
+	e.agent.mutex.RLock()
+	defer e.agent.mutex.RUnlock()
 	for _, listener := range e.agent.eventListenersRaft {
 		listener.LeaderUpdated(info)
 	}

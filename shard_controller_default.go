@@ -85,6 +85,8 @@ func (c *shardControllerDefault) Reconcile(state *State, shard Shard, controls C
 				})
 				filters[`cover`] = append(filters[`cover`], t)
 			}
+		} else if tagKey == `bind` {
+			// TODO: implement shard binding
 		}
 	}
 	var varies bool

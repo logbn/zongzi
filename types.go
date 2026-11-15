@@ -1,5 +1,10 @@
 package zongzi
 
+import (
+	"iter"
+	"strings"
+)
+
 type Host struct {
 	ID      string            `json:"id"`
 	Created uint64            `json:"created"`
@@ -36,4 +41,26 @@ type Replica struct {
 	IsNonVoting bool   `json:"isNonVoting"`
 	IsWitness   bool   `json:"isWitness"`
 	ShardID     uint64 `json:"shardID"`
+}
+
+func (s Shard) TagsPrefixed(prefix string) iter.Seq2[string, string] {
+	return tagsPrefixed(s.Tags, prefix)
+}
+
+func (r Replica) TagsPrefixed(prefix string) iter.Seq2[string, string] {
+	return tagsPrefixed(r.Tags, prefix)
+}
+
+func (h Host) TagsPrefixed(prefix string) iter.Seq2[string, string] {
+	return tagsPrefixed(h.Tags, prefix)
+}
+
+func tagsPrefixed(tags map[string]string, prefix string) iter.Seq2[string, string] {
+	return func(yield func(string, string) bool) {
+		for k, v := range tags {
+			if strings.HasPrefix(k, prefix) {
+				yield(k, v)
+			}
+		}
+	}
 }

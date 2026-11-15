@@ -424,6 +424,15 @@ func (a *Agent) Status() AgentStatus {
 	return a.status
 }
 
+// AddRaftEventListener adds one or more Raft event listeners to the agent.
+func (a *Agent) AddRaftEventListener(listeners ...RaftEventListener) {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	for _, listener := range listeners {
+		a.eventListenersRaft = append(a.eventListenersRaft, listener)
+	}
+}
+
 // Stop stops the agent.
 func (a *Agent) Stop() {
 	a.controllerManager.Stop()
