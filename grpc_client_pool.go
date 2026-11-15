@@ -37,8 +37,12 @@ func (c *grpcClientPool) get(addr string) (client internal.InternalClient) {
 	}
 	// https://github.com/grpc/grpc-go/tree/master/examples/features/authentication
 	// opts = append(opts, grpc.WithPerRPCCredentials(perRPC))
-	conn, err := grpc.Dial(addr, append([]grpc.DialOption{
+	conn, err := grpc.NewClient(addr, append([]grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallSendMsgSize(1<<30),
+			grpc.MaxCallRecvMsgSize(1<<30),
+		),
 	}, c.dialOpts...)...)
 	if err != nil {
 		return &grpcClientErr{err}
