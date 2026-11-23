@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"regexp"
 	"sort"
@@ -193,6 +194,7 @@ func (a *Agent) ReplicaAwait(ctx context.Context, d time.Duration, shardID uint6
 		}
 		err = a.State(ctx, func(state *State) {
 			state.ReplicaIterateByShardID(shardID, func(r Replica) bool {
+				log.Printf("%#v", r)
 				if r.HostID != a.HostID() {
 					return true
 				}
@@ -203,7 +205,7 @@ func (a *Agent) ReplicaAwait(ctx context.Context, d time.Duration, shardID uint6
 		if replica.Status == ReplicaStatus_Active {
 			break
 		}
-		a.clock.Sleep(250 * time.Millisecond)
+		a.clock.Sleep(waitPeriod)
 	}
 	return
 }
@@ -245,9 +247,7 @@ func (a *Agent) Start(ctx context.Context) (err error) {
 	}()
 	a.ctx, a.ctxCancel = context.WithCancel(ctx)
 	// Start gRPC server
-	a.wg.Add(1)
-	go func() {
-		defer a.wg.Done()
+	a.wg.Go(func() {
 		defer a.log.Debugf("Stopped gRPC Server")
 		for {
 			if err := a.grpcServer.Start(a); err != nil {
@@ -259,7 +259,7 @@ func (a *Agent) Start(ctx context.Context) (err error) {
 			case <-a.clock.After(waitPeriod):
 			}
 		}
-	}()
+	})
 	// Resolve member gossip addresses
 	a.hostConfig.Gossip.AdvertiseAddress, err = a.gossipIP(a.hostConfig.Gossip.AdvertiseAddress)
 	if err != nil {
@@ -424,12 +424,26 @@ func (a *Agent) Status() AgentStatus {
 	return a.status
 }
 
-// AddRaftEventListener adds one or more Raft event listeners to the agent.
-func (a *Agent) AddRaftEventListener(listeners ...RaftEventListener) {
+// RaftEventListenerAdd adds one or more Raft event listeners to the agent.
+func (a *Agent) RaftEventListenerAdd(listeners ...RaftEventListener) {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 	for _, listener := range listeners {
 		a.eventListenersRaft = append(a.eventListenersRaft, listener)
+	}
+}
+
+// RaftEventListener adds one or more Raft event listeners to the agent.
+func (a *Agent) RaftEventListenerRemove(listeners ...RaftEventListener) {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	for _, listener := range listeners {
+		for i, existing := range a.eventListenersRaft {
+			if listener == existing {
+				a.eventListenersRaft = append(a.eventListenersRaft[:i], a.eventListenersRaft[i+1:]...)
+				break
+			}
+		}
 	}
 }
 

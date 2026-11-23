@@ -59,7 +59,9 @@ func tagsPrefixed(tags map[string]string, prefix string) iter.Seq2[string, strin
 	return func(yield func(string, string) bool) {
 		for k, v := range tags {
 			if strings.HasPrefix(k, prefix) {
-				yield(k, v)
+				if !yield(k, v) {
+					return
+				}
 			}
 		}
 	}

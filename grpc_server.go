@@ -234,7 +234,7 @@ func (s *grpcServer) Read(ctx context.Context,
 	if req.Stale {
 		r, err = s.agent.host.StaleRead(req.ShardId, query)
 	} else {
-		ctx, cancel := context.WithTimeout(ctx, time.Hour<<20) // 1 million hours 🤙
+		ctx, cancel := context.WithTimeout(ctx, readTimeout)
 		defer cancel()
 		r, err = s.agent.host.SyncRead(ctx, req.ShardId, query)
 	}
@@ -272,7 +272,7 @@ func (s *grpcServer) Watch(req *internal.WatchRequest, srv internal.Internal_Wat
 	if req.Stale {
 		_, err = s.agent.host.StaleRead(req.ShardId, query)
 	} else {
-		ctx, cancel := context.WithTimeout(srv.Context(), time.Hour<<20) // 1 million hours 🤙
+		ctx, cancel := context.WithTimeout(srv.Context(), time.Hour<<20) // 1 million hours
 		defer cancel()
 		_, err = s.agent.host.SyncRead(ctx, req.ShardId, query)
 	}
@@ -339,7 +339,7 @@ func (s *grpcServer) Stream(srv grpc.BidiStreamingServer[internal.StreamRequest,
 	if req.Stale {
 		_, err = s.agent.host.StaleRead(req.ShardId, query)
 	} else {
-		ctx, cancel := context.WithTimeout(srv.Context(), time.Hour<<20) // 1 million hours 🤙
+		ctx, cancel := context.WithTimeout(srv.Context(), time.Hour<<20) // 1 million hours
 		defer cancel()
 		_, err = s.agent.host.SyncRead(ctx, req.ShardId, query)
 	}

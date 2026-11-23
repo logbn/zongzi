@@ -119,7 +119,7 @@ func (fsm *fsm) Update(entry Entry) (Result, error) {
 			if cmd.Shard.Name != "" {
 				if _, ok := state.ShardFindByName(cmd.Shard.Name); ok {
 					err := fmt.Errorf("%s: %s", ErrShardExists, cmd.Shard.Name)
-					fsm.log.Errorf(err.Error())
+					fsm.log.Infof(err.Error())
 					entry.Result.Data = []byte(err.Error())
 					break
 				}
